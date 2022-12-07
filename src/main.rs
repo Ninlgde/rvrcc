@@ -1,23 +1,21 @@
-use core::cell::{RefCell, RefMut};
 use core::cmp::Ordering;
+use core::fmt;
 use std::env;
-use lazy_static::lazy_static;
 
-lazy_static! {
-    /// 全局对象
-    static ref INPUT: UPSafeCell<String> = unsafe {
-        let args: Vec<String> = env::args().collect();
-
-        if args.len() != 2 {
-            panic!("Usage: {} invalid number of arguments", args[0]);
-        }
-
-        UPSafeCell::new(args[1].clone())
-    };
-}
+static mut INPUT: String = String::new();
 
 fn main() {
-    let mut cur = &mut tokenize(&INPUT.exclusive_access());
+    let args: Vec<String> = env::args().collect();
+
+    if args.len() != 2 {
+        panic!("Usage: {} invalid number of arguments", args[0]);
+    }
+
+    let input = args[1].clone();
+    unsafe {
+        INPUT = input;
+    }
+    let mut cur = &mut tokenize(unsafe { &INPUT });
 
     // 声明一个全局main段，同时也是程序入口段
     print!("  .globl main\n");
@@ -113,7 +111,7 @@ fn equal(token: &Box<Token>, s: String) -> bool {
 /// 跳过特定字符的token
 fn skip(token: &mut Box<Token>, s: String) -> &mut Box<Token> {
     if !equal(token, s.clone()) {
-        panic!("expect {}", s)
+        error_token!(token, "expect {}", s)
     }
     token.next.as_mut().unwrap()
 }
@@ -121,7 +119,7 @@ fn skip(token: &mut Box<Token>, s: String) -> &mut Box<Token> {
 /// 从token中获取数字
 fn get_number(token: &Token) -> i32 {
     if token.kind != TokenKind::TKNum {
-        panic!("expect a number")
+        error_token!(token, "expect a number")
     }
     token.val
 }
@@ -169,7 +167,7 @@ fn tokenize(input: &String) -> Box<Token> {
         }
 
         // 处理无法识别的字符
-        panic!("invalid token: {:?}", chars[pos] as char);
+        error_at!(pos, "invalid token");
     }
 
     // 解析结束，增加一个EOF，表示终止符。
@@ -179,23 +177,33 @@ fn tokenize(input: &String) -> Box<Token> {
     head.next.unwrap()
 }
 
-pub struct UPSafeCell<T> {
-    /// inner data
-    inner: RefCell<T>,
+// 字符解析出错，并退出程序
+fn print_with_error(offset: usize, args: fmt::Arguments) {
+    println!("{}", unsafe { &INPUT });
+    print!("{:1$}^", "", offset);
+    print!(" {}\n", args);
+    panic!("error at offset: {}", offset);
 }
 
-unsafe impl<T> Sync for UPSafeCell<T> {}
+// Tok解析出错，并退出程序
+fn print_with_token_error(token: &Token, args: fmt::Arguments) {
+    print_with_error(token.offset, args);
+}
 
-impl<T> UPSafeCell<T> {
-    /// User is responsible to guarantee that inner struct is only used in
-    /// uniprocessor.
-    pub unsafe fn new(value: T) -> Self {
-        Self {
-            inner: RefCell::new(value),
-        }
+
+/// error at offset
+#[macro_export]
+macro_rules! error_at {
+    ($offset:expr, $fmt: literal $(, $($arg: tt)+)?) => {
+        $crate::print_with_error($offset, format_args!(concat!($fmt, "") $(, $($arg)+)?))
     }
-    /// Exclusive access inner data in UPSafeCell. Panic if the data has been borrowed.
-    pub fn exclusive_access(&self) -> RefMut<'_, T> {
-        self.inner.borrow_mut()
+}
+
+
+/// error token
+#[macro_export]
+macro_rules! error_token {
+    ($token:expr, $fmt: literal $(, $($arg: tt)+)?) => {
+        $crate::print_with_token_error($token, format_args!(concat!($fmt, "") $(, $($arg)+)?))
     }
 }
