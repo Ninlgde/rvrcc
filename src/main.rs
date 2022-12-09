@@ -139,7 +139,7 @@ impl Token {
 }
 
 /// 跳过特定字符的token
-fn skip<'a>(token: &'a Token, s: &'a str, pos: &mut usize) {
+fn skip(token: &Token, s: &str, pos: &mut usize) {
     if !token.equal(s) {
         error_token!(token, "expect {}", s)
     }
@@ -214,6 +214,8 @@ enum NodeKind {
     NdMul,
     // /
     NdDiv,
+    // 负号-
+    NdNeg,
     // 整形
     NdNum,
 }
@@ -239,6 +241,12 @@ impl Node {
         Node { kind, lhs: Some(Box::new(lhs)), rhs: Some(Box::new(rhs)), val: 0 }
     }
 
+    fn new_unary(kind: NodeKind, expr: Node) -> Self {
+        let mut node = Node::new(kind);
+        node.lhs = Some(Box::new(expr));
+        node
+    }
+
     fn new_num(val: i32) -> Self {
         let mut node = Node::new(NodeKind::NdNum);
         node.val = val;
@@ -248,7 +256,7 @@ impl Node {
 
 // 解析加减
 // expr = mul ("+" mul | "-" mul)*
-fn expr<'a>(pos: &mut usize, tokens: &Vec<Token>) -> Option<Node> {
+fn expr(pos: &mut usize, tokens: &Vec<Token>) -> Option<Node> {
     let mut node = mul(pos, tokens);
     loop {
         let token = &tokens[*pos];
@@ -271,21 +279,26 @@ fn expr<'a>(pos: &mut usize, tokens: &Vec<Token>) -> Option<Node> {
 }
 
 // 解析乘除
-// mul = primary ("*" primary | "/" primary)*
-fn mul<'a>(pos: &mut usize, tokens: &Vec<Token>) -> Option<Node> {
-    let mut node = primary(pos, tokens);
+// mul = unary ("*" unary | "/" unary)*
+fn mul(pos: &mut usize, tokens: &Vec<Token>) -> Option<Node> {
+    // unary
+    let mut node = unary(pos, tokens);
+
+    // ("*" unary | "/" unary)*
     loop {
         let token = &tokens[*pos];
+        // "*" unary
         if token.equal("*") {
             *pos += 1;
-            let rhs = primary(pos, tokens).unwrap();
+            let rhs = unary(pos, tokens).unwrap();
             node = Some(Node::new_binary(NodeKind::NdMul, node.unwrap(), rhs));
             continue;
         }
 
+        // "/" unary
         if token.equal("/") {
             *pos += 1;
-            let rhs = primary(pos, tokens).unwrap();
+            let rhs = unary(pos, tokens).unwrap();
             node = Some(Node::new_binary(NodeKind::NdDiv, node.unwrap(), rhs));
             continue;
         }
@@ -294,17 +307,37 @@ fn mul<'a>(pos: &mut usize, tokens: &Vec<Token>) -> Option<Node> {
     }
 }
 
+// 解析一元运算
+// unary = ("+" | "-") unary | primary
+fn unary(pos: &mut usize, tokens: &Vec<Token>) -> Option<Node> {
+    let token = &tokens[*pos];
+
+    // "+" unary
+    if token.equal("+") {
+        *pos += 1;
+        return unary(pos, tokens);
+    }
+
+    // "-" unary
+    if token.equal("-") {
+        *pos += 1;
+        return Some(Node::new_unary(NodeKind::NdNeg, unary(pos, tokens).unwrap()));
+    }
+
+    // primary
+    primary(pos, tokens)
+}
+
 // 解析括号、数字
 // primary = "(" expr ")" | num
-fn primary<'a>(pos: &mut usize, tokens: &Vec<Token>) -> Option<Node> {
-    if tokens[*pos].equal("(") {
+fn primary(pos: &mut usize, tokens: &Vec<Token>) -> Option<Node> {
+    let token = &tokens[*pos];
+    if token.equal("(") {
         *pos += 1;
         let node = expr(pos, tokens);
         skip(&tokens[*pos], ")", pos);
         return node;
     }
-
-    let token = &tokens[*pos];
     match token {
         Token::TKNum { val, t_str: _t_str, offset: _offset } => {
             let node = Node::new_num(*val);
@@ -338,8 +371,21 @@ fn pop(reg: &str, depth: &mut usize) {
 
 /// 生成表达式
 fn gen_expr(node: &Box<Node>, depth: &mut usize) {
-
-    // 加载数字到a0
+    match node.kind {
+        // 加载数字到a0
+        NodeKind::NdNum => {
+            print!("  li a0, {}\n", node.val);
+            return;
+        }
+        // 对寄存器取反
+        NodeKind::NdNeg => {
+            gen_expr(node.lhs.as_ref().unwrap(), depth);
+            // neg a0, a0是sub a0, x0, a0的别名, 即a0=0-a0
+            print!("  neg a0, a0\n");
+            return;
+        }
+        _ => {}
+    }
     if node.kind == NodeKind::NdNum {
         print!("  li a0, {}\n", node.val);
         return;
