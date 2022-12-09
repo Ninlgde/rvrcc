@@ -2,7 +2,7 @@
 //! program = "{" compound_stmt
 //! compound_stmt = stmt* "}"
 //! stmt = "return" expr ";" | "{" compound_stmt | expr_stmt
-//! exprStmt = expr ";"
+//! expr_stmt = expr? ";"
 //! expr = assign
 //! assign = equality ("=" assign)?
 //! equality = relational ("==" relational | "!=" relational)*
@@ -99,8 +99,14 @@ impl<'a> Parser<'a> {
     }
 
     /// 解析表达式语句
-    /// expr_stmt = expr ";"
+    /// expr_stmt = expr? ";"
     fn expr_stmt(&mut self) -> Option<Node> {
+        // ;
+        if self.peekable.peek().unwrap().equal(";") {
+            self.peekable.next();
+            return Some(Node::new(NodeKind::Block));
+        }
+
         // expr ";"
         let node = Some(Node::new_unary(NodeKind::ExprStmt, self.expr().unwrap()));
         self.skip(";");
