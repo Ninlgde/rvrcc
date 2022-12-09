@@ -93,7 +93,7 @@ impl Token {
             Self::Eof { offset } => *offset,
         }
     }
-
+    #[allow(dead_code)]
     fn at_eof(&self) -> bool {
         match self {
             Self::Eof { offset: _offset } => true,
@@ -128,7 +128,7 @@ pub struct Var {
 #[allow(dead_code)]
 pub struct Function {
     // 函数体
-    body: Vec<Node>,
+    body: Node,
     // 本地变量
     locals: Vec<Var>,
     // 栈大小
@@ -160,6 +160,8 @@ pub enum NodeKind {
     Assign,
     // 返回
     Return,
+    // { ... }，代码块
+    Block,
     // 表达式语句
     ExprStmt,
     // 变量
@@ -176,6 +178,8 @@ pub struct Node {
     lhs: Option<Box<Node>>,
     // 右部，right-hand side
     rhs: Option<Box<Node>>,
+    // 代码块
+    body: Vec<Node>,
     // 存储ND_VAR的字符串
     var: Option<Box<Var>>,
     // 存储ND_NUM种类的值
@@ -188,6 +192,7 @@ impl Node {
             kind,
             lhs: None,
             rhs: None,
+            body: Vec::new(),
             var: None,
             val: 0,
         }
@@ -198,6 +203,7 @@ impl Node {
             kind,
             lhs: Some(Box::new(lhs)),
             rhs: Some(Box::new(rhs)),
+            body: Vec::new(),
             var: None,
             val: 0,
         }
