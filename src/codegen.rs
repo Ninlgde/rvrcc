@@ -34,6 +34,8 @@ pub fn codegen(program: &mut Function) {
     }
 
     // Epilogue，后语
+    // 输出return段标签
+    print!(".L.return:\n");
     // 将fp的值改写回sp
     print!("  mv sp, fp\n");
     // 将最早fp保存的值弹栈，恢复fp。
@@ -44,39 +46,49 @@ pub fn codegen(program: &mut Function) {
 }
 
 fn get_stmt(node: &Node) {
-    if node.kind == NodeKind::NdExprStmt {
-        let mut depth = 0;
-        gen_expr(node.lhs.as_ref().unwrap(), &mut depth);
-        assert_eq!(depth, 0);
-        return;
+    let mut depth = 0;
+    match node.kind {
+        // 生成表达式语句
+        NodeKind::ExprStmt => {
+            gen_expr(node.lhs.as_ref().unwrap(), &mut depth);
+        }
+        // 生成return语句
+        NodeKind::Return => {
+            gen_expr(node.lhs.as_ref().unwrap(), &mut depth);
+            // 无条件跳转语句，跳转到.L.return段
+            // j offset是 jal x0, offset的别名指令
+            print!("  j .L.return\n");
+        }
+        _ => {
+            panic!("invalid statement")
+        }
     }
-
-    panic!("invalid statement")
+    assert_eq!(depth, 0);
 }
 
 /// 生成表达式
 fn gen_expr(node: &Box<Node>, depth: &mut usize) {
     match node.kind {
         // 加载数字到a0
-        NodeKind::NdNum => {
+        NodeKind::Num => {
             print!("  li a0, {}\n", node.val);
             return;
         }
         // 对寄存器取反
-        NodeKind::NdNeg => {
+        NodeKind::Neg => {
             gen_expr(node.lhs.as_ref().unwrap(), depth);
             // neg a0, a0是sub a0, x0, a0的别名, 即a0=0-a0
             print!("  neg a0, a0\n");
             return;
         }
-        NodeKind::NdVar => {
+        NodeKind::Var => {
             // 计算出变量的地址，然后存入a0
             gen_addr(node);
             // 访问a0地址中存储的数据，存入到a0当中
             print!("  ld a0, 0(a0)\n");
             return;
         }
-        NodeKind::NdAssign => {
+        NodeKind::Assign => {
             // 左部是左值，保存值到的地址
             gen_addr(node.lhs.as_ref().unwrap());
             push(depth);
@@ -88,7 +100,7 @@ fn gen_expr(node: &Box<Node>, depth: &mut usize) {
         }
         _ => {}
     }
-    if node.kind == NodeKind::NdNum {
+    if node.kind == NodeKind::Num {
         print!("  li a0, {}\n", node.val);
         return;
     }
@@ -104,27 +116,27 @@ fn gen_expr(node: &Box<Node>, depth: &mut usize) {
 
     // 生成各个二叉树节点
     match node.kind {
-        NodeKind::NdAdd => {
+        NodeKind::Add => {
             // + a0=a0+a1
             print!("  add a0, a0, a1\n");
             return;
         }
-        NodeKind::NdSub => {
+        NodeKind::Sub => {
             // - a0=a0-a1
             print!("  sub a0, a0, a1\n");
             return;
         }
-        NodeKind::NdMul => {
+        NodeKind::Mul => {
             // * a0=a0*a1
             print!("  mul a0, a0, a1\n");
             return;
         }
-        NodeKind::NdDiv => {
+        NodeKind::Div => {
             // / a0=a0/a1
             print!("  div a0, a0, a1\n");
             return;
         }
-        NodeKind::NdEq => {
+        NodeKind::Eq => {
             // a0=a0^a1，异或指令
             print!("  xor a0, a0, a1\n");
             // a0==a1
@@ -133,7 +145,7 @@ fn gen_expr(node: &Box<Node>, depth: &mut usize) {
             print!("  seqz a0, a0\n");
             return;
         }
-        NodeKind::NdNe => {
+        NodeKind::Ne => {
             // a0=a0^a1，异或指令
             print!("  xor a0, a0, a1\n");
             // a0!=a1
@@ -142,11 +154,11 @@ fn gen_expr(node: &Box<Node>, depth: &mut usize) {
             print!("  snez a0, a0\n");
             return;
         }
-        NodeKind::NdLt => {
+        NodeKind::Lt => {
             print!("  slt a0, a0, a1\n");
             return;
         }
-        NodeKind::NdLe => {
+        NodeKind::Le => {
             // a0<=a1等价于
             // a0=a1<a0, a0=a1^1
             print!("  slt a0, a1, a0\n");
@@ -162,7 +174,7 @@ fn gen_expr(node: &Box<Node>, depth: &mut usize) {
 /// 计算给定节点的绝对地址
 /// 如果报错，说明节点不在内存中
 fn gen_addr(node: &Box<Node>) {
-    if node.kind == NodeKind::NdVar {
+    if node.kind == NodeKind::Var {
         // 偏移量是相对于fp的
         let offset = node.var.as_ref().unwrap().offset;
         print!("  addi a0, fp, {}\n", -offset);
