@@ -33,6 +33,12 @@ pub fn tokenize() -> Vec<Token> {
             continue;
         }
 
+        if c.is_alphabetic() {
+            tokens.push(Token::TkIdent { t_str: c.to_string(), offset: pos });
+            pos += 1;
+            continue;
+        }
+
         // 解析操作符
         let old_pos = pos;
         read_punct(&chars, &mut pos);

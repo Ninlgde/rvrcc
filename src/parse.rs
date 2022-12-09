@@ -1,3 +1,16 @@
+//! AST parser
+//! program = stmt*
+//! stmt = exprStmt
+//! exprStmt = expr ";"
+//! expr = assign
+//! assign = equality ("=" assign)?
+//! equality = relational ("==" relational | "!=" relational)*
+//! relational = add ("<" add | "<=" add | ">" add | ">=" add)*
+//! add = mul ("+" mul | "-" mul)*
+//! mul = unary ("*" unary | "/" unary)*
+//! unary = ("+" | "-") unary | primary
+//! primary = "(" expr ")" | num
+
 use crate::{error_token, Node, NodeKind, skip, Token};
 
 
@@ -6,7 +19,7 @@ pub fn parse(tokens: &Vec<Token>) -> Box<Node> {
 
     let mut head = Box::new(Node::new(NodeKind::NdExprStmt));
     let mut cur = &mut head;
-    while ! &tokens[pos].at_eof() {
+    while !&tokens[pos].at_eof() {
         let node = stmt(&mut pos, tokens);
         cur.next = Some(Box::new(node.unwrap()));
         cur = cur.next.as_mut().unwrap();
@@ -30,9 +43,23 @@ fn expr_stmt(pos: &mut usize, tokens: &Vec<Token>) -> Option<Node> {
 }
 
 // 解析表达式
-// expr = equality
+// expr = assign
 fn expr(pos: &mut usize, tokens: &Vec<Token>) -> Option<Node> {
-    equality(pos, tokens)
+    assign(pos, tokens)
+}
+
+// 解析赋值
+// assign = equality ("=" assign)?
+fn assign(pos: &mut usize, tokens: &Vec<Token>) -> Option<Node> {
+    let mut node = equality(pos, tokens);
+
+    if tokens[*pos].equal("=") {
+        *pos += 1;
+        let rhs = assign(pos, tokens).unwrap();
+        node = Some(Node::new_binary(NodeKind::NdAssign, node.unwrap(), rhs));
+    }
+
+    node
 }
 
 // 解析相等性
@@ -190,8 +217,8 @@ fn unary(pos: &mut usize, tokens: &Vec<Token>) -> Option<Node> {
     primary(pos, tokens)
 }
 
-// 解析括号、数字
-// primary = "(" expr ")" | num
+// 解析括号、数字、变量
+// primary = "(" expr ")" | ident｜ num
 fn primary(pos: &mut usize, tokens: &Vec<Token>) -> Option<Node> {
     let token = &tokens[*pos];
     if token.equal("(") {
@@ -201,6 +228,11 @@ fn primary(pos: &mut usize, tokens: &Vec<Token>) -> Option<Node> {
         return node;
     }
     match token {
+        Token::TkIdent { t_str, offset: _offset } => {
+            let node = Node::new_var(t_str.clone());
+            *pos += 1;
+            return Some(node);
+        }
         Token::TKNum { val, t_str: _t_str, offset: _offset } => {
             let node = Node::new_num(*val);
             *pos += 1;

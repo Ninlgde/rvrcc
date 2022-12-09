@@ -6,14 +6,41 @@ pub fn codegen(mut node: &mut Box<Node>) {
     // main段标签
     print!("main:\n");
 
+    // 栈布局
+    //-------------------------------// sp
+    //              fp                  fp = sp-8
+    //-------------------------------// fp
+    //              'a'                 fp-8
+    //              'b'                 fp-16
+    //              ...
+    //              'z'                 fp-208
+    //-------------------------------// sp=sp-8-208
+    //           表达式计算
+    //-------------------------------//
+
+    // Prologue, 前言
+    // 将fp压入栈中，保存fp的值
+    print!("  addi sp, sp, -8\n");
+    print!("  sd fp, 0(sp)\n");
+    // 将sp写入fp
+    print!("  mv fp, sp\n");
+
+    // 26个字母*8字节=208字节，栈腾出208字节的空间
+    print!("  addi sp, sp, -208\n");
+
     loop {
         get_stmt(node);
         if node.next.is_none() { break; }
         node = node.next.as_mut().unwrap();
     }
 
-    // ret为jalr x0, x1, 0别名指令，用于返回子程序
-    // 返回的为a0的值
+    // Epilogue，后语
+    // 将fp的值改写回sp
+    print!("  mv sp, fp\n");
+    // 将最早fp保存的值弹栈，恢复fp。
+    print!("  ld fp, 0(sp)\n");
+    print!("  addi sp, sp, 8\n");
+    // 返回
     print!("  ret\n");
 }
 
@@ -41,6 +68,23 @@ fn gen_expr(node: &Box<Node>, depth: &mut usize) {
             gen_expr(node.lhs.as_ref().unwrap(), depth);
             // neg a0, a0是sub a0, x0, a0的别名, 即a0=0-a0
             print!("  neg a0, a0\n");
+            return;
+        }
+        NodeKind::NdVar => {
+            // 计算出变量的地址，然后存入a0
+            gen_addr(node);
+            // 访问a0地址中存储的数据，存入到a0当中
+            print!("  ld a0, 0(a0)\n");
+            return;
+        }
+        NodeKind::NdAssign => {
+            // 左部是左值，保存值到的地址
+            gen_addr(node.lhs.as_ref().unwrap());
+            push(depth);
+            // 右部是右值，为表达式的值
+            gen_expr(node.rhs.as_ref().unwrap(), depth);
+            pop("a1", depth);
+            print!("  sd a0, 0(a1)\n");
             return;
         }
         _ => {}
@@ -114,6 +158,19 @@ fn gen_expr(node: &Box<Node>, depth: &mut usize) {
     }
 
     panic!("invalid expression");
+}
+
+/// 计算给定节点的绝对地址
+/// 如果报错，说明节点不在内存中
+fn gen_addr(node: &Box<Node>) {
+    if node.kind == NodeKind::NdVar {
+        // 偏移量=是两个字母在ASCII码表中的距离加1后乘以8，*8表示每个变量需要八个字节单位的内存
+        let offset = ((node.name.as_bytes()[0] - 'a' as u8 + 1) * 8) as i32;
+        print!("  addi a0, fp, {}\n", -offset);
+        return;
+    }
+
+    panic!("not an lvalue")
 }
 
 /// 压栈，将结果临时压入栈中备用

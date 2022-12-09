@@ -48,6 +48,12 @@ macro_rules! error_token {
 /// token
 #[derive(Eq, PartialEq)]
 pub enum Token {
+    TkIdent {
+        // token 名
+        t_str: String,
+        // 在解析的字符串内的位置
+        offset: usize,
+    },
     // 操作符如： + -
     TKPunct {
         // token 名
@@ -73,6 +79,7 @@ pub enum Token {
 impl Token {
     fn get_offset(&self) -> usize {
         match self {
+            Self::TkIdent { t_str: _t_str, offset } => *offset,
             Self::TKPunct { t_str: _t_str, offset } => *offset,
             Self::TKNum { val: _val, t_str: _t_str, offset } => *offset,
             Self::TKEof { offset } => *offset,
@@ -128,8 +135,12 @@ pub enum NodeKind {
     NdLt,
     // <=
     NdLe,
+    // 赋值
+    NdAssign,
     // 表达式语句
     NdExprStmt,
+    // 变量
+    NdVar,
     // 数字
     NdNum,
 }
@@ -144,17 +155,33 @@ pub struct Node {
     lhs: Option<Box<Node>>,
     // 右部，right-hand side
     rhs: Option<Box<Node>>,
+    // 存储ND_VAR的字符串
+    name: String,
     // 存储ND_NUM种类的值
     val: i32,
 }
 
 impl Node {
     fn new(kind: NodeKind) -> Self {
-        Node { kind, next: None, lhs: None, rhs: None, val: 0 }
+        Node {
+            kind,
+            next: None,
+            lhs: None,
+            rhs: None,
+            name: String::new(),
+            val: 0,
+        }
     }
 
     fn new_binary(kind: NodeKind, lhs: Node, rhs: Node) -> Self {
-        Node { kind, next: None, lhs: Some(Box::new(lhs)), rhs: Some(Box::new(rhs)), val: 0 }
+        Node {
+            kind,
+            next: None,
+            lhs: Some(Box::new(lhs)),
+            rhs: Some(Box::new(rhs)),
+            name: String::new(),
+            val: 0,
+        }
     }
 
     fn new_unary(kind: NodeKind, expr: Node) -> Self {
@@ -166,6 +193,12 @@ impl Node {
     fn new_num(val: i32) -> Self {
         let mut node = Node::new(NodeKind::NdNum);
         node.val = val;
+        node
+    }
+
+    fn new_var(name: String) -> Self {
+        let mut node = Node::new(NodeKind::NdVar);
+        node.name = name;
         node
     }
 }
