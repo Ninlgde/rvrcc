@@ -1,36 +1,31 @@
 use crate::{Node, NodeKind};
 
-pub fn codegen(node: Option<Node>) {
+pub fn codegen(mut node: &mut Box<Node>) {
     // 声明一个全局main段，同时也是程序入口段
     print!("  .globl main\n");
     // main段标签
     print!("main:\n");
 
-    let mut depth = 0;
-    gen_expr(&Box::new(node.unwrap()), &mut depth);
+    loop {
+        get_stmt(node);
+        if node.next.is_none() { break; }
+        node = node.next.as_mut().unwrap();
+    }
 
     // ret为jalr x0, x1, 0别名指令，用于返回子程序
     // 返回的为a0的值
     print!("  ret\n");
-
-    assert_eq!(depth, 0);
 }
 
-/// 压栈，将结果临时压入栈中备用
-/// sp为栈指针，栈反向向下增长，64位下，8个字节为一个单位，所以sp-8
-/// 当前栈指针的地址就是sp，将a0的值压入栈
-/// 不使用寄存器存储的原因是因为需要存储的值的数量是变化的。
-fn push(depth: &mut usize) {
-    print!("  addi sp, sp, -8\n");
-    print!("  sd a0, 0(sp)\n");
-    *depth += 1;
-}
+fn get_stmt(node: &Box<Node>) {
+    if node.kind == NodeKind::NdExprStmt {
+        let mut depth = 0;
+        gen_expr(node.lhs.as_ref().unwrap(), &mut depth);
+        assert_eq!(depth, 0);
+        return;
+    }
 
-/// 弹栈，将sp指向的地址的值，弹出到a1
-fn pop(reg: &str, depth: &mut usize) {
-    print!("  ld {}, 0(sp)\n", reg);
-    print!("  addi sp, sp, 8\n");
-    *depth -= 1;
+    panic!("invalid statement")
 }
 
 /// 生成表达式
@@ -119,4 +114,21 @@ fn gen_expr(node: &Box<Node>, depth: &mut usize) {
     }
 
     panic!("invalid expression");
+}
+
+/// 压栈，将结果临时压入栈中备用
+/// sp为栈指针，栈反向向下增长，64位下，8个字节为一个单位，所以sp-8
+/// 当前栈指针的地址就是sp，将a0的值压入栈
+/// 不使用寄存器存储的原因是因为需要存储的值的数量是变化的。
+fn push(depth: &mut usize) {
+    print!("  addi sp, sp, -8\n");
+    print!("  sd a0, 0(sp)\n");
+    *depth += 1;
+}
+
+/// 弹栈，将sp指向的地址的值，弹出到a1
+fn pop(reg: &str, depth: &mut usize) {
+    print!("  ld {}, 0(sp)\n", reg);
+    print!("  addi sp, sp, 8\n");
+    *depth -= 1;
 }

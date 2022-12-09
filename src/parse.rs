@@ -1,14 +1,31 @@
 use crate::{error_token, Node, NodeKind, skip, Token};
 
 
-pub fn parse(tokens: &Vec<Token>) -> Option<Node> {
+pub fn parse(tokens: &Vec<Token>) -> Box<Node> {
     let mut pos = 0;
-    let node = expr(&mut pos, tokens);
 
-    let token = &tokens[pos];
-    if !token.at_eof() {
-        error_token!(token, "extra token");
+    let mut head = Box::new(Node::new(NodeKind::NdExprStmt));
+    let mut cur = &mut head;
+    while ! &tokens[pos].at_eof() {
+        let node = stmt(&mut pos, tokens);
+        cur.next = Some(Box::new(node.unwrap()));
+        cur = cur.next.as_mut().unwrap();
     }
+
+    head.next.unwrap()
+}
+
+// 解析语句
+// stmt = expr_stmt
+fn stmt(pos: &mut usize, tokens: &Vec<Token>) -> Option<Node> {
+    expr_stmt(pos, tokens)
+}
+
+// 解析表达式语句
+// expr_stmt = expr ";"
+fn expr_stmt(pos: &mut usize, tokens: &Vec<Token>) -> Option<Node> {
+    let node = Some(Node::new_unary(NodeKind::NdExprStmt, expr(pos, tokens).unwrap()));
+    skip(&tokens[*pos], ";", pos);
     node
 }
 

@@ -1,3 +1,5 @@
+extern crate core;
+
 use core::fmt;
 
 mod tokenize;
@@ -126,7 +128,9 @@ pub enum NodeKind {
     NdLt,
     // <=
     NdLe,
-    // 整形
+    // 表达式语句
+    NdExprStmt,
+    // 数字
     NdNum,
 }
 
@@ -134,6 +138,8 @@ pub enum NodeKind {
 pub struct Node {
     // 节点种类
     kind: NodeKind,
+    // 下条语句
+    next: Option<Box<Node>>,
     // 左部，left-hand side
     lhs: Option<Box<Node>>,
     // 右部，right-hand side
@@ -144,11 +150,11 @@ pub struct Node {
 
 impl Node {
     fn new(kind: NodeKind) -> Self {
-        Node { kind, lhs: None, rhs: None, val: 0 }
+        Node { kind, next: None, lhs: None, rhs: None, val: 0 }
     }
 
     fn new_binary(kind: NodeKind, lhs: Node, rhs: Node) -> Self {
-        Node { kind, lhs: Some(Box::new(lhs)), rhs: Some(Box::new(rhs)), val: 0 }
+        Node { kind, next: None, lhs: Some(Box::new(lhs)), rhs: Some(Box::new(rhs)), val: 0 }
     }
 
     fn new_unary(kind: NodeKind, expr: Node) -> Self {
