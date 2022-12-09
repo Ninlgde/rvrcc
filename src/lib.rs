@@ -160,6 +160,8 @@ pub enum NodeKind {
     Assign,
     // 返回
     Return,
+    // "if"，条件判断
+    If,
     // { ... }，代码块
     Block,
     // 表达式语句
@@ -178,6 +180,13 @@ pub struct Node {
     lhs: Option<Box<Node>>,
     // 右部，right-hand side
     rhs: Option<Box<Node>>,
+    // if 语句
+    // 条件内的表达式
+    cond: Option<Box<Node>>,
+    // 符合条件后的语句
+    then: Option<Box<Node>>,
+    // 不符合条件后的语句
+    els: Option<Box<Node>>,
     // 代码块
     body: Vec<Node>,
     // 存储ND_VAR的字符串
@@ -192,6 +201,9 @@ impl Node {
             kind,
             lhs: None,
             rhs: None,
+            cond: None,
+            then: None,
+            els: None,
             body: Vec::new(),
             var: None,
             val: 0,
@@ -199,14 +211,10 @@ impl Node {
     }
 
     fn new_binary(kind: NodeKind, lhs: Node, rhs: Node) -> Self {
-        Node {
-            kind,
-            lhs: Some(Box::new(lhs)),
-            rhs: Some(Box::new(rhs)),
-            body: Vec::new(),
-            var: None,
-            val: 0,
-        }
+        let mut node = Node::new(kind);
+        node.lhs = Some(Box::new(lhs));
+        node.rhs = Some(Box::new(rhs));
+        node
     }
 
     fn new_unary(kind: NodeKind, expr: Node) -> Self {

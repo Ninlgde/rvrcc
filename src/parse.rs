@@ -1,7 +1,10 @@
 //! AST parser
 //! program = "{" compound_stmt
 //! compound_stmt = stmt* "}"
-//! stmt = "return" expr ";" | "{" compound_stmt | expr_stmt
+// stmt = "return" expr ";"
+//        | "if" "(" expr ")" stmt ("else" stmt)?
+//        | "{" compound_stmt
+//        | expr_stmt
 //! expr_stmt = expr? ";"
 //! expr = assign
 //! assign = equality ("=" assign)?
@@ -57,7 +60,10 @@ impl<'a> Parser<'a> {
     }
 
     /// 解析语句
-    /// stmt = "return" expr ";" | "{" compound_stmt | expr_stmt
+    /// stmt = "return" expr ";"
+    ///        | "if" "(" expr ")" stmt ("else" stmt)?
+    ///        | "{" compound_stmt
+    ///        | expr_stmt
     fn stmt(&mut self) -> Option<Node> {
         let token = self.peekable.peek().unwrap();
         // "return" expr ";"
@@ -68,6 +74,26 @@ impl<'a> Parser<'a> {
             return node;
         }
 
+        // 解析if语句
+        // "if" "(" expr ")" stmt ("else" stmt)?
+        if token.equal("if") {
+            let mut node = Node::new(NodeKind::If);
+            // "(" expr ")"，条件内语句
+            self.peekable.next();
+            self.skip("(");
+            node.cond = Some(Box::new(self.expr().unwrap()));
+            self.skip(")");
+            // stmt，符合条件后的语句
+            node.then = Some(Box::new(self.stmt().unwrap()));
+            // ("else" stmt)?，不符合条件后的语句
+            if self.peekable.peek().unwrap().equal("else") {
+                self.peekable.next();
+                node.els = Some(Box::new(self.stmt().unwrap()));
+            }
+            return Some(node);
+        }
+
+        // "{" compound_stmt
         if token.equal("{") {
             self.peekable.next();
             return self.compound_stmt();

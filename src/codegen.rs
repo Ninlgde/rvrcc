@@ -29,7 +29,7 @@ pub fn codegen(program: &mut Function) {
     // 偏移量为实际变量所用的栈大小
     print!("  addi sp, sp, -{}\n", program.stack_size);
 
-    get_stmt(&program.body);
+    gen_stmt(&program.body);
 
     // Epilogue，后语
     // 输出return段标签
@@ -43,12 +43,40 @@ pub fn codegen(program: &mut Function) {
     print!("  ret\n");
 }
 
-fn get_stmt(node: &Node) {
+static mut COUNT: u32 = 1;
+
+fn gen_stmt(node: &Node) {
     let mut depth = 0;
     match node.kind {
+        // 生成if语句
+        NodeKind::If => {
+            // 代码段计数
+            let c: u32;
+            unsafe {
+                c = COUNT;
+                COUNT += 1;
+            }
+            // 生成条件内语句
+            gen_expr(node.cond.as_ref().unwrap(), &mut depth);
+            // 判断结果是否为0，为0则跳转到else标签
+            print!("  beqz a0, .L.else.{}\n", c);
+            // 生成符合条件后的语句
+            gen_stmt(node.then.as_ref().unwrap());
+            // 执行完后跳转到if语句后面的语句
+            print!("  j .L.end.{}\n", c);
+            // else代码块，else可能为空，故输出标签
+            print!(".L.else.{}:\n", c);
+            // 生成不符合条件后的语句
+            if node.els.is_some() {
+                gen_stmt(node.els.as_ref().unwrap());
+            }
+            // 结束if语句，继续执行后面的语句
+            print!(".L.end.{}:\n", c);
+        }
+        // 生成代码块，遍历代码块的语句vec
         NodeKind::Block => {
             for s in node.body.iter() {
-                get_stmt(s);
+                gen_stmt(s);
             }
         }
         // 生成表达式语句
