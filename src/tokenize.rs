@@ -11,6 +11,7 @@ pub fn tokenize() -> Vec<Token> {
 
     while pos < chars.len() {
         let c = chars[pos] as char;
+        let old_pos = pos;
         // 跳过所有空白符如：空格、回车
         if c.is_whitespace() {
             pos += 1;
@@ -21,33 +22,25 @@ pub fn tokenize() -> Vec<Token> {
             // 初始化，类似于C++的构造函数
             // 我们不使用Head来存储信息，仅用来表示链表入口，这样每次都是存储在Cur->Next
             // 否则下述操作将使第一个Token的地址不在Head中。
-            let old_pos = pos;
             let val = strtol(&chars, &mut pos, 10) as i32;
-            // 使用vec和copy_from_slice 解决cannot move的问题
-            let mut dst = vec![0; pos - old_pos];
-            dst.copy_from_slice(&chars[old_pos..pos]);
-            let t_str = String::from_utf8(dst).unwrap();
-            let offset = old_pos;
-            let t = Token::TKNum { val, t_str, offset };
+            let t_str = slice_to_string(&chars, old_pos, pos);
+            let t = Token::TKNum { val, t_str, offset: old_pos };
             tokens.push(t);
             continue;
         }
 
-        if c.is_alphabetic() {
-            tokens.push(Token::TkIdent { t_str: c.to_string(), offset: pos });
-            pos += 1;
+        read_ident(&chars, &mut pos);
+        if old_pos != pos {
+            let t_str = slice_to_string(&chars, old_pos, pos);
+            tokens.push(Token::TkIdent { t_str, offset: old_pos });
             continue;
         }
 
         // 解析操作符
-        let old_pos = pos;
         read_punct(&chars, &mut pos);
         if pos != old_pos {
-            // 使用vec和copy_from_slice 解决cannot move的问题
-            let mut dst = vec![0; pos - old_pos];
-            dst.copy_from_slice(&chars[old_pos..pos]);
-            let t_str = String::from_utf8(dst).unwrap();
-            tokens.push(Token::TKPunct { t_str, offset: pos });
+            let t_str = slice_to_string(&chars, old_pos, pos);
+            tokens.push(Token::TKPunct { t_str, offset: old_pos });
             continue;
         }
 
@@ -60,6 +53,13 @@ pub fn tokenize() -> Vec<Token> {
 
     // Head无内容，所以直接返回Next
     tokens
+}
+
+fn slice_to_string(chars: &Vec<u8>, start: usize, end: usize) -> String {
+    // 使用vec和copy_from_slice 解决cannot move的问题
+    let mut dst = vec![0; end - start];
+    dst.copy_from_slice(&chars[start..end]);
+    String::from_utf8(dst).unwrap()
 }
 
 /// 传入程序的参数为str类型，因为需要转换为需要long类型
@@ -100,5 +100,18 @@ fn read_punct(chars: &Vec<u8>, pos: &mut usize) {
     let c = chars[*pos] as char;
     if c.is_ascii_punctuation() {
         *pos += 1;
+    }
+}
+
+fn read_ident(chars: &Vec<u8>, pos: &mut usize) {
+    let c = chars[*pos] as char;
+    if c.is_alphabetic() || c == '_' {
+        loop {
+            *pos += 1;
+            let c = chars[*pos] as char;
+            if !(c.is_alphabetic() || c == '_' || c.is_digit(10)) {
+                break;
+            }
+        }
     }
 }
