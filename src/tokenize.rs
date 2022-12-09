@@ -1,4 +1,5 @@
 use crate::{error_at, INPUT, Token};
+use crate::keywords::KEYWORDS;
 
 /// 终结符解析
 pub fn tokenize() -> Vec<Token> {
@@ -24,7 +25,7 @@ pub fn tokenize() -> Vec<Token> {
             // 否则下述操作将使第一个Token的地址不在Head中。
             let val = strtol(&chars, &mut pos, 10) as i32;
             let t_str = slice_to_string(&chars, old_pos, pos);
-            let t = Token::TKNum { val, t_str, offset: old_pos };
+            let t = Token::Num { val, t_str, offset: old_pos };
             tokens.push(t);
             continue;
         }
@@ -32,7 +33,11 @@ pub fn tokenize() -> Vec<Token> {
         read_ident(&chars, &mut pos);
         if old_pos != pos {
             let t_str = slice_to_string(&chars, old_pos, pos);
-            tokens.push(Token::TkIdent { t_str, offset: old_pos });
+            if KEYWORDS.contains(&&*t_str) {
+                tokens.push(Token::Keyword { t_str, offset: old_pos })
+            } else {
+                tokens.push(Token::Ident { t_str, offset: old_pos });
+            }
             continue;
         }
 
@@ -40,7 +45,7 @@ pub fn tokenize() -> Vec<Token> {
         read_punct(&chars, &mut pos);
         if pos != old_pos {
             let t_str = slice_to_string(&chars, old_pos, pos);
-            tokens.push(Token::TKPunct { t_str, offset: old_pos });
+            tokens.push(Token::Punct { t_str, offset: old_pos });
             continue;
         }
 
@@ -49,7 +54,7 @@ pub fn tokenize() -> Vec<Token> {
     }
 
     // 解析结束，增加一个EOF，表示终止符。
-    tokens.push(Token::TKEof { offset: pos });
+    tokens.push(Token::Eof { offset: pos });
 
     // Head无内容，所以直接返回Next
     tokens

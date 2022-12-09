@@ -5,6 +5,7 @@ use core::fmt;
 mod tokenize;
 mod parse;
 mod codegen;
+mod keywords;
 
 pub use tokenize::tokenize;
 pub use parse::parse;
@@ -48,21 +49,27 @@ macro_rules! error_token {
 /// token
 #[derive(Eq, PartialEq)]
 pub enum Token {
-    TkIdent {
+    Ident {
         // token 名
         t_str: String,
         // 在解析的字符串内的位置
         offset: usize,
     },
     // 操作符如： + -
-    TKPunct {
+    Punct {
+        // token 名
+        t_str: String,
+        // 在解析的字符串内的位置
+        offset: usize,
+    },
+    Keyword {
         // token 名
         t_str: String,
         // 在解析的字符串内的位置
         offset: usize,
     },
     // 数字
-    TKNum {
+    Num {
         // 值
         val: i32,
         // token 名
@@ -71,7 +78,7 @@ pub enum Token {
         offset: usize,
     },
     // 文件终止符，即文件的最后
-    TKEof {
+    Eof {
         offset: usize,
     },
 }
@@ -79,24 +86,26 @@ pub enum Token {
 impl Token {
     fn get_offset(&self) -> usize {
         match self {
-            Self::TkIdent { t_str: _t_str, offset } => *offset,
-            Self::TKPunct { t_str: _t_str, offset } => *offset,
-            Self::TKNum { val: _val, t_str: _t_str, offset } => *offset,
-            Self::TKEof { offset } => *offset,
+            Self::Ident { t_str: _t_str, offset } => *offset,
+            Self::Punct { t_str: _t_str, offset } => *offset,
+            Self::Keyword { t_str: _t_str, offset } => *offset,
+            Self::Num { val: _val, t_str: _t_str, offset } => *offset,
+            Self::Eof { offset } => *offset,
         }
     }
 
     fn at_eof(&self) -> bool {
         match self {
-            Self::TKEof { offset: _offset } => true,
+            Self::Eof { offset: _offset } => true,
             _ => false
         }
     }
 
     fn equal(&self, s: &str) -> bool {
         match self {
-            Token::TKPunct { t_str, offset: _offset } => t_str.eq(s),
-            Token::TKNum { val: _val, t_str, offset: _offset } => t_str.eq(s),
+            Token::Punct { t_str, offset: _offset } => t_str.eq(s),
+            Token::Keyword { t_str, offset: _offset } => t_str.eq(s),
+            Token::Num { val: _val, t_str, offset: _offset } => t_str.eq(s),
             _ => false
         }
     }
@@ -130,31 +139,33 @@ pub struct Function {
 #[derive(Eq, PartialEq)]
 pub enum NodeKind {
     // +
-    NdAdd,
+    Add,
     // -
-    NdSub,
+    Sub,
     // *
-    NdMul,
+    Mul,
     // /
-    NdDiv,
+    Div,
     // 负号-
-    NdNeg,
+    Neg,
     // ==
-    NdEq,
+    Eq,
     // !=
-    NdNe,
+    Ne,
     // <
-    NdLt,
+    Lt,
     // <=
-    NdLe,
+    Le,
     // 赋值
-    NdAssign,
+    Assign,
+    // 返回
+    Return,
     // 表达式语句
-    NdExprStmt,
+    ExprStmt,
     // 变量
-    NdVar,
+    Var,
     // 数字
-    NdNum,
+    Num,
 }
 
 /// AST中二叉树节点
@@ -199,13 +210,13 @@ impl Node {
     }
 
     fn new_num(val: i32) -> Self {
-        let mut node = Node::new(NodeKind::NdNum);
+        let mut node = Node::new(NodeKind::Num);
         node.val = val;
         node
     }
 
     fn new_var(var: Var) -> Self {
-        let mut node = Node::new(NodeKind::NdVar);
+        let mut node = Node::new(NodeKind::Var);
         node.var = Some(Box::new(var));
         node
     }
