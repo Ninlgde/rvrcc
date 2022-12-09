@@ -1,6 +1,7 @@
-use crate::{Node, NodeKind};
+use crate::{Function, Node, NodeKind};
 
-pub fn codegen(mut node: &mut Box<Node>) {
+pub fn codegen(program: &mut Function) {
+    // assign_lvar_offsets(program);
     // 声明一个全局main段，同时也是程序入口段
     print!("  .globl main\n");
     // main段标签
@@ -25,13 +26,11 @@ pub fn codegen(mut node: &mut Box<Node>) {
     // 将sp写入fp
     print!("  mv fp, sp\n");
 
-    // 26个字母*8字节=208字节，栈腾出208字节的空间
-    print!("  addi sp, sp, -208\n");
+    // 偏移量为实际变量所用的栈大小
+    print!("  addi sp, sp, -{}\n", program.stack_size);
 
-    loop {
+    for node in program.body.iter() {
         get_stmt(node);
-        if node.next.is_none() { break; }
-        node = node.next.as_mut().unwrap();
     }
 
     // Epilogue，后语
@@ -44,7 +43,7 @@ pub fn codegen(mut node: &mut Box<Node>) {
     print!("  ret\n");
 }
 
-fn get_stmt(node: &Box<Node>) {
+fn get_stmt(node: &Node) {
     if node.kind == NodeKind::NdExprStmt {
         let mut depth = 0;
         gen_expr(node.lhs.as_ref().unwrap(), &mut depth);
@@ -164,8 +163,8 @@ fn gen_expr(node: &Box<Node>, depth: &mut usize) {
 /// 如果报错，说明节点不在内存中
 fn gen_addr(node: &Box<Node>) {
     if node.kind == NodeKind::NdVar {
-        // 偏移量=是两个字母在ASCII码表中的距离加1后乘以8，*8表示每个变量需要八个字节单位的内存
-        let offset = ((node.name.as_bytes()[0] - 'a' as u8 + 1) * 8) as i32;
+        // 偏移量是相对于fp的
+        let offset = node.var.as_ref().unwrap().offset;
         print!("  addi a0, fp, {}\n", -offset);
         return;
     }

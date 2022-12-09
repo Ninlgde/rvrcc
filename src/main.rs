@@ -2,6 +2,7 @@ use std::env;
 use rvrcc::{codegen, INPUT, parse, tokenize};
 
 fn main() {
+    // let input = "a=3; z=5; a+z; ";
     let args: Vec<String> = env::args().collect();
 
     if args.len() != 2 {
@@ -9,14 +10,13 @@ fn main() {
     }
 
     let input = args[1].clone();
-    // let input = "5";
     unsafe {
         INPUT = input.to_string();
     }
     let tokens = tokenize();
 
-    let mut node = parse(&tokens);
+    let mut program = parse(&tokens);
 
-    codegen(&mut node);
+    codegen(&mut program);
 }
 

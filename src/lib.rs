@@ -102,17 +102,29 @@ impl Token {
     }
 }
 
-/// 跳过特定字符的token
-fn skip(token: &Token, s: &str, pos: &mut usize) {
-    if !token.equal(s) {
-        error_token!(token, "expect {}", s)
-    }
-    *pos += 1;
-}
-
 //
 // 生成AST（抽象语法树），语法解析
 //
+
+/// 本地变量
+#[derive(Clone)]
+pub struct Var {
+    // 变量名
+    name: String,
+    // fp的偏移量
+    offset: isize,
+}
+
+/// 函数
+#[allow(dead_code)]
+pub struct Function {
+    // 函数体
+    body: Vec<Node>,
+    // 本地变量
+    locals: Vec<Var>,
+    // 栈大小
+    stack_size: isize,
+}
 
 // AST的节点种类
 #[derive(Eq, PartialEq)]
@@ -149,14 +161,12 @@ pub enum NodeKind {
 pub struct Node {
     // 节点种类
     kind: NodeKind,
-    // 下条语句
-    next: Option<Box<Node>>,
     // 左部，left-hand side
     lhs: Option<Box<Node>>,
     // 右部，right-hand side
     rhs: Option<Box<Node>>,
     // 存储ND_VAR的字符串
-    name: String,
+    var: Option<Box<Var>>,
     // 存储ND_NUM种类的值
     val: i32,
 }
@@ -165,10 +175,9 @@ impl Node {
     fn new(kind: NodeKind) -> Self {
         Node {
             kind,
-            next: None,
             lhs: None,
             rhs: None,
-            name: String::new(),
+            var: None,
             val: 0,
         }
     }
@@ -176,10 +185,9 @@ impl Node {
     fn new_binary(kind: NodeKind, lhs: Node, rhs: Node) -> Self {
         Node {
             kind,
-            next: None,
             lhs: Some(Box::new(lhs)),
             rhs: Some(Box::new(rhs)),
-            name: String::new(),
+            var: None,
             val: 0,
         }
     }
@@ -196,9 +204,9 @@ impl Node {
         node
     }
 
-    fn new_var(name: String) -> Self {
+    fn new_var(var: Var) -> Self {
         let mut node = Node::new(NodeKind::NdVar);
-        node.name = name;
+        node.var = Some(Box::new(var));
         node
     }
 }
