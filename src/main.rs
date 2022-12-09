@@ -72,23 +72,6 @@ fn main() {
     assert_eq!(depth, 0);
 }
 
-/// 传入程序的参数为str类型，因为需要转换为需要long类型
-/// strtol为“string to long”，
-/// 参数为：被转换的str，str除去数字后的剩余部分，进制
-/// 传入&p，即char**, 是为了修改P的值
-fn strtol(chars: &Vec<u8>, pos: &mut usize, base: u32) -> i64 {
-    let mut result: i64 = 0;
-    while *pos < chars.len() {
-        if let Some(i) = (chars[*pos] as char).to_digit(base) {
-            result = result * base as i64 + i as i64;
-            *pos += 1;
-        } else {
-            break;
-        }
-    }
-    result
-}
-
 #[derive(Eq, PartialEq)]
 enum Token {
     // 操作符如： + -
@@ -180,10 +163,14 @@ fn tokenize() -> Vec<Token> {
         }
 
         // 解析操作符
-        if c.is_ascii_punctuation() {
-            // 操作符长度都为1
-            tokens.push(Token::TKPunct { t_str: c.to_string(), offset: pos });
-            pos += 1;
+        let old_pos = pos;
+        read_punct(&chars, &mut pos);
+        if pos != old_pos {
+            // 使用vec和copy_from_slice 解决cannot move的问题
+            let mut dst = vec![0; pos - old_pos];
+            dst.copy_from_slice(&chars[old_pos..pos]);
+            let t_str = String::from_utf8(dst).unwrap();
+            tokens.push(Token::TKPunct { t_str, offset: pos });
             continue;
         }
 
@@ -198,6 +185,46 @@ fn tokenize() -> Vec<Token> {
     tokens
 }
 
+/// 传入程序的参数为str类型，因为需要转换为需要long类型
+/// strtol为“string to long”，
+/// 参数为：被转换的str，str除去数字后的剩余部分，进制
+/// 传入&p，即char**, 是为了修改P的值
+fn strtol(chars: &Vec<u8>, pos: &mut usize, base: u32) -> i64 {
+    let mut result: i64 = 0;
+    while *pos < chars.len() {
+        if let Some(i) = (chars[*pos] as char).to_digit(base) {
+            result = result * base as i64 + i as i64;
+            *pos += 1;
+        } else {
+            break;
+        }
+    }
+    result
+}
+
+fn starts_with(chars: &Vec<u8>, pos: usize, sub: &str) -> bool {
+    let sub = sub.as_bytes();
+    for i in 0..sub.len() {
+        if sub[i] != chars[pos + i] {
+            return false;
+        }
+    }
+    true
+}
+
+fn read_punct(chars: &Vec<u8>, pos: &mut usize) {
+    if starts_with(chars, *pos, "==")
+        || starts_with(chars, *pos, "!=")
+        || starts_with(chars, *pos, ">=")
+        || starts_with(chars, *pos, "<=") {
+        *pos += 2;
+    }
+
+    let c = chars[*pos] as char;
+    if c.is_ascii_punctuation() {
+        *pos += 1;
+    }
+}
 
 //
 // 生成AST（抽象语法树），语法解析
@@ -216,6 +243,14 @@ enum NodeKind {
     NdDiv,
     // 负号-
     NdNeg,
+    // ==
+    NdEq,
+    // !=
+    NdNe,
+    // <
+    NdLt,
+    // <=
+    NdLe,
     // 整形
     NdNum,
 }
@@ -254,12 +289,98 @@ impl Node {
     }
 }
 
-// 解析加减
-// expr = mul ("+" mul | "-" mul)*
+// 解析表达式
+// expr = equality
 fn expr(pos: &mut usize, tokens: &Vec<Token>) -> Option<Node> {
-    let mut node = mul(pos, tokens);
+    equality(pos, tokens)
+}
+
+// 解析相等性
+// equality = relational ("==" relational | "!=" relational)*
+fn equality(pos: &mut usize, tokens: &Vec<Token>) -> Option<Node> {
+    // relational
+    let mut node = relational(pos, tokens);
+
+    // ("==" relational | "!=" relational)*
     loop {
         let token = &tokens[*pos];
+        // "==" relational
+        if token.equal("==") {
+            *pos += 1;
+            let rhs = relational(pos, tokens).unwrap();
+            node = Some(Node::new_binary(NodeKind::NdEq, node.unwrap(), rhs));
+            continue;
+        }
+
+        // "!=" relational
+        if token.equal("!=") {
+            *pos += 1;
+            let rhs = relational(pos, tokens).unwrap();
+            node = Some(Node::new_binary(NodeKind::NdNe, node.unwrap(), rhs));
+            continue;
+        }
+
+        return node;
+    }
+}
+
+// 解析比较关系
+// relational = add ("<" add | "<=" add | ">" add | ">=" add)*
+fn relational(pos: &mut usize, tokens: &Vec<Token>) -> Option<Node> {
+    // add
+    let mut node = add(pos, tokens);
+
+    // ("<" add | "<=" add | ">" add | ">=" add)*
+    loop {
+        let token = &tokens[*pos];
+        // "<" add
+        if token.equal("<") {
+            *pos += 1;
+            let rhs = add(pos, tokens).unwrap();
+            node = Some(Node::new_binary(NodeKind::NdLt, node.unwrap(), rhs));
+            continue;
+        }
+
+        // "<=" add
+        if token.equal("<=") {
+            *pos += 1;
+            let rhs = add(pos, tokens).unwrap();
+            node = Some(Node::new_binary(NodeKind::NdLe, node.unwrap(), rhs));
+            continue;
+        }
+
+        // ">" add
+        // X>Y等价于Y<X
+        if token.equal(">") {
+            *pos += 1;
+            let lhs = add(pos, tokens).unwrap();
+            node = Some(Node::new_binary(NodeKind::NdLt, lhs, node.unwrap()));
+            continue;
+        }
+
+        // ">=" add
+        // X>=Y等价于Y<=X
+        if token.equal(">=") {
+            *pos += 1;
+            let lhs = add(pos, tokens).unwrap();
+            node = Some(Node::new_binary(NodeKind::NdLe, lhs, node.unwrap()));
+            continue;
+        }
+
+        return node;
+    }
+}
+
+// 解析加减
+// add = mul ("+" mul | "-" mul)*
+fn add(pos: &mut usize, tokens: &Vec<Token>) -> Option<Node> {
+    // mul
+    let mut node = mul(pos, tokens);
+
+    // ("+" mul | "-" mul)*
+    loop {
+        let token = &tokens[*pos];
+        // "+" mul
         if token.equal("+") {
             *pos += 1;
             let rhs = mul(pos, tokens).unwrap();
@@ -267,6 +388,7 @@ fn expr(pos: &mut usize, tokens: &Vec<Token>) -> Option<Node> {
             continue;
         }
 
+        // "-" mul
         if token.equal("-") {
             *pos += 1;
             let rhs = mul(pos, tokens).unwrap();
@@ -420,6 +542,35 @@ fn gen_expr(node: &Box<Node>, depth: &mut usize) {
         NodeKind::NdDiv => {
             // / a0=a0/a1
             print!("  div a0, a0, a1\n");
+            return;
+        }
+        NodeKind::NdEq => {
+            // a0=a0^a1，异或指令
+            print!("  xor a0, a0, a1\n");
+            // a0==a1
+            // a0=a0^a1, sltiu a0, a0, 1
+            // 等于0则置1
+            print!("  seqz a0, a0\n");
+            return;
+        }
+        NodeKind::NdNe => {
+            // a0=a0^a1，异或指令
+            print!("  xor a0, a0, a1\n");
+            // a0!=a1
+            // a0=a0^a1, sltu a0, x0, a0
+            // 不等于0则置1
+            print!("  snez a0, a0\n");
+            return;
+        }
+        NodeKind::NdLt => {
+            print!("  slt a0, a0, a1\n");
+            return;
+        }
+        NodeKind::NdLe => {
+            // a0<=a1等价于
+            // a0=a1<a0, a0=a1^1
+            print!("  slt a0, a1, a0\n");
+            print!("  xori a0, a0, 1\n");
             return;
         }
         _ => {}
