@@ -15,8 +15,8 @@ fn main() {
     }
     let tokens = tokenize();
 
-    let node = parse(&tokens);
+    let mut node = parse(&tokens);
 
-    codegen(node);
+    codegen(&mut node);
 }
 
