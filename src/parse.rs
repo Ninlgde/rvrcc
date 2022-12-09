@@ -1,6 +1,7 @@
 //! AST parser
-//! program = stmt*
-//! stmt = "return" expr ";" | exprStmt
+//! program = "{" compound_stmt
+//! compound_stmt = stmt* "}"
+//! stmt = "return" expr ";" | "{" compound_stmt | expr_stmt
 //! exprStmt = expr ";"
 //! expr = assign
 //! assign = equality ("=" assign)?
@@ -9,7 +10,7 @@
 //! add = mul ("+" mul | "-" mul)*
 //! mul = unary ("*" unary | "/" unary)*
 //! unary = ("+" | "-") unary | primary
-//! primary = "(" expr ")" | num
+//! primary = "(" expr ")" | ident | num
 
 use std::slice::Iter;
 use std::iter::Peekable;
@@ -34,22 +35,20 @@ impl<'a> Parser<'a> {
         }
     }
 
+    /// 语法解析入口函数
+    /// program = "{" compound_stmt
     pub fn parse(&mut self) -> Function {
-        let mut nodes = vec![];
+        // "{"
+        self.skip("{");
 
-        // 逐句解析,并压入nodes
-        while let Some(token) = self.peekable.peek() {
-            if token.at_eof() {
-                break;
-            }
-            nodes.push(self.stmt().unwrap());
-        };
+        // compound_stmt
+        let node = self.compound_stmt().unwrap();
 
         // 计算栈总深度
         let offset: isize = ((self.locals.len() + 1) * 8) as isize;
         // 构建返回值
         let program = Function {
-            body: nodes,
+            body: node,
             locals: self.locals.to_vec(),
             stack_size: align_to(offset, 16),
         };
@@ -58,18 +57,45 @@ impl<'a> Parser<'a> {
     }
 
     /// 解析语句
-    /// stmt = "return" expr ";" | exprStmt
+    /// stmt = "return" expr ";" | "{" compound_stmt | expr_stmt
     fn stmt(&mut self) -> Option<Node> {
+        let token = self.peekable.peek().unwrap();
         // "return" expr ";"
-        if self.peekable.peek().unwrap().equal(KW_RETURN) {
+        if token.equal(KW_RETURN) {
             self.peekable.next();
             let node = Some(Node::new_unary(NodeKind::Return, self.expr().unwrap()));
             self.skip(";");
             return node;
         }
 
-        // exprStmt
+        if token.equal("{") {
+            self.peekable.next();
+            return self.compound_stmt();
+        }
+
+        // expr_stmt
         self.expr_stmt()
+    }
+
+    /// 解析复合语句
+    /// compound_stmt = stmt* "}"
+    fn compound_stmt(&mut self) -> Option<Node> {
+        let mut nodes = vec![];
+
+        // 逐句解析,并压入nodes
+        // stmt* "}"
+        while let Some(token) = self.peekable.peek() {
+            if token.equal("}") {
+                break;
+            }
+            nodes.push(self.stmt().unwrap());
+        };
+
+        let mut node = Node::new(NodeKind::Block);
+        node.body = nodes;
+        self.peekable.next();
+
+        Some(node)
     }
 
     /// 解析表达式语句

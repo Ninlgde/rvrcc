@@ -29,9 +29,7 @@ pub fn codegen(program: &mut Function) {
     // 偏移量为实际变量所用的栈大小
     print!("  addi sp, sp, -{}\n", program.stack_size);
 
-    for node in program.body.iter() {
-        get_stmt(node);
-    }
+    get_stmt(&program.body);
 
     // Epilogue，后语
     // 输出return段标签
@@ -48,6 +46,11 @@ pub fn codegen(program: &mut Function) {
 fn get_stmt(node: &Node) {
     let mut depth = 0;
     match node.kind {
+        NodeKind::Block => {
+            for s in node.body.iter() {
+                get_stmt(s);
+            }
+        }
         // 生成表达式语句
         NodeKind::ExprStmt => {
             gen_expr(node.lhs.as_ref().unwrap(), &mut depth);
