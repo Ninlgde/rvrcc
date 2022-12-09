@@ -136,102 +136,118 @@ pub struct Function {
 }
 
 // AST的节点种类
-#[derive(Eq, PartialEq)]
-pub enum NodeKind {
+pub enum Node {
     // +
-    Add,
+    Add {
+        // 左部，left-hand side
+        lhs: Option<Box<Node>>,
+        // 右部，right-hand side
+        rhs: Option<Box<Node>>,
+    },
     // -
-    Sub,
+    Sub {
+        // 左部，left-hand side
+        lhs: Option<Box<Node>>,
+        // 右部，right-hand side
+        rhs: Option<Box<Node>>,
+    },
     // *
-    Mul,
+    Mul {
+        // 左部，left-hand side
+        lhs: Option<Box<Node>>,
+        // 右部，right-hand side
+        rhs: Option<Box<Node>>,
+    },
     // /
-    Div,
+    Div {
+        // 左部，left-hand side
+        lhs: Option<Box<Node>>,
+        // 右部，right-hand side
+        rhs: Option<Box<Node>>,
+    },
     // 负号-
-    Neg,
+    Neg {
+        // 左部，left-hand side
+        lhs: Option<Box<Node>>,
+    },
     // ==
-    Eq,
+    Eq {
+        // 左部，left-hand side
+        lhs: Option<Box<Node>>,
+        // 右部，right-hand side
+        rhs: Option<Box<Node>>,
+    },
     // !=
-    Ne,
+    Ne {
+        // 左部，left-hand side
+        lhs: Option<Box<Node>>,
+        // 右部，right-hand side
+        rhs: Option<Box<Node>>,
+    },
     // <
-    Lt,
+    Lt {
+        // 左部，left-hand side
+        lhs: Option<Box<Node>>,
+        // 右部，right-hand side
+        rhs: Option<Box<Node>>,
+    },
     // <=
-    Le,
+    Le {
+        // 左部，left-hand side
+        lhs: Option<Box<Node>>,
+        // 右部，right-hand side
+        rhs: Option<Box<Node>>,
+    },
     // 赋值
-    Assign,
+    Assign {
+        // 左部，left-hand side
+        lhs: Option<Box<Node>>,
+        // 右部，right-hand side
+        rhs: Option<Box<Node>>,
+    },
     // 返回
-    Return,
+    Return {
+        // 左部，left-hand side
+        lhs: Option<Box<Node>>,
+    },
     // "if"，条件判断
-    If,
+    If {
+        // 条件内的表达式
+        cond: Option<Box<Node>>,
+        // 符合条件后的语句
+        then: Option<Box<Node>>,
+        // 不符合条件后的语句
+        els: Option<Box<Node>>,
+    },
+    // "for"，循环
+    For {
+        // 初始化语句
+        init: Option<Box<Node>>,
+        // 递增语句
+        inc: Option<Box<Node>>,
+        // 条件内的表达式
+        cond: Option<Box<Node>>,
+        // 符合条件后的语句
+        then: Option<Box<Node>>,
+    },
     // { ... }，代码块
-    Block,
+    Block {
+        // 代码块
+        body: Vec<Node>,
+    },
     // 表达式语句
-    ExprStmt,
+    ExprStmt {
+        // 初始化语句
+        lhs: Option<Box<Node>>,
+    },
     // 变量
-    Var,
+    Var {
+        // 存储ND_VAR的字符串
+        var: Option<Box<Var>>,
+    },
     // 数字
-    Num,
-}
-
-/// AST中二叉树节点
-pub struct Node {
-    // 节点种类
-    kind: NodeKind,
-    // 左部，left-hand side
-    lhs: Option<Box<Node>>,
-    // 右部，right-hand side
-    rhs: Option<Box<Node>>,
-    // if 语句
-    // 条件内的表达式
-    cond: Option<Box<Node>>,
-    // 符合条件后的语句
-    then: Option<Box<Node>>,
-    // 不符合条件后的语句
-    els: Option<Box<Node>>,
-    // 代码块
-    body: Vec<Node>,
-    // 存储ND_VAR的字符串
-    var: Option<Box<Var>>,
-    // 存储ND_NUM种类的值
-    val: i32,
-}
-
-impl Node {
-    fn new(kind: NodeKind) -> Self {
-        Node {
-            kind,
-            lhs: None,
-            rhs: None,
-            cond: None,
-            then: None,
-            els: None,
-            body: Vec::new(),
-            var: None,
-            val: 0,
-        }
-    }
-
-    fn new_binary(kind: NodeKind, lhs: Node, rhs: Node) -> Self {
-        let mut node = Node::new(kind);
-        node.lhs = Some(Box::new(lhs));
-        node.rhs = Some(Box::new(rhs));
-        node
-    }
-
-    fn new_unary(kind: NodeKind, expr: Node) -> Self {
-        let mut node = Node::new(kind);
-        node.lhs = Some(Box::new(expr));
-        node
-    }
-
-    fn new_num(val: i32) -> Self {
-        let mut node = Node::new(NodeKind::Num);
-        node.val = val;
-        node
-    }
-
-    fn new_var(var: Var) -> Self {
-        let mut node = Node::new(NodeKind::Var);
-        node.var = Some(Box::new(var));
-        node
-    }
+    Num {
+        // 存储ND_NUM种类的值
+        val: i32,
+    },
 }
