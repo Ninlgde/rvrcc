@@ -14,7 +14,7 @@
 //! relational = add ("<" add | "<=" add | ">" add | ">=" add)*
 //! add = mul ("+" mul | "-" mul)*
 //! mul = unary ("*" unary | "/" unary)*
-//! unary = ("+" | "-") unary | primary
+//! unary = ("+" | "-" | "*" | "&") unary | primary
 //! primary = "(" expr ")" | ident | num
 
 use std::slice::Iter;
@@ -181,17 +181,14 @@ impl<'a> Parser<'a> {
     /// expr_stmt = expr? ";"
     fn expr_stmt(&mut self) -> Option<Node> {
         // ;
-        let (_, token) = self.peekable.peek().unwrap();
+        let (pos, token) = self.peekable.peek().unwrap();
+        let nt = self.tokens[*pos].clone();
         if token.equal(";") {
             self.peekable.next();
-            let (pos, _) = self.peekable.peek().unwrap();
-            let nt = self.tokens[*pos].clone();
             return Some(Node::Block { token: nt, body: vec![] });
         }
 
         // expr ";"
-        let (pos, _) = self.peekable.peek().unwrap();
-        let nt = self.tokens[*pos].clone();
         let node = Node::ExprStmt { token: nt, lhs: Some(Box::new(self.expr().unwrap())) };
         self.skip(";");
 
@@ -213,12 +210,11 @@ impl<'a> Parser<'a> {
 
         // 可能存在递归赋值，如a=b=1
         // ("=" assign)?
-        let (_, token) = self.peekable.peek().unwrap();
+        let (pos, token) = self.peekable.peek().unwrap();
+        let nt = self.tokens[*pos].clone();
         if token.equal("=") {
             self.peekable.next();
             let rhs = Some(Box::new(self.assign().unwrap()));
-            let (pos, _) = self.peekable.peek().unwrap();
-            let nt = self.tokens[*pos].clone();
             node = Some(Node::Assign { token: nt, lhs: Some(Box::new(node.unwrap())), rhs })
         }
 
@@ -364,9 +360,10 @@ impl<'a> Parser<'a> {
     }
 
     /// 解析一元运算
-    /// unary = ("+" | "-") unary | primary
+    /// unary = ("+" | "-" | "*" | "&") unary | primary
     fn unary(&mut self) -> Option<Node> {
-        let (_, token) = self.peekable.peek().unwrap();
+        let (pos, token) = self.peekable.peek().unwrap();
+        let nt = self.tokens[*pos].clone();
 
         // "+" unary
         if token.equal("+") {
@@ -377,9 +374,19 @@ impl<'a> Parser<'a> {
         // "-" unary
         if token.equal("-") {
             self.peekable.next();
-            let (pos, _) = self.peekable.peek().unwrap();
-            let nt = self.tokens[*pos].clone();
             return Some(Node::Neg { token: nt, lhs: Some(Box::new(self.unary().unwrap())) });
+        }
+
+        // "&" unary
+        if token.equal("&") {
+            self.peekable.next();
+            return Some(Node::Addr { token: nt, lhs: Some(Box::new(self.unary().unwrap())) });
+        }
+
+        // "*" unary
+        if token.equal("*") {
+            self.peekable.next();
+            return Some(Node::DeRef { token: nt, lhs: Some(Box::new(self.unary().unwrap())) });
         }
 
         // primary
@@ -405,7 +412,7 @@ impl<'a> Parser<'a> {
                     let nvar = Var { name: t_str.to_string(), offset: var.offset };
                     node = Node::Var { token: nt, var: Some(Box::new(nvar)) };
                 } else {
-                    let offset: isize = ((self.locals.len() + 1) * 8) as isize;
+                    let offset: isize = -(((self.locals.len() + 1) * 8) as isize);
                     self.locals.push(Var { name: t_str.to_string(), offset });
                     node = Node::Var { token: nt, var: Some(Box::new(Var { name: t_str.to_string(), offset })) };
                 }
