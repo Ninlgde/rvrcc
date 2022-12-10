@@ -1,4 +1,4 @@
-use crate::{Function, Node};
+use crate::{error_token, Function, Node};
 
 pub fn codegen(program: &mut Function) {
     // assign_lvar_offsets(program);
@@ -17,8 +17,8 @@ pub fn codegen(program: &mut Function) {
     //              'a'                 fp-8
     //              'b'                 fp-16
     //              ...
-    //              'z'                 fp-208
-    //-------------------------------// sp=sp-8-208
+    //              (n)                 fp-16*n
+    //-------------------------------// sp=sp-8-16*n
     //           表达式计算
     //-------------------------------//
 
@@ -61,7 +61,7 @@ fn gen_stmt(node: &Node) {
     let mut depth = 0;
     match node {
         // 生成for或while循环语句
-        Node::For { init, inc, cond, then } => {
+        Node::For { init, inc, cond, then, .. } => {
             // 代码段计数
             let c: u32;
             unsafe {
@@ -103,7 +103,7 @@ fn gen_stmt(node: &Node) {
             print!(".L.end.{}:\n", c);
         }
         // 生成if语句
-        Node::If { cond, then, els } => {
+        Node::If { cond, then, els, .. } => {
             // 代码段计数
             let c: u32;
             unsafe {
@@ -136,17 +136,17 @@ fn gen_stmt(node: &Node) {
             print!(".L.end.{}:\n", c);
         }
         // 生成代码块，遍历代码块的语句vec
-        Node::Block { body } => {
+        Node::Block { body, .. } => {
             for s in body.iter() {
                 gen_stmt(s);
             }
         }
         // 生成表达式语句
-        Node::ExprStmt { lhs } => {
+        Node::ExprStmt { lhs, .. } => {
             gen_expr(lhs.as_ref().unwrap(), &mut depth);
         }
         // 生成return语句
-        Node::Return { lhs } => {
+        Node::Return { lhs, .. } => {
             print!("# 返回语句\n");
             gen_expr(lhs.as_ref().unwrap(), &mut depth);
             // 无条件跳转语句，跳转到.L.return段
@@ -155,7 +155,7 @@ fn gen_stmt(node: &Node) {
             print!("  j .L.return\n");
         }
         _ => {
-            panic!("invalid statement")
+            error_token!(node.get_token(), "invalid statement")
         }
     }
     assert_eq!(depth, 0);
@@ -164,28 +164,28 @@ fn gen_stmt(node: &Node) {
 /// 生成表达式
 fn gen_expr(node: &Box<Node>, depth: &mut usize) {
     match node.as_ref() {
-        Node::Add { lhs, rhs } => {
+        Node::Add { lhs, rhs, .. } => {
             gen_lrhs(lhs.as_ref().unwrap(), rhs.as_ref().unwrap(), depth);
             // + a0=a0+a1
             print!("  # a0+a1，结果写入a0\n");
             print!("  add a0, a0, a1\n");
             return;
         }
-        Node::Sub { lhs, rhs } => {
+        Node::Sub { lhs, rhs, .. } => {
             gen_lrhs(lhs.as_ref().unwrap(), rhs.as_ref().unwrap(), depth);
             // - a0=a0-a1
             print!("  # a0-a1，结果写入a0\n");
             print!("  sub a0, a0, a1\n");
             return;
         }
-        Node::Mul { lhs, rhs } => {
+        Node::Mul { lhs, rhs, .. } => {
             gen_lrhs(lhs.as_ref().unwrap(), rhs.as_ref().unwrap(), depth);
             // * a0=a0*a1
             print!("  # a0×a1，结果写入a0\n");
             print!("  mul a0, a0, a1\n");
             return;
         }
-        Node::Div { lhs, rhs } => {
+        Node::Div { lhs, rhs, .. } => {
             gen_lrhs(lhs.as_ref().unwrap(), rhs.as_ref().unwrap(), depth);
             // / a0=a0/a1
             print!("  # a0÷a1，结果写入a0\n");
@@ -193,14 +193,14 @@ fn gen_expr(node: &Box<Node>, depth: &mut usize) {
             return;
         }
         // 对寄存器取反
-        Node::Neg { lhs } => {
+        Node::Neg { lhs, .. } => {
             gen_expr(lhs.as_ref().unwrap(), depth);
             // neg a0, a0是sub a0, x0, a0的别名, 即a0=0-a0
             print!("  # 对a0值进行取反\n");
             print!("  neg a0, a0\n");
             return;
         }
-        Node::Eq { lhs, rhs } => {
+        Node::Eq { lhs, rhs, .. } => {
             gen_lrhs(lhs.as_ref().unwrap(), rhs.as_ref().unwrap(), depth);
             // a0=a0^a1，异或指令
             print!("  # 判断是否a0=a1\n");
@@ -211,7 +211,7 @@ fn gen_expr(node: &Box<Node>, depth: &mut usize) {
             print!("  seqz a0, a0\n");
             return;
         }
-        Node::Ne { lhs, rhs } => {
+        Node::Ne { lhs, rhs, .. } => {
             gen_lrhs(lhs.as_ref().unwrap(), rhs.as_ref().unwrap(), depth);
             // a0=a0^a1，异或指令
             print!("  # 判断是否a0≠a1\n");
@@ -222,13 +222,13 @@ fn gen_expr(node: &Box<Node>, depth: &mut usize) {
             print!("  snez a0, a0\n");
             return;
         }
-        Node::Lt { lhs, rhs } => {
+        Node::Lt { lhs, rhs, .. } => {
             gen_lrhs(lhs.as_ref().unwrap(), rhs.as_ref().unwrap(), depth);
             print!("  # 判断a0<a1\n");
             print!("  slt a0, a0, a1\n");
             return;
         }
-        Node::Le { lhs, rhs } => {
+        Node::Le { lhs, rhs, .. } => {
             gen_lrhs(lhs.as_ref().unwrap(), rhs.as_ref().unwrap(), depth);
             // a0<=a1等价于
             // a0=a1<a0, a0=a1^1
@@ -237,7 +237,7 @@ fn gen_expr(node: &Box<Node>, depth: &mut usize) {
             print!("  xori a0, a0, 1\n");
             return;
         }
-        Node::Assign { lhs, rhs } => {
+        Node::Assign { lhs, rhs, .. } => {
             // 左部是左值，保存值到的地址
             gen_addr(lhs.as_ref().unwrap());
             push(depth);
@@ -248,7 +248,7 @@ fn gen_expr(node: &Box<Node>, depth: &mut usize) {
             print!("  sd a0, 0(a1)\n");
             return;
         }
-        Node::Var { var: _var } => {
+        Node::Var { var: _var, .. } => {
             // 计算出变量的地址，然后存入a0
             gen_addr(node);
             // 访问a0地址中存储的数据，存入到a0当中
@@ -257,7 +257,7 @@ fn gen_expr(node: &Box<Node>, depth: &mut usize) {
             return;
         }
         // 加载数字到a0
-        Node::Num { val } => {
+        Node::Num { val, .. } => {
             print!("  # 将{}加载到a0中\n", *val);
             print!("  li a0, {}\n", *val);
             return;
@@ -265,7 +265,7 @@ fn gen_expr(node: &Box<Node>, depth: &mut usize) {
         _ => {}
     }
 
-    panic!("invalid expression");
+    error_token!(node.as_ref().get_token(), "invalid expression")
 }
 
 fn gen_lrhs(lhs: &Box<Node>, rhs: &Box<Node>, depth: &mut usize) {
@@ -283,7 +283,7 @@ fn gen_lrhs(lhs: &Box<Node>, rhs: &Box<Node>, depth: &mut usize) {
 /// 如果报错，说明节点不在内存中
 fn gen_addr(node: &Box<Node>) {
     match node.as_ref() {
-        Node::Var { var } => {
+        Node::Var { var, .. } => {
             // 偏移量是相对于fp的
             let offset = var.as_ref().unwrap().offset;
             print!("  # 获取变量{}的栈内地址为{}(fp)\n", var.as_ref().unwrap().name,
@@ -291,7 +291,7 @@ fn gen_addr(node: &Box<Node>) {
             print!("  addi a0, fp, {}\n", -offset);
         }
         _ => {
-            panic!("not an lvalue")
+            error_token!(node.as_ref().get_token(), "not an lvalue")
         }
     }
 }
