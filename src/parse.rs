@@ -4,6 +4,7 @@
 //! stmt = "return" expr ";"
 //!        | "if" "(" expr ")" stmt ("else" stmt)?
 //!        | "for" "(" exprStmt expr? ";" expr? ")" stmt
+//!         | "while" "(" expr ")" stmt
 //!        | "{" compound_stmt
 //!        | expr_stmt
 //! expr_stmt = expr? ";"
@@ -19,7 +20,7 @@
 use std::slice::Iter;
 use std::iter::Peekable;
 use crate::{error_token, Function, Node, Var, Token};
-use crate::keywords::{KW_ELSE, KW_FOR, KW_IF, KW_RETURN};
+use crate::keywords::{KW_ELSE, KW_FOR, KW_IF, KW_RETURN, KW_WHILE};
 
 pub fn parse(tokens: &Vec<Token>) -> Function {
     let mut parser = Parser::new(tokens);
@@ -64,6 +65,7 @@ impl<'a> Parser<'a> {
     /// stmt = "return" expr ";"
     ///        | "if" "(" expr ")" stmt ("else" stmt)?
     ///        | "for" "(" exprStmt expr? ";" expr? ")" stmt
+    ///        | "while" "(" expr ")" stmt
     ///        | "{" compound_stmt
     ///        | expr_stmt
     fn stmt(&mut self) -> Option<Node> {
@@ -120,6 +122,21 @@ impl<'a> Parser<'a> {
             let then = Some(Box::new(self.stmt().unwrap()));
 
             return Some(Node::For { init, inc, cond, then });
+        }
+
+        // | "while" "(" expr ")" stmt
+        if token.equal(KW_WHILE) {
+            // "("
+            self.peekable.next();
+            self.skip("(");
+            // expr
+            let cond = Some(Box::new(self.expr().unwrap()));
+            // ")"
+            self.skip(")");
+            // stmt
+            let then = Some(Box::new(self.stmt().unwrap()));
+
+            return Some(Node::For { init: None, inc: None, cond, then });
         }
 
         // "{" compound_stmt
