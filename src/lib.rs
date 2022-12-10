@@ -225,6 +225,20 @@ pub enum Node {
         // 右部，right-hand side
         rhs: Option<Box<Node>>,
     },
+    // 取地址 &
+    Addr {
+        // 对应的token,增加翻译阶段的报错信息
+        token: Token,
+        // 左部，left-hand side
+        lhs: Option<Box<Node>>,
+    },
+    // 解引用 *
+    DeRef {
+        // 对应的token,增加翻译阶段的报错信息
+        token: Token,
+        // 左部，left-hand side
+        lhs: Option<Box<Node>>,
+    },
     // 返回
     Return {
         // 对应的token,增加翻译阶段的报错信息
@@ -299,6 +313,8 @@ impl Node {
             Node::Lt { token, .. } => token,
             Node::Le { token, .. } => token,
             Node::Assign { token, .. } => token,
+            Node::Addr { token, .. } => token,
+            Node::DeRef { token, .. } => token,
             Node::Return { token, .. } => token,
             Node::If { token, .. } => token,
             Node::For { token, .. } => token,
