@@ -47,7 +47,7 @@ macro_rules! error_token {
 
 
 /// token
-#[derive(Eq, PartialEq)]
+#[derive(Eq, PartialEq, Clone)]
 pub enum Token {
     Ident {
         // token 名
@@ -139,6 +139,8 @@ pub struct Function {
 pub enum Node {
     // +
     Add {
+        // 对应的token,增加翻译阶段的报错信息
+        token: Token,
         // 左部，left-hand side
         lhs: Option<Box<Node>>,
         // 右部，right-hand side
@@ -146,6 +148,8 @@ pub enum Node {
     },
     // -
     Sub {
+        // 对应的token,增加翻译阶段的报错信息
+        token: Token,
         // 左部，left-hand side
         lhs: Option<Box<Node>>,
         // 右部，right-hand side
@@ -153,6 +157,8 @@ pub enum Node {
     },
     // *
     Mul {
+        // 对应的token,增加翻译阶段的报错信息
+        token: Token,
         // 左部，left-hand side
         lhs: Option<Box<Node>>,
         // 右部，right-hand side
@@ -160,6 +166,8 @@ pub enum Node {
     },
     // /
     Div {
+        // 对应的token,增加翻译阶段的报错信息
+        token: Token,
         // 左部，left-hand side
         lhs: Option<Box<Node>>,
         // 右部，right-hand side
@@ -167,11 +175,15 @@ pub enum Node {
     },
     // 负号-
     Neg {
+        // 对应的token,增加翻译阶段的报错信息
+        token: Token,
         // 左部，left-hand side
         lhs: Option<Box<Node>>,
     },
     // ==
     Eq {
+        // 对应的token,增加翻译阶段的报错信息
+        token: Token,
         // 左部，left-hand side
         lhs: Option<Box<Node>>,
         // 右部，right-hand side
@@ -179,6 +191,8 @@ pub enum Node {
     },
     // !=
     Ne {
+        // 对应的token,增加翻译阶段的报错信息
+        token: Token,
         // 左部，left-hand side
         lhs: Option<Box<Node>>,
         // 右部，right-hand side
@@ -186,6 +200,8 @@ pub enum Node {
     },
     // <
     Lt {
+        // 对应的token,增加翻译阶段的报错信息
+        token: Token,
         // 左部，left-hand side
         lhs: Option<Box<Node>>,
         // 右部，right-hand side
@@ -193,6 +209,8 @@ pub enum Node {
     },
     // <=
     Le {
+        // 对应的token,增加翻译阶段的报错信息
+        token: Token,
         // 左部，left-hand side
         lhs: Option<Box<Node>>,
         // 右部，right-hand side
@@ -200,6 +218,8 @@ pub enum Node {
     },
     // 赋值
     Assign {
+        // 对应的token,增加翻译阶段的报错信息
+        token: Token,
         // 左部，left-hand side
         lhs: Option<Box<Node>>,
         // 右部，right-hand side
@@ -207,11 +227,15 @@ pub enum Node {
     },
     // 返回
     Return {
+        // 对应的token,增加翻译阶段的报错信息
+        token: Token,
         // 左部，left-hand side
         lhs: Option<Box<Node>>,
     },
     // "if"，条件判断
     If {
+        // 对应的token,增加翻译阶段的报错信息
+        token: Token,
         // 条件内的表达式
         cond: Option<Box<Node>>,
         // 符合条件后的语句
@@ -221,6 +245,8 @@ pub enum Node {
     },
     // "for" 或 "while"，循环
     For {
+        // 对应的token,增加翻译阶段的报错信息
+        token: Token,
         // 初始化语句
         init: Option<Box<Node>>,
         // 递增语句
@@ -232,22 +258,54 @@ pub enum Node {
     },
     // { ... }，代码块
     Block {
+        // 对应的token,增加翻译阶段的报错信息
+        token: Token,
         // 代码块
         body: Vec<Node>,
     },
     // 表达式语句
     ExprStmt {
+        // 对应的token,增加翻译阶段的报错信息
+        token: Token,
         // 初始化语句
         lhs: Option<Box<Node>>,
     },
     // 变量
     Var {
+        // 对应的token,增加翻译阶段的报错信息
+        token: Token,
         // 存储ND_VAR的字符串
         var: Option<Box<Var>>,
     },
     // 数字
     Num {
+        // 对应的token,增加翻译阶段的报错信息
+        token: Token,
         // 存储ND_NUM种类的值
         val: i32,
     },
+}
+
+impl Node {
+    pub fn get_token(&self) -> &Token {
+        match self {
+            Node::Add { token, .. } => token,
+            Node::Sub { token, .. } => token,
+            Node::Mul { token, .. } => token,
+            Node::Div { token, .. } => token,
+            Node::Neg { token, .. } => token,
+            Node::Eq { token, .. } => token,
+            Node::Ne { token, .. } => token,
+            Node::Lt { token, .. } => token,
+            Node::Le { token, .. } => token,
+            Node::Assign { token, .. } => token,
+            Node::Return { token, .. } => token,
+            Node::If { token, .. } => token,
+            Node::For { token, .. } => token,
+            Node::Block { token, .. } => token,
+            Node::ExprStmt { token, .. } => token,
+            Node::Var { token, .. } => token,
+            Node::Num { token, .. } => token,
+        }
+    }
 }
