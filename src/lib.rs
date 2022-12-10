@@ -219,7 +219,7 @@ pub enum Node {
         // 不符合条件后的语句
         els: Option<Box<Node>>,
     },
-    // "for"，循环
+    // "for" 或 "while"，循环
     For {
         // 初始化语句
         init: Option<Box<Node>>,

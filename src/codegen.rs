@@ -48,6 +48,7 @@ static mut COUNT: u32 = 1;
 fn gen_stmt(node: &Node) {
     let mut depth = 0;
     match node {
+        // 生成for或while循环语句
         Node::For { init, inc, cond, then } => {
             // 代码段计数
             let c: u32;
@@ -56,7 +57,9 @@ fn gen_stmt(node: &Node) {
                 COUNT += 1;
             }
             // 生成初始化语句
-            gen_stmt(init.as_ref().unwrap());
+            if init.is_some() {
+                gen_stmt(init.as_ref().unwrap());
+            }
             // 输出循环头部标签
             print!(".L.begin.{}:\n", c);
             // 处理循环条件语句
