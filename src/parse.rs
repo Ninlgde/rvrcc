@@ -4,7 +4,7 @@
 //! stmt = "return" expr ";"
 //!        | "if" "(" expr ")" stmt ("else" stmt)?
 //!        | "for" "(" exprStmt expr? ";" expr? ")" stmt
-//!         | "while" "(" expr ")" stmt
+//!        | "while" "(" expr ")" stmt
 //!        | "{" compound_stmt
 //!        | expr_stmt
 //! expr_stmt = expr? ";"
@@ -19,7 +19,8 @@
 
 use std::slice::Iter;
 use std::iter::{Enumerate, Peekable};
-use crate::{error_token, Function, Node, Var, Token};
+use crate::{error_token, Function, Node, Var, Token, Type};
+use crate::ctype::add_type;
 use crate::keywords::{KW_ELSE, KW_FOR, KW_IF, KW_RETURN, KW_WHILE};
 
 pub fn parse(tokens: &Vec<Token>) -> Function {
@@ -76,7 +77,7 @@ impl<'a> Parser<'a> {
         // "return" expr ";"
         if token.equal(KW_RETURN) {
             self.peekable.next();
-            let node = Node::Return { token: nt, lhs: Some(Box::new(self.expr().unwrap())) };
+            let node = Node::Return { token: nt, unary: Some(Box::new(self.expr().unwrap())), type_: None };
             self.skip(";");
             return Some(node);
         }
@@ -98,7 +99,7 @@ impl<'a> Parser<'a> {
                 self.peekable.next();
                 els = Some(Box::new(self.stmt().unwrap()));
             }
-            return Some(Node::If { token: nt, cond, then, els });
+            return Some(Node::If { token: nt, cond, then, els, type_: None });
         }
 
         // | "for" "(" expr_stmt expr? ";" expr? ")" stmt
@@ -127,7 +128,7 @@ impl<'a> Parser<'a> {
             // stmt
             let then = Some(Box::new(self.stmt().unwrap()));
 
-            return Some(Node::For { token: nt, init, inc, cond, then });
+            return Some(Node::For { token: nt, init, inc, cond, then, type_: None });
         }
 
         // | "while" "(" expr ")" stmt
@@ -142,7 +143,7 @@ impl<'a> Parser<'a> {
             // stmt
             let then = Some(Box::new(self.stmt().unwrap()));
 
-            return Some(Node::For { token: nt, init: None, inc: None, cond, then });
+            return Some(Node::For { token: nt, init: None, inc: None, cond, then, type_: None });
         }
 
         // "{" compound_stmt
@@ -168,10 +169,12 @@ impl<'a> Parser<'a> {
             if token.equal("}") {
                 break;
             }
-            nodes.push(self.stmt().unwrap());
+            let mut node = self.stmt().unwrap();
+            add_type(&mut node);
+            nodes.push(node);
         };
 
-        let node = Node::Block { token: nt, body: nodes };
+        let node = Node::Block { token: nt, body: nodes, type_: None };
         self.peekable.next();
 
         Some(node)
@@ -185,11 +188,11 @@ impl<'a> Parser<'a> {
         let nt = self.tokens[*pos].clone();
         if token.equal(";") {
             self.peekable.next();
-            return Some(Node::Block { token: nt, body: vec![] });
+            return Some(Node::Block { token: nt, body: vec![], type_: None });
         }
 
         // expr ";"
-        let node = Node::ExprStmt { token: nt, lhs: Some(Box::new(self.expr().unwrap())) };
+        let node = Node::ExprStmt { token: nt, unary: Some(Box::new(self.expr().unwrap())), type_: None };
         self.skip(";");
 
         Some(node)
@@ -215,7 +218,7 @@ impl<'a> Parser<'a> {
         if token.equal("=") {
             self.peekable.next();
             let rhs = Some(Box::new(self.assign().unwrap()));
-            node = Some(Node::Assign { token: nt, lhs: Some(Box::new(node.unwrap())), rhs })
+            node = Some(Node::Assign { token: nt, lhs: Some(Box::new(node.unwrap())), rhs, type_: None })
         }
 
         node
@@ -235,7 +238,7 @@ impl<'a> Parser<'a> {
             if token.equal("==") {
                 self.peekable.next();
                 let rhs = Some(Box::new(self.relational().unwrap()));
-                node = Some(Node::Eq { token: nt, lhs: Some(Box::new(node.unwrap())), rhs });
+                node = Some(Node::Eq { token: nt, lhs: Some(Box::new(node.unwrap())), rhs, type_: None });
                 continue;
             }
 
@@ -243,7 +246,7 @@ impl<'a> Parser<'a> {
             if token.equal("!=") {
                 self.peekable.next();
                 let rhs = Some(Box::new(self.relational().unwrap()));
-                node = Some(Node::Ne { token: nt, lhs: Some(Box::new(node.unwrap())), rhs });
+                node = Some(Node::Ne { token: nt, lhs: Some(Box::new(node.unwrap())), rhs, type_: None });
                 continue;
             }
 
@@ -265,7 +268,7 @@ impl<'a> Parser<'a> {
             if token.equal("<") {
                 self.peekable.next();
                 let rhs = Some(Box::new(self.add().unwrap()));
-                node = Some(Node::Lt { token: nt, lhs: Some(Box::new(node.unwrap())), rhs });
+                node = Some(Node::Lt { token: nt, lhs: Some(Box::new(node.unwrap())), rhs, type_: None });
                 continue;
             }
 
@@ -273,7 +276,7 @@ impl<'a> Parser<'a> {
             if token.equal("<=") {
                 self.peekable.next();
                 let rhs = Some(Box::new(self.add().unwrap()));
-                node = Some(Node::Le { token: nt, lhs: Some(Box::new(node.unwrap())), rhs });
+                node = Some(Node::Le { token: nt, lhs: Some(Box::new(node.unwrap())), rhs, type_: None });
                 continue;
             }
 
@@ -282,7 +285,7 @@ impl<'a> Parser<'a> {
             if token.equal(">") {
                 self.peekable.next();
                 let lhs = Some(Box::new(self.add().unwrap()));
-                node = Some(Node::Lt { token: nt, lhs, rhs: Some(Box::new(node.unwrap())) });
+                node = Some(Node::Lt { token: nt, lhs, rhs: Some(Box::new(node.unwrap())), type_: None });
                 continue;
             }
 
@@ -291,12 +294,81 @@ impl<'a> Parser<'a> {
             if token.equal(">=") {
                 self.peekable.next();
                 let lhs = Some(Box::new(self.add().unwrap()));
-                node = Some(Node::Le { token: nt, lhs, rhs: Some(Box::new(node.unwrap())) });
+                node = Some(Node::Le { token: nt, lhs, rhs: Some(Box::new(node.unwrap())), type_: None });
                 continue;
             }
 
             return node;
         }
+    }
+
+    // 解析各种type的加法
+    fn add_with_type(&mut self, mut lhs: Option<Box<Node>>, mut rhs: Option<Box<Node>>, nt: Token) -> Option<Node> {
+        // 为左右部添加类型
+        add_type(lhs.as_mut().unwrap());
+        add_type(rhs.as_mut().unwrap());
+
+        let lhs_t = lhs.as_ref().unwrap().get_type().as_ref().unwrap().clone();
+        let rhs_t = rhs.as_ref().unwrap().get_type().as_ref().unwrap().clone();
+        // num + num
+        if lhs_t.is_int() && rhs_t.is_int() {
+            return Some(Node::Add { token: nt, lhs, rhs, type_: None });
+        }
+
+        // 不能解析 ptr + ptr
+        if lhs_t.is_ptr() && rhs_t.is_ptr() {
+            error_token!(&nt, "invalid operands");
+            return None;
+        }
+
+        // 将 num + ptr 转换为 ptr + num
+        let n_lhs;
+        let n_rhs;
+        if lhs_t.is_ptr() && rhs_t.is_ptr() {
+            n_lhs = rhs;
+            n_rhs = lhs;
+        } else {
+            n_lhs = lhs;
+            n_rhs = rhs;
+        }
+
+        // ptr + num
+        // 指针加法，ptr+1，这里的1不是1个字节，而是1个元素的空间，所以需要 ×8 操作
+        let num8 = Some(Box::new(Node::Num { token: nt.clone(), val: 8, type_: None }));
+        let f_rhs = Some(Box::new(Node::Mul { token: nt.clone(), lhs: n_rhs, rhs: num8, type_: None }));
+        Some(Node::Add { token: nt, lhs: n_lhs, rhs: f_rhs, type_: None })
+    }
+
+    // 解析各种type的减法
+    fn sub_with_type(&mut self, mut lhs: Option<Box<Node>>, mut rhs: Option<Box<Node>>, nt: Token) -> Option<Node> {
+        // 为左右部添加类型
+        add_type(lhs.as_mut().unwrap());
+        add_type(rhs.as_mut().unwrap());
+
+        let lhs_t = lhs.as_ref().unwrap().get_type().as_ref().unwrap().clone();
+        let rhs_t = rhs.as_ref().unwrap().get_type().as_ref().unwrap().clone();
+        // num + num
+        if lhs_t.is_int() && rhs_t.is_int() {
+            return Some(Node::Sub { token: nt, lhs, rhs, type_: None });
+        }
+
+        // ptr - num
+        if lhs_t.is_ptr() && rhs_t.is_int() {
+            let num8 = Some(Box::new(Node::Num { token: nt.clone(), val: 8, type_: None }));
+            let mut f_rhs = Some(Box::new(Node::Mul { token: nt.clone(), lhs: rhs, rhs: num8, type_: None }));
+            add_type(f_rhs.as_mut().unwrap());
+            return Some(Node::Sub { token: nt, lhs, rhs: f_rhs, type_: Some(lhs_t) });
+        }
+
+        // ptr - ptr，返回两指针间有多少元素
+        if lhs_t.is_ptr() && rhs_t.is_ptr() {
+            let node = Some(Box::new(Node::Sub { token: nt.clone(), lhs, rhs, type_: Some(Box::new(Type::Int {})) }));
+            let num8 = Some(Box::new(Node::Num { token: nt.clone(), val: 8, type_: Some(Box::new(Type::Int {})) }));
+            return Some(Node::Div { token: nt, lhs: node, rhs: num8, type_: None });
+        }
+
+        error_token!(&nt, "invalid operands");
+        return None;
     }
 
     /// 解析加减
@@ -313,7 +385,7 @@ impl<'a> Parser<'a> {
             if token.equal("+") {
                 self.peekable.next();
                 let rhs = Some(Box::new(self.mul().unwrap()));
-                node = Some(Node::Add { token: nt, lhs: Some(Box::new(node.unwrap())), rhs });
+                node = self.add_with_type(Some(Box::new(node.unwrap())), rhs, nt);
                 continue;
             }
 
@@ -321,7 +393,7 @@ impl<'a> Parser<'a> {
             if token.equal("-") {
                 self.peekable.next();
                 let rhs = Some(Box::new(self.mul().unwrap()));
-                node = Some(Node::Sub { token: nt, lhs: Some(Box::new(node.unwrap())), rhs });
+                node = self.sub_with_type(Some(Box::new(node.unwrap())), rhs, nt);
                 continue;
             }
 
@@ -343,7 +415,7 @@ impl<'a> Parser<'a> {
             if token.equal("*") {
                 self.peekable.next();
                 let rhs = Some(Box::new(self.unary().unwrap()));
-                node = Some(Node::Mul { token: nt, lhs: Some(Box::new(node.unwrap())), rhs });
+                node = Some(Node::Mul { token: nt, lhs: Some(Box::new(node.unwrap())), rhs, type_: None });
                 continue;
             }
 
@@ -351,7 +423,7 @@ impl<'a> Parser<'a> {
             if token.equal("/") {
                 self.peekable.next();
                 let rhs = Some(Box::new(self.unary().unwrap()));
-                node = Some(Node::Div { token: nt, lhs: Some(Box::new(node.unwrap())), rhs });
+                node = Some(Node::Div { token: nt, lhs: Some(Box::new(node.unwrap())), rhs, type_: None });
                 continue;
             }
 
@@ -374,19 +446,19 @@ impl<'a> Parser<'a> {
         // "-" unary
         if token.equal("-") {
             self.peekable.next();
-            return Some(Node::Neg { token: nt, lhs: Some(Box::new(self.unary().unwrap())) });
+            return Some(Node::Neg { token: nt, unary: Some(Box::new(self.unary().unwrap())), type_: None });
         }
 
         // "&" unary
         if token.equal("&") {
             self.peekable.next();
-            return Some(Node::Addr { token: nt, lhs: Some(Box::new(self.unary().unwrap())) });
+            return Some(Node::Addr { token: nt, unary: Some(Box::new(self.unary().unwrap())), type_: None });
         }
 
         // "*" unary
         if token.equal("*") {
             self.peekable.next();
-            return Some(Node::DeRef { token: nt, lhs: Some(Box::new(self.unary().unwrap())) });
+            return Some(Node::DeRef { token: nt, unary: Some(Box::new(self.unary().unwrap())), type_: None });
         }
 
         // primary
@@ -410,17 +482,17 @@ impl<'a> Parser<'a> {
                 let node;
                 if let Some(var) = obj {
                     let nvar = Var { name: t_str.to_string(), offset: var.offset };
-                    node = Node::Var { token: nt, var: Some(Box::new(nvar)) };
+                    node = Node::Var { token: nt, var: Some(Box::new(nvar)), type_: None };
                 } else {
                     let offset: isize = -(((self.locals.len() + 1) * 8) as isize);
                     self.locals.push(Var { name: t_str.to_string(), offset });
-                    node = Node::Var { token: nt, var: Some(Box::new(Var { name: t_str.to_string(), offset })) };
+                    node = Node::Var { token: nt, var: Some(Box::new(Var { name: t_str.to_string(), offset })), type_: None };
                 }
                 self.peekable.next();
                 return Some(node);
             }
             Token::Num { val, t_str: _t_str, offset: _offset } => {
-                let node = Node::Num { token: nt, val: *val };
+                let node = Node::Num { token: nt, val: *val, type_: None };
                 self.peekable.next();
                 return Some(node);
             }
