@@ -142,13 +142,13 @@ fn gen_stmt(node: &Node) {
             }
         }
         // 生成表达式语句
-        Node::ExprStmt { lhs, .. } => {
-            gen_expr(lhs.as_ref().unwrap(), &mut depth);
+        Node::ExprStmt { unary, .. } => {
+            gen_expr(unary.as_ref().unwrap(), &mut depth);
         }
         // 生成return语句
-        Node::Return { lhs, .. } => {
+        Node::Return { unary, .. } => {
             print!("# 返回语句\n");
-            gen_expr(lhs.as_ref().unwrap(), &mut depth);
+            gen_expr(unary.as_ref().unwrap(), &mut depth);
             // 无条件跳转语句，跳转到.L.return段
             // j offset是 jal x0, offset的别名指令
             print!("  # 跳转到.L.return段\n");
@@ -189,8 +189,8 @@ fn gen_expr(node: &Box<Node>, depth: &mut usize) {
             print!("  div a0, a0, a1\n");
         }
         // 对寄存器取反
-        Node::Neg { lhs, .. } => {
-            gen_expr(lhs.as_ref().unwrap(), depth);
+        Node::Neg { unary, .. } => {
+            gen_expr(unary.as_ref().unwrap(), depth);
             // neg a0, a0是sub a0, x0, a0的别名, 即a0=0-a0
             print!("  # 对a0值进行取反\n");
             print!("  neg a0, a0\n");
@@ -223,7 +223,7 @@ fn gen_expr(node: &Box<Node>, depth: &mut usize) {
         Node::Le { lhs, rhs, .. } => {
             gen_lrhs(lhs.as_ref().unwrap(), rhs.as_ref().unwrap(), depth);
             // a0<=a1等价于
-            // a0=a1<a0, a0=a1^1
+            // a0=a1<a0, a0=a0^1
             print!("  # 判断是否a0≤a1\n");
             print!("  slt a0, a1, a0\n");
             print!("  xori a0, a0, 1\n");
@@ -238,11 +238,11 @@ fn gen_expr(node: &Box<Node>, depth: &mut usize) {
             print!("  # 将a0的值，写入到a1中存放的地址\n");
             print!("  sd a0, 0(a1)\n");
         }
-        Node::Addr { lhs, .. } => {
-            gen_addr(lhs.as_ref().unwrap(), depth);
+        Node::Addr { unary, .. } => {
+            gen_addr(unary.as_ref().unwrap(), depth);
         }
-        Node::DeRef { lhs, .. } => {
-            gen_expr(lhs.as_ref().unwrap(), depth);
+        Node::DeRef { unary, .. } => {
+            gen_expr(unary.as_ref().unwrap(), depth);
             print!("  # 读取a0中存放的地址，得到的值存入a0\n");
             print!("  ld a0, 0(a0)\n");
         }
@@ -288,8 +288,8 @@ fn gen_addr(node: &Box<Node>, depth: &mut usize) {
             print!("  addi a0, fp, {}\n", -offset);
         }
         // 解引用*
-        Node::DeRef { lhs, .. } => {
-            gen_expr(lhs.as_ref().unwrap(), depth);
+        Node::DeRef { unary, .. } => {
+            gen_expr(unary.as_ref().unwrap(), depth);
         }
         _ => {
             error_token!(node.as_ref().get_token(), "not an lvalue")
