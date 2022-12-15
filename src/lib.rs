@@ -49,7 +49,7 @@ macro_rules! error_token {
 
 
 /// token
-#[derive(Eq, PartialEq, Clone)]
+#[derive(Debug, Eq, PartialEq, Clone)]
 pub enum Token {
     Ident {
         // token 名
@@ -124,6 +124,8 @@ pub struct Var {
     name: String,
     // fp的偏移量
     offset: isize,
+    // 类型
+    type_: Box<Type>,
 }
 
 /// 函数
