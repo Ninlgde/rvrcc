@@ -1,5 +1,12 @@
 #!/bin/bash
 
+# 将下列代码编译为tmp2.o，"-xc"强制以c语言进行编译
+# cat <<EOF | $RISCV/bin/riscv64-unknown-linux-gnu-gcc -xc -c -o tmp2.o -
+cat <<EOF | riscv64-unknown-elf-gcc -xc -c -o tmp2.o -
+int ret3() { return 3; }
+int ret5() { return 5; }
+EOF
+
 # 声明一个函数
 assert() {
   # 程序运行的 期待值 为参数1
@@ -11,7 +18,7 @@ assert() {
   # 如果运行不成功，则会执行exit退出。成功时会短路exit操作
   ./target/release/rvrcc "$input" > tmp.s || exit
   # 编译rvcc产生的汇编文件
-  riscv64-unknown-elf-gcc -o tmp tmp.s
+  riscv64-unknown-elf-gcc -static -o tmp tmp.s tmp2.o
   # $RISCV/bin/riscv64-unknown-linux-gnu-gcc -static -o tmp tmp.s
 
   # 运行生成出来目标文件
@@ -128,6 +135,11 @@ assert 7 '{ int x=3; int y=5; *(&x+1)=7; return y; }'
 # [22] 支持int关键字
 assert 8 '{ int x, y; x=3; y=5; return x+y; }'
 assert 8 '{ int x=3, y=5; return x+y; }'
+
+# [23] 支持零参函数调用
+assert 3 '{ return ret3(); }'
+assert 5 '{ return ret5(); }'
+assert 8 '{ return ret3()+ret5(); }'
 
 # 如果运行正常未提前退出，程序将显示OK
 echo OK

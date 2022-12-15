@@ -19,7 +19,8 @@
 //! add = mul ("+" mul | "-" mul)*
 //! mul = unary ("*" unary | "/" unary)*
 //! unary = ("+" | "-" | "*" | "&") unary | primary
-//! primary = "(" expr ")" | ident | num
+//! primary = "(" expr ")" | ident args? | num
+//! args = "(" ")"
 
 use std::slice::Iter;
 use std::iter::{Enumerate, Peekable};
@@ -57,7 +58,7 @@ impl<'a> Parser<'a> {
         let node = self.compound_stmt().unwrap();
 
         // 计算栈总深度
-        let offset: isize = ((self.locals.len() + 1) * 8) as isize;
+        let offset: isize = (self.locals.len() * 8) as isize;
         // 构建返回值
         let program = Function {
             body: node,
@@ -442,7 +443,8 @@ impl<'a> Parser<'a> {
 
         // ptr + num
         // 指针加法，ptr+1，这里的1不是1个字节，而是1个元素的空间，所以需要 ×8 操作
-        let num8 = Some(Box::new(Node::Num { token: nt.clone(), val: 8, type_: None }));
+        // riscv 的变量是从大往小排列的,所以这里是-8
+        let num8 = Some(Box::new(Node::Num { token: nt.clone(), val: -8, type_: None }));
         let f_rhs = Some(Box::new(Node::Mul { token: nt.clone(), lhs: n_rhs, rhs: num8, type_: None }));
         Some(Node::Add { token: nt, lhs: n_lhs, rhs: f_rhs, type_: None })
     }
@@ -462,7 +464,8 @@ impl<'a> Parser<'a> {
 
         // ptr - num
         if lhs_t.is_ptr() && rhs_t.is_int() {
-            let num8 = Some(Box::new(Node::Num { token: nt.clone(), val: 8, type_: None }));
+            // riscv 的变量是从大往小排列的,所以这里是-8
+            let num8 = Some(Box::new(Node::Num { token: nt.clone(), val: -8, type_: None }));
             let mut f_rhs = Some(Box::new(Node::Mul { token: nt.clone(), lhs: rhs, rhs: num8, type_: None }));
             add_type(f_rhs.as_mut().unwrap());
             return Some(Node::Sub { token: nt, lhs, rhs: f_rhs, type_: Some(lhs_t) });
@@ -471,7 +474,8 @@ impl<'a> Parser<'a> {
         // ptr - ptr，返回两指针间有多少元素
         if lhs_t.is_ptr() && rhs_t.is_ptr() {
             let node = Some(Box::new(Node::Sub { token: nt.clone(), lhs, rhs, type_: Some(Box::new(Type::Int {})) }));
-            let num8 = Some(Box::new(Node::Num { token: nt.clone(), val: 8, type_: Some(Box::new(Type::Int {})) }));
+            // riscv 的变量是从大往小排列的,所以这里是-8
+            let num8 = Some(Box::new(Node::Num { token: nt.clone(), val: -8, type_: Some(Box::new(Type::Int {})) }));
             return Some(Node::Div { token: nt, lhs: node, rhs: num8, type_: None });
         }
 
@@ -574,8 +578,10 @@ impl<'a> Parser<'a> {
     }
 
     /// 解析括号、数字、变量
-    /// primary = "(" expr ")" | ident｜ num
+    /// primary = "(" expr ")" | ident args? | num
+    /// args = "(" ")"
     fn primary(&mut self) -> Option<Node> {
+        // "(" expr ")"
         let (pos, token) = self.peekable.peek().unwrap();
         let nt = self.tokens[*pos].clone();
         if token.equal("(") {
@@ -584,8 +590,22 @@ impl<'a> Parser<'a> {
             self.skip(")");
             return node;
         }
+
+        // ident args?
         match token {
             Token::Ident { t_str, offset } => {
+                // 函数调用
+                // args = "(" ")"
+                if self.tokens[*pos+1].equal("(") {
+                    let node = Node::FuncCall { token: nt, func_name: t_str.to_string(), type_: None };
+                    self.peekable.next(); // 跳到(
+                    self.peekable.next(); // 调到)
+                    self.skip(")");
+                    return Some(node);
+                }
+
+                // ident
+                // 查找变量
                 let obj = self.find_var(t_str);
                 let node;
                 if let Some(var) = obj {

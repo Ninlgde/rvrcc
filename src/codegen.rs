@@ -12,20 +12,22 @@ pub fn codegen(program: &mut Function) {
 
     // 栈布局
     //-------------------------------// sp
-    //              fp                  fp = sp-8
-    //-------------------------------// fp
-    //              'a'                 fp-8
-    //              'b'                 fp-16
-    //              ...
-    //              (n)                 fp-8*n
-    //-------------------------------// sp=sp-8-8*n
+    //              ra
+    //-------------------------------// ra = sp-8
+    //              fp
+    //-------------------------------// fp = sp-16
+    //             变量
+    //-------------------------------// sp = sp-16-StackSize
     //           表达式计算
     //-------------------------------//
 
     // Prologue, 前言
+    // 将ra寄存器压栈,保存ra的值
+    print!("  # 将ra寄存器压栈,保存ra的值\n");
+    print!("  addi sp, sp, -16\n");
+    print!("  sd ra, 8(sp)\n");
     // 将fp压入栈中，保存fp的值
     print!("  # 将fp压栈，fp属于“被调用者保存”的寄存器，需要恢复原值\n");
-    print!("  addi sp, sp, -8\n");
     print!("  sd fp, 0(sp)\n");
     // 将sp写入fp
     print!("  # 将sp的值写入fp\n");
@@ -49,7 +51,10 @@ pub fn codegen(program: &mut Function) {
     // 将最早fp保存的值弹栈，恢复fp。
     print!("  # 将最早fp保存的值弹栈，恢复fp和sp\n");
     print!("  ld fp, 0(sp)\n");
-    print!("  addi sp, sp, 8\n");
+    // 将ra寄存器弹栈,恢复ra的值
+    print!("  # 将ra寄存器弹栈,恢复ra的值\n");
+    print!("  ld ra, 8(sp)\n");
+    print!("  addi sp, sp, 16\n");
     // 返回
     print!("  # 返回a0值给系统调用\n");
     print!("  ret\n");
@@ -238,6 +243,10 @@ fn gen_expr(node: &Box<Node>, depth: &mut usize) {
             print!("  # 将a0的值，写入到a1中存放的地址\n");
             print!("  sd a0, 0(a1)\n");
         }
+        Node::FuncCall { func_name, .. } => {
+            print!("\n  # 调用函数{}\n", func_name);
+            print!("  call {}\n", func_name);
+        }
         Node::Addr { unary, .. } => {
             gen_addr(unary.as_ref().unwrap(), depth);
         }
@@ -285,7 +294,7 @@ fn gen_addr(node: &Box<Node>, depth: &mut usize) {
             let offset = var.as_ref().unwrap().offset;
             print!("  # 获取变量{}的栈内地址为{}(fp)\n", var.as_ref().unwrap().name,
                    offset);
-            print!("  addi a0, fp, {}\n", -offset);
+            print!("  addi a0, fp, {}\n", offset);
         }
         // 解引用*
         Node::DeRef { unary, .. } => {
