@@ -1,6 +1,10 @@
 //! AST parser
 //! program = "{" compound_stmt
-//! compound_stmt = stmt* "}"
+//! compoundStmt = (declaration | stmt)* "}"
+//! declaration =
+//!    declspec (declarator ("=" expr)? ("," declarator ("=" expr)?)*)? ";"
+//! declspec = "int"
+//! declarator = "*"* ident
 //! stmt = "return" expr ";"
 //!        | "if" "(" expr ")" stmt ("else" stmt)?
 //!        | "for" "(" exprStmt expr? ";" expr? ")" stmt
@@ -19,7 +23,7 @@
 
 use std::slice::Iter;
 use std::iter::{Enumerate, Peekable};
-use crate::{error_token, Function, Node, Var, Token, Type};
+use crate::{error_token, Function, Node, Var, Token, Type, error_at};
 use crate::ctype::add_type;
 use crate::keywords::{KW_ELSE, KW_FOR, KW_IF, KW_RETURN, KW_WHILE};
 
@@ -62,6 +66,134 @@ impl<'a> Parser<'a> {
         };
 
         program
+    }
+
+    /// 解析复合语句
+    /// compound_stmt =  (declaration | stmt)* "}"
+    fn compound_stmt(&mut self) -> Option<Node> {
+        let mut nodes = vec![];
+        let (pos, _) = self.peekable.peek().unwrap();
+        let nt = self.tokens[*pos].clone();
+
+        // 逐句解析,并压入nodes
+        // (declaration | stmt)* "}"
+        while let Some((_, token)) = self.peekable.peek() {
+            if token.equal("}") {
+                break;
+            }
+            let mut node;
+            if token.equal("int") {
+                // declaration
+                node = self.declaration().unwrap();
+            } else {
+                // stmt
+                node = self.stmt().unwrap();
+            }
+            add_type(&mut node);
+            nodes.push(node);
+        };
+
+        let node = Node::Block { token: nt, body: nodes, type_: None };
+        self.peekable.next();
+
+        Some(node)
+    }
+
+    /// declaration =
+    ///    declspec (declarator ("=" expr)? ("," declarator ("=" expr)?)*)? ";"
+    fn declaration(&mut self) -> Option<Node> {
+        // declspec
+        // 声明的 基础类型
+        let mut base_type = self.declspec();
+
+        let mut nodes = vec![];
+        let mut i = 0;
+
+        // (declarator ("=" expr)? ("," declarator ("=" expr)?)*)?
+        while let Some((_, token)) = self.peekable.peek() {
+            if token.equal(";") {
+                break;
+            }
+
+            if i > 0 {
+                self.skip(",");
+            }
+            i += 1;
+
+            // declarator
+            // 声明获取到变量类型，包括变量名
+            let tuple = self.declarator(base_type);
+            base_type = tuple.0;
+
+            // 判断变量是否加入过locals,如果加入了,则不重复加入
+            let obj = self.find_var(&tuple.1.clone());
+            let nvar;
+            if let Some(var) = obj {
+                nvar = Var { name: tuple.1, offset: var.offset, type_: var.type_.clone() };
+            } else {
+                let offset: isize = -(((self.locals.len() + 1) * 8) as isize);
+                nvar = Var { name: tuple.1, offset, type_: base_type.clone() };
+                self.locals.push(nvar.clone());
+            }
+
+            let (pos, token) = self.peekable.peek().unwrap();
+            let nt = self.tokens[*pos].clone();
+            // 如果不存在"="则为变量声明，不需要生成节点，已经存储在Locals中了
+            if !token.equal("=") {
+                continue;
+            }
+
+            // 解析“=”后面的Token
+            let lhs = Some(Box::new(Node::Var { token: nt, var: Some(Box::new(nvar.clone())), type_: Some(base_type.clone()) }));
+            // 解析递归赋值语句
+            self.peekable.next();
+            let rhs = Some(Box::new(self.assign().unwrap()));
+            let (pos, _) = self.peekable.peek().unwrap();
+            let nt = self.tokens[*pos].clone();
+            let node = Some(Box::new(Node::Assign { token: nt.clone(), lhs, rhs, type_: None }));
+
+            let node = Node::ExprStmt { token: nt.clone(), unary: node, type_: None };
+            nodes.push(node);
+        };
+
+        let (pos, _) = self.peekable.peek().unwrap();
+        let nt = self.tokens[*pos].clone();
+        let node = Node::Block { token: nt, body: nodes, type_: None };
+        self.peekable.next();
+
+        Some(node)
+    }
+
+    /// declspec = "int"
+    /// declarator specifier
+    fn declspec(&mut self) -> Box<Type> {
+        self.skip("int");
+        Box::new(Type::Int {})
+    }
+
+    /// declarator = "*"* ident
+    fn declarator(&mut self, mut type_: Box<Type>) -> (Box<Type>, String) {
+        // "*"*
+        // 构建所有的（多重）指针
+        while self.consume("*") {
+            type_ = Type::pointer_to(type_);
+        }
+
+        let (_, token) = self.peekable.peek().unwrap();
+        let mut name = "".to_string();
+        match token {
+            Token::Ident { t_str, .. } => {
+                name = t_str.to_string();
+            }
+            _ => {
+                error_token!(token, "expected a variable name");
+            }
+        }
+
+        // ident
+        // 变量名
+        self.peekable.next();
+        (type_, name)
     }
 
     /// 解析语句
@@ -154,30 +286,6 @@ impl<'a> Parser<'a> {
 
         // expr_stmt
         self.expr_stmt()
-    }
-
-    /// 解析复合语句
-    /// compound_stmt = stmt* "}"
-    fn compound_stmt(&mut self) -> Option<Node> {
-        let mut nodes = vec![];
-        let (pos, _) = self.peekable.peek().unwrap();
-        let nt = self.tokens[*pos].clone();
-
-        // 逐句解析,并压入nodes
-        // stmt* "}"
-        while let Some((_, token)) = self.peekable.peek() {
-            if token.equal("}") {
-                break;
-            }
-            let mut node = self.stmt().unwrap();
-            add_type(&mut node);
-            nodes.push(node);
-        };
-
-        let node = Node::Block { token: nt, body: nodes, type_: None };
-        self.peekable.next();
-
-        Some(node)
     }
 
     /// 解析表达式语句
@@ -477,16 +585,15 @@ impl<'a> Parser<'a> {
             return node;
         }
         match token {
-            Token::Ident { t_str, offset: _offset } => {
+            Token::Ident { t_str, offset } => {
                 let obj = self.find_var(t_str);
                 let node;
                 if let Some(var) = obj {
-                    let nvar = Var { name: t_str.to_string(), offset: var.offset };
+                    let nvar = Var { name: t_str.to_string(), offset: var.offset, type_: var.type_.clone() };
                     node = Node::Var { token: nt, var: Some(Box::new(nvar)), type_: None };
                 } else {
-                    let offset: isize = -(((self.locals.len() + 1) * 8) as isize);
-                    self.locals.push(Var { name: t_str.to_string(), offset });
-                    node = Node::Var { token: nt, var: Some(Box::new(Var { name: t_str.to_string(), offset })), type_: None };
+                    error_at!(*offset, "undefined variable");
+                    return None;
                 }
                 self.peekable.next();
                 return Some(node);
@@ -515,6 +622,15 @@ impl<'a> Parser<'a> {
             error_token!(token, "expect '{}'", s);
         }
         self.peekable.next();
+    }
+
+    fn consume(&mut self, s: &str) -> bool {
+        let (_, token) = self.peekable.peek().unwrap();
+        if token.equal(s) {
+            self.peekable.next();
+            return true;
+        }
+        return false;
     }
 }
 

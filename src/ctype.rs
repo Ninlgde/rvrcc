@@ -6,13 +6,14 @@ pub enum Type {
     Int {},
     // 指针类型
     Ptr {
-        base: Option<Box<Type>>
+        // 指向的类型
+        base: Option<Box<Type>>,
     },
 }
 
 impl Type {
     pub fn is_int(&self) -> bool {
-        matches!(self, Type::Int {})
+        matches!(self, Type::Int {..})
     }
 
     pub fn is_ptr(&self) -> bool {
@@ -70,7 +71,7 @@ pub fn add_type(node: &mut Node) {
                 Type::Ptr { .. } => {
                     *type_ = Some(unary_t);
                 }
-                Type::Int {} => {
+                Type::Int { .. } => {
                     *type_ = Some(Box::new(Type::Int {}));
                 }
             }
