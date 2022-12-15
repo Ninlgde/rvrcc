@@ -55,7 +55,8 @@ pub fn add_type(node: &mut Node) {
             *type_ = Some(Box::new(Type::Int {}));
         }
         Node::Var { type_, .. }
-        | Node::Num { type_, .. } => {
+        | Node::Num { type_, .. }
+        | Node::FuncCall { type_, .. } => {
             *type_ = Some(Box::new(Type::Int {}))
         }
         // 将节点类型设为 指针，并指向左部的类型

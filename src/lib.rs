@@ -313,6 +313,14 @@ pub enum Node {
         // 代码块
         body: Vec<Node>,
     },
+    FuncCall {
+        // 对应的token,增加翻译阶段的报错信息
+        token: Token,
+        // 类型
+        type_: Option<Box<Type>>,
+        // 变量名
+        func_name: String,
+    },
     // 表达式语句
     ExprStmt {
         // 对应的token,增加翻译阶段的报错信息
@@ -361,6 +369,7 @@ impl Node {
             Node::If { token, .. } => token,
             Node::For { token, .. } => token,
             Node::Block { token, .. } => token,
+            Node::FuncCall { token, .. } => token,
             Node::ExprStmt { token, .. } => token,
             Node::Var { token, .. } => token,
             Node::Num { token, .. } => token,
@@ -385,6 +394,7 @@ impl Node {
             Node::If { type_, .. } => type_,
             Node::For { type_, .. } => type_,
             Node::Block { type_, .. } => type_,
+            Node::FuncCall { type_, .. } => type_,
             Node::ExprStmt { type_, .. } => type_,
             Node::Var { type_, .. } => type_,
             Node::Num { type_, .. } => type_,
