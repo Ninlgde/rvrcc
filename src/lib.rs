@@ -140,6 +140,7 @@ pub struct Function {
 }
 
 // AST的节点种类
+#[derive(Clone)]
 pub enum Node {
     // +
     Add {
@@ -320,6 +321,8 @@ pub enum Node {
         type_: Option<Box<Type>>,
         // 变量名
         func_name: String,
+        // 入参
+        args: Vec<Node>,
     },
     // 表达式语句
     ExprStmt {
