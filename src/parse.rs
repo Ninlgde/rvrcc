@@ -19,8 +19,8 @@
 //! add = mul ("+" mul | "-" mul)*
 //! mul = unary ("*" unary | "/" unary)*
 //! unary = ("+" | "-" | "*" | "&") unary | primary
-//! primary = "(" expr ")" | ident args? | num
-//! args = "(" ")"
+//! primary = "(" expr ")" | ident func-args? | num
+//! func_call = ident "(" (assign ("," assign)*)? ")"
 
 use std::slice::Iter;
 use std::iter::{Enumerate, Peekable};
@@ -579,7 +579,6 @@ impl<'a> Parser<'a> {
 
     /// 解析括号、数字、变量
     /// primary = "(" expr ")" | ident args? | num
-    /// args = "(" ")"
     fn primary(&mut self) -> Option<Node> {
         // "(" expr ")"
         let (pos, token) = self.peekable.peek().unwrap();
@@ -596,12 +595,8 @@ impl<'a> Parser<'a> {
             Token::Ident { t_str, offset } => {
                 // 函数调用
                 // args = "(" ")"
-                if self.tokens[*pos+1].equal("(") {
-                    let node = Node::FuncCall { token: nt, func_name: t_str.to_string(), type_: None };
-                    self.peekable.next(); // 跳到(
-                    self.peekable.next(); // 调到)
-                    self.skip(")");
-                    return Some(node);
+                if self.tokens[*pos + 1].equal("(") {
+                    return self.func_call(t_str.to_string());
                 }
 
                 // ident
@@ -630,6 +625,33 @@ impl<'a> Parser<'a> {
         error_token!(token, "expected an expression");
 
         None
+    }
+
+    // func_call = ident "(" (assign ("," assign)*)? ")"
+    fn func_call(&mut self, func_name: String) -> Option<Node> {
+        let (pos, _) = self.peekable.peek().unwrap();
+        let nt = self.tokens[*pos].clone();
+        self.peekable.next(); // 跳到(
+        self.peekable.next(); // 调到参数或者)
+
+        let mut nodes = vec![];
+
+        loop {
+            let (_, token) = self.peekable.peek().unwrap();
+            if token.equal(")") {
+                break;
+            }
+            if nodes.len() != 0 {
+                self.skip(",");
+            }
+            let node = self.assign().unwrap();
+            nodes.push(node);
+        }
+
+        self.skip(")");
+
+        let node = Node::FuncCall { token: nt, func_name, args: nodes, type_: None };
+        return Some(node);
     }
 
     fn find_var(&self, name: &String) -> Option<&Var> {

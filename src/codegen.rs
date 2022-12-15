@@ -243,7 +243,20 @@ fn gen_expr(node: &Box<Node>, depth: &mut usize) {
             print!("  # 将a0的值，写入到a1中存放的地址\n");
             print!("  sd a0, 0(a1)\n");
         }
-        Node::FuncCall { func_name, .. } => {
+        Node::FuncCall { func_name, args, .. } => {
+            const ARG_NAMES: [&str; 6] = ["a0", "a1", "a2", "a3", "a4", "a5"];
+            let mut argc = 0;
+            for arg in args.to_vec() {
+                gen_expr(&Box::new(arg), depth);
+                push(depth);
+                argc += 1;
+            }
+
+            // 反向弹栈，a0->参数1，a1->参数2……
+            for i in (0..argc).rev() {
+                pop(ARG_NAMES[i], depth);
+            }
+
             print!("\n  # 调用函数{}\n", func_name);
             print!("  call {}\n", func_name);
         }
