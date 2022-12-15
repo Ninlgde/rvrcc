@@ -9,6 +9,10 @@ pub enum Type {
         // 指向的类型
         base: Option<Box<Type>>,
     },
+    Func {
+        // 返回的类型
+        return_type: Option<Box<Type>>
+    },
 }
 
 impl Type {
@@ -20,8 +24,16 @@ impl Type {
         matches!(self, Type::Ptr { .. })
     }
 
+    pub fn is_func(&self) -> bool {
+        matches!(self, Type::Func {.. })
+    }
+
     pub fn pointer_to(base: Box<Type>) -> Box<Self> {
         Box::new(Type::Ptr { base: Some(base) })
+    }
+
+    pub fn func_type(return_type: Box<Type>) -> Box<Self> {
+        Box::new(Type::Func { return_type: Some(return_type) })
     }
 }
 
@@ -75,6 +87,7 @@ pub fn add_type(node: &mut Node) {
                 Type::Int { .. } => {
                     *type_ = Some(Box::new(Type::Int {}));
                 }
+                _ => {}
             }
         }
         // 其他节点, 只递归设置孩子

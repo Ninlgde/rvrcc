@@ -131,6 +131,8 @@ pub struct Var {
 /// 函数
 #[allow(dead_code)]
 pub struct Function {
+    // 函数名
+    name: String,
     // 函数体
     body: Node,
     // 本地变量
