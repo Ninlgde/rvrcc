@@ -1,63 +1,69 @@
 use crate::{error_token, Function, Node};
 
-pub fn codegen(program: &mut Function) {
-    // assign_lvar_offsets(program);
-    // 声明一个全局main段，同时也是程序入口段
-    print!("  # 定义全局main段\n");
-    print!("  .globl main\n");
-    // main段标签
-    print!("\n# =====程序开始===============\n");
-    print!("# main段标签，也是程序入口段\n");
-    print!("main:\n");
+static mut CURRENT_FUNCTION_NAME: String = String::new();
 
-    // 栈布局
-    //-------------------------------// sp
-    //              ra
-    //-------------------------------// ra = sp-8
-    //              fp
-    //-------------------------------// fp = sp-16
-    //             变量
-    //-------------------------------// sp = sp-16-StackSize
-    //           表达式计算
-    //-------------------------------//
+pub fn codegen(program: &Vec<Function>) {
+    for function in program {
+        // 声明一个全局main段，同时也是程序入口段
+        print!("  # 定义全局{}段\n", function.name);
+        print!("  .globl {}\n", function.name);
+        // main段标签
+        print!("\n# =====程序开始===============\n");
+        print!("# {}段标签，也是程序入口段\n", function.name);
+        print!("{}:\n", function.name);
+        unsafe {
+            CURRENT_FUNCTION_NAME = function.name.to_string();
+        }
 
-    // Prologue, 前言
-    // 将ra寄存器压栈,保存ra的值
-    print!("  # 将ra寄存器压栈,保存ra的值\n");
-    print!("  addi sp, sp, -16\n");
-    print!("  sd ra, 8(sp)\n");
-    // 将fp压入栈中，保存fp的值
-    print!("  # 将fp压栈，fp属于“被调用者保存”的寄存器，需要恢复原值\n");
-    print!("  sd fp, 0(sp)\n");
-    // 将sp写入fp
-    print!("  # 将sp的值写入fp\n");
-    print!("  mv fp, sp\n");
+        // 栈布局
+        //-------------------------------// sp
+        //              ra
+        //-------------------------------// ra = sp-8
+        //              fp
+        //-------------------------------// fp = sp-16
+        //             变量
+        //-------------------------------// sp = sp-16-StackSize
+        //           表达式计算
+        //-------------------------------//
 
-    // 偏移量为实际变量所用的栈大小
-    print!("  # sp腾出StackSize大小的栈空间\n");
-    print!("  addi sp, sp, -{}\n", program.stack_size);
+        // Prologue, 前言
+        // 将ra寄存器压栈,保存ra的值
+        print!("  # 将ra寄存器压栈,保存ra的值\n");
+        print!("  addi sp, sp, -16\n");
+        print!("  sd ra, 8(sp)\n");
+        // 将fp压入栈中，保存fp的值
+        print!("  # 将fp压栈，fp属于“被调用者保存”的寄存器，需要恢复原值\n");
+        print!("  sd fp, 0(sp)\n");
+        // 将sp写入fp
+        print!("  # 将sp的值写入fp\n");
+        print!("  mv fp, sp\n");
 
-    print!("\n# =====程序主体===============\n");
-    gen_stmt(&program.body);
+        // 偏移量为实际变量所用的栈大小
+        print!("  # sp腾出StackSize大小的栈空间\n");
+        print!("  addi sp, sp, -{}\n", function.stack_size);
 
-    // Epilogue，后语
-    // 输出return段标签
-    print!("\n# =====程序结束===============\n");
-    print!("# return段标签\n");
-    print!(".L.return:\n");
-    // 将fp的值改写回sp
-    print!("  # 将fp的值写回sp\n");
-    print!("  mv sp, fp\n");
-    // 将最早fp保存的值弹栈，恢复fp。
-    print!("  # 将最早fp保存的值弹栈，恢复fp和sp\n");
-    print!("  ld fp, 0(sp)\n");
-    // 将ra寄存器弹栈,恢复ra的值
-    print!("  # 将ra寄存器弹栈,恢复ra的值\n");
-    print!("  ld ra, 8(sp)\n");
-    print!("  addi sp, sp, 16\n");
-    // 返回
-    print!("  # 返回a0值给系统调用\n");
-    print!("  ret\n");
+        print!("\n# ====={}段主体===============\n", function.name);
+        gen_stmt(&function.body);
+
+        // Epilogue，后语
+        // 输出return段标签
+        print!("\n# ====={}段结束===============\n", function.name);
+        print!("# return段标签\n");
+        print!(".L.return.{}:\n", function.name);
+        // 将fp的值改写回sp
+        print!("  # 将fp的值写回sp\n");
+        print!("  mv sp, fp\n");
+        // 将最早fp保存的值弹栈，恢复fp。
+        print!("  # 将最早fp保存的值弹栈，恢复fp和sp\n");
+        print!("  ld fp, 0(sp)\n");
+        // 将ra寄存器弹栈,恢复ra的值
+        print!("  # 将ra寄存器弹栈,恢复ra的值\n");
+        print!("  ld ra, 8(sp)\n");
+        print!("  addi sp, sp, 16\n");
+        // 返回
+        print!("  # 返回a0值给系统调用\n");
+        print!("  ret\n");
+    }
 }
 
 static mut COUNT: u32 = 1;
@@ -156,8 +162,10 @@ fn gen_stmt(node: &Node) {
             gen_expr(unary.as_ref().unwrap(), &mut depth);
             // 无条件跳转语句，跳转到.L.return段
             // j offset是 jal x0, offset的别名指令
-            print!("  # 跳转到.L.return段\n");
-            print!("  j .L.return\n");
+            unsafe {
+                print!("  # 跳转到.L.return{}段\n", CURRENT_FUNCTION_NAME);
+                print!("  j .L.return.{}\n", CURRENT_FUNCTION_NAME);
+            }
         }
         _ => {
             error_token!(node.get_token(), "invalid statement")

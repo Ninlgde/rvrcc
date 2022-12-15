@@ -1,10 +1,12 @@
 //! AST parser
-//! program = "{" compound_stmt
-//! compoundStmt = (declaration | stmt)* "}"
+//! program = function_definition*
+//! function_definition = declspec declarator "(" ")" "{" compound_stmt*
+//! declspec = "int"
+//! declarator = "*"* ident type_suffix
+//! type_suffix = ("(" ")")?
+//! compound_stmt = (declaration | stmt)* "}"
 //! declaration =
 //!    declspec (declarator ("=" expr)? ("," declarator ("=" expr)?)*)? ";"
-//! declspec = "int"
-//! declarator = "*"* ident
 //! stmt = "return" expr ";"
 //!        | "if" "(" expr ")" stmt ("else" stmt)?
 //!        | "for" "(" exprStmt expr? ";" expr? ")" stmt
@@ -28,7 +30,7 @@ use crate::{error_token, Function, Node, Var, Token, Type, error_at};
 use crate::ctype::add_type;
 use crate::keywords::{KW_ELSE, KW_FOR, KW_IF, KW_RETURN, KW_WHILE};
 
-pub fn parse(tokens: &Vec<Token>) -> Function {
+pub fn parse(tokens: &Vec<Token>) -> Vec<Function> {
     let mut parser = Parser::new(tokens);
     parser.parse()
 }
@@ -49,10 +51,38 @@ impl<'a> Parser<'a> {
     }
 
     /// 语法解析入口函数
-    /// program = "{" compound_stmt
-    pub fn parse(&mut self) -> Function {
+    /// program = function_definition*
+    pub fn parse(&mut self) -> Vec<Function> {
         // "{"
+        let mut functions = Vec::new();
+
+        loop {
+            let (_, token) = self.peekable.peek().unwrap();
+            if token.at_eof() {
+                break;
+            }
+
+            let function = self.function_definition().unwrap();
+            functions.push(function);
+        }
+
+        functions
+    }
+
+    /// function_definition = declspec declarator "(" ")" "{" compound_stmt*
+    fn function_definition(&mut self) -> Option<Function> {
+        // declspec
+        let base_type = self.declspec();
+
+        // declarator
+        // 声明获取到变量类型，包括变量名
+        let tuple = self.declarator(base_type);
+        // base_type = tuple.0;
+
         self.skip("{");
+
+        // 本地变量清空
+        self.locals.clear();
 
         // compound_stmt
         let node = self.compound_stmt().unwrap();
@@ -60,13 +90,60 @@ impl<'a> Parser<'a> {
         // 计算栈总深度
         let offset: isize = (self.locals.len() * 8) as isize;
         // 构建返回值
-        let program = Function {
+        let function = Function {
+            name: tuple.1,
             body: node,
             locals: self.locals.to_vec(),
             stack_size: align_to(offset, 16),
         };
 
-        program
+        Some(function)
+    }
+
+    /// declspec = "int"
+    /// declarator specifier
+    fn declspec(&mut self) -> Box<Type> {
+        self.skip("int");
+        Box::new(Type::Int {})
+    }
+
+    /// declarator = "*"* ident type_suffix
+    fn declarator(&mut self, mut type_: Box<Type>) -> (Box<Type>, String) {
+        // "*"*
+        // 构建所有的（多重）指针
+        while self.consume("*") {
+            type_ = Type::pointer_to(type_);
+        }
+
+        let (_, token) = self.peekable.peek().unwrap();
+        let mut name = "".to_string();
+        match token {
+            Token::Ident { t_str, .. } => {
+                name = t_str.to_string();
+            }
+            _ => {
+                error_token!(token, "expected a variable name");
+            }
+        }
+
+        // type_suffix
+        self.peekable.next();
+        type_ = self.type_suffix(type_);
+        // ident
+        // 变量名 或 函数名
+        (type_, name)
+    }
+
+    /// type_suffix = ("(" ")")?
+    fn type_suffix(&mut self, type_: Box<Type>) -> Box<Type> {
+        let (_, token) = self.peekable.peek().unwrap();
+        if token.equal("(") {
+            self.peekable.next();
+            self.skip(")");
+            return Type::func_type(type_);
+        }
+
+        return type_;
     }
 
     /// 解析复合语句
@@ -163,38 +240,6 @@ impl<'a> Parser<'a> {
         self.peekable.next();
 
         Some(node)
-    }
-
-    /// declspec = "int"
-    /// declarator specifier
-    fn declspec(&mut self) -> Box<Type> {
-        self.skip("int");
-        Box::new(Type::Int {})
-    }
-
-    /// declarator = "*"* ident
-    fn declarator(&mut self, mut type_: Box<Type>) -> (Box<Type>, String) {
-        // "*"*
-        // 构建所有的（多重）指针
-        while self.consume("*") {
-            type_ = Type::pointer_to(type_);
-        }
-
-        let (_, token) = self.peekable.peek().unwrap();
-        let mut name = "".to_string();
-        match token {
-            Token::Ident { t_str, .. } => {
-                name = t_str.to_string();
-            }
-            _ => {
-                error_token!(token, "expected a variable name");
-            }
-        }
-
-        // ident
-        // 变量名
-        self.peekable.next();
-        (type_, name)
     }
 
     /// 解析语句
