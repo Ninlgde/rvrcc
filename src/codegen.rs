@@ -2,14 +2,17 @@ use crate::{error_token, Function, Node};
 
 static mut CURRENT_FUNCTION_NAME: String = String::new();
 
+/// 形参name
+const ARG_NAMES: [&str; 6] = ["a0", "a1", "a2", "a3", "a4", "a5"];
+
 pub fn codegen(program: &Vec<Function>) {
     for function in program {
         // 声明一个全局main段，同时也是程序入口段
-        print!("  # 定义全局{}段\n", function.name);
+        print!("\n  # 定义全局{}段\n", function.name);
         print!("  .globl {}\n", function.name);
         // main段标签
-        print!("\n# =====程序开始===============\n");
-        print!("# {}段标签，也是程序入口段\n", function.name);
+        print!("# ====={}段开始===============\n", function.name);
+        print!("# {}段标签\n", function.name);
         print!("{}:\n", function.name);
         unsafe {
             CURRENT_FUNCTION_NAME = function.name.to_string();
@@ -42,12 +45,19 @@ pub fn codegen(program: &Vec<Function>) {
         print!("  # sp腾出StackSize大小的栈空间\n");
         print!("  addi sp, sp, -{}\n", function.stack_size);
 
-        print!("\n# ====={}段主体===============\n", function.name);
+        let mut i = 0;
+        for p in function.params.iter() {
+            print!("  # 将{}寄存器的值存入{}的栈地址\n", ARG_NAMES[i], p.name);
+            print!("  sd {}, {}(fp)\n", ARG_NAMES[i], p.offset);
+            i += 1;
+        }
+
+        print!("# ====={}段主体===============\n", function.name);
         gen_stmt(&function.body);
 
         // Epilogue，后语
         // 输出return段标签
-        print!("\n# ====={}段结束===============\n", function.name);
+        print!("# ====={}段结束===============\n", function.name);
         print!("# return段标签\n");
         print!(".L.return.{}:\n", function.name);
         // 将fp的值改写回sp
@@ -163,7 +173,7 @@ fn gen_stmt(node: &Node) {
             // 无条件跳转语句，跳转到.L.return段
             // j offset是 jal x0, offset的别名指令
             unsafe {
-                print!("  # 跳转到.L.return{}段\n", CURRENT_FUNCTION_NAME);
+                print!("  # 跳转到.L.return.{}段\n", CURRENT_FUNCTION_NAME);
                 print!("  j .L.return.{}\n", CURRENT_FUNCTION_NAME);
             }
         }
@@ -252,7 +262,6 @@ fn gen_expr(node: &Box<Node>, depth: &mut usize) {
             print!("  sd a0, 0(a1)\n");
         }
         Node::FuncCall { func_name, args, .. } => {
-            const ARG_NAMES: [&str; 6] = ["a0", "a1", "a2", "a3", "a4", "a5"];
             let mut argc = 0;
             for arg in args.to_vec() {
                 gen_expr(&Box::new(arg), depth);
@@ -265,7 +274,7 @@ fn gen_expr(node: &Box<Node>, depth: &mut usize) {
                 pop(ARG_NAMES[i], depth);
             }
 
-            print!("\n  # 调用函数{}\n", func_name);
+            print!("  # 调用{}函数\n", func_name);
             print!("  call {}\n", func_name);
         }
         Node::Addr { unary, .. } => {

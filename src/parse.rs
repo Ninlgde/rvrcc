@@ -3,7 +3,9 @@
 //! function_definition = declspec declarator "(" ")" "{" compound_stmt*
 //! declspec = "int"
 //! declarator = "*"* ident type_suffix
-//! type_suffix = ("(" ")")?
+//! type_suffix = ("(" func_params? ")")?
+//! func_params = param ("," param)*
+//! param = declspec declarator
 //! compound_stmt = (declaration | stmt)* "}"
 //! declaration =
 //!    declspec (declarator ("=" expr)? ("," declarator ("=" expr)?)*)? ";"
@@ -72,17 +74,20 @@ impl<'a> Parser<'a> {
     /// function_definition = declspec declarator "(" ")" "{" compound_stmt*
     fn function_definition(&mut self) -> Option<Function> {
         // declspec
-        let base_type = self.declspec();
+        let mut base_type = self.declspec();
 
         // declarator
         // 声明获取到变量类型，包括变量名
-        let tuple = self.declarator(base_type);
-        // base_type = tuple.0;
+        base_type = self.declarator(base_type);
 
         self.skip("{");
 
         // 本地变量清空
         self.locals.clear();
+
+        self.create_param_lvars(base_type.get_params());
+
+        let params = self.locals.to_vec();
 
         // compound_stmt
         let node = self.compound_stmt().unwrap();
@@ -91,7 +96,8 @@ impl<'a> Parser<'a> {
         let offset: isize = (self.locals.len() * 8) as isize;
         // 构建返回值
         let function = Function {
-            name: tuple.1,
+            name: base_type.get_name().to_string(),
+            params,
             body: node,
             locals: self.locals.to_vec(),
             stack_size: align_to(offset, 16),
@@ -100,15 +106,32 @@ impl<'a> Parser<'a> {
         Some(function)
     }
 
+    /// 将形参添加到locals
+    fn create_param_lvars(&mut self, params: Vec<Type>) {
+        for param in params.iter() {
+            // 倒序插入
+            self.new_lvar(Box::new(param.clone()));
+        }
+    }
+
+    /// 创建新的左值
+    fn new_lvar(&mut self, base_type: Box<Type>) -> Option<Var> {
+        let name = base_type.get_name().to_string();
+        let offset: isize = -(((self.locals.len() + 1) * 8) as isize);
+        let nvar = Var { name, offset, type_: base_type };
+        self.locals.push(nvar.clone());
+        Some(nvar)
+    }
+
     /// declspec = "int"
     /// declarator specifier
     fn declspec(&mut self) -> Box<Type> {
         self.skip("int");
-        Box::new(Type::Int {})
+        Box::new(Type::Int { name: "".to_string() })
     }
 
     /// declarator = "*"* ident type_suffix
-    fn declarator(&mut self, mut type_: Box<Type>) -> (Box<Type>, String) {
+    fn declarator(&mut self, mut type_: Box<Type>) -> Box<Type> {
         // "*"*
         // 构建所有的（多重）指针
         while self.consume("*") {
@@ -131,16 +154,39 @@ impl<'a> Parser<'a> {
         type_ = self.type_suffix(type_);
         // ident
         // 变量名 或 函数名
-        (type_, name)
+        type_.set_name(name);
+        type_
     }
 
-    /// type_suffix = ("(" ")")?
+    /// type_suffix = ("(" func_params? ")")?
+    /// func_params = param ("," param)*
+    /// param = declspec declarator
     fn type_suffix(&mut self, type_: Box<Type>) -> Box<Type> {
         let (_, token) = self.peekable.peek().unwrap();
+        // ("(" func_params? ")")?
         if token.equal("(") {
             self.peekable.next();
+
+            let mut params = vec![];
+            loop {
+                let (_, token) = self.peekable.peek().unwrap();
+                if token.equal(")") {
+                    break;
+                }
+                // funcParams = param ("," param)*
+                // param = declspec declarator
+                if params.len() > 0 {
+                    self.skip(",");
+                }
+
+                let mut t = self.declspec();
+                t = self.declarator(t);
+
+                params.push(*t);
+            }
             self.skip(")");
-            return Type::func_type(type_);
+
+            return Type::func_type(type_, params);
         }
 
         return type_;
@@ -200,18 +246,16 @@ impl<'a> Parser<'a> {
 
             // declarator
             // 声明获取到变量类型，包括变量名
-            let tuple = self.declarator(base_type);
-            base_type = tuple.0;
+            base_type = self.declarator(base_type);
+            let name = base_type.get_name();
 
             // 判断变量是否加入过locals,如果加入了,则不重复加入
-            let obj = self.find_var(&tuple.1.clone());
+            let obj = self.find_var(&name.to_string());
             let nvar;
             if let Some(var) = obj {
-                nvar = Var { name: tuple.1, offset: var.offset, type_: var.type_.clone() };
+                nvar = Var { name: name.to_string(), offset: var.offset, type_: var.type_.clone() };
             } else {
-                let offset: isize = -(((self.locals.len() + 1) * 8) as isize);
-                nvar = Var { name: tuple.1, offset, type_: base_type.clone() };
-                self.locals.push(nvar.clone());
+                nvar = self.new_lvar(base_type.clone()).unwrap();
             }
 
             let (pos, token) = self.peekable.peek().unwrap();
@@ -518,9 +562,9 @@ impl<'a> Parser<'a> {
 
         // ptr - ptr，返回两指针间有多少元素
         if lhs_t.is_ptr() && rhs_t.is_ptr() {
-            let node = Some(Box::new(Node::Sub { token: nt.clone(), lhs, rhs, type_: Some(Box::new(Type::Int {})) }));
+            let node = Some(Box::new(Node::Sub { token: nt.clone(), lhs, rhs, type_: Some(Box::new(Type::Int { name: "".to_string() })) }));
             // riscv 的变量是从大往小排列的,所以这里是-8
-            let num8 = Some(Box::new(Node::Num { token: nt.clone(), val: -8, type_: Some(Box::new(Type::Int {})) }));
+            let num8 = Some(Box::new(Node::Num { token: nt.clone(), val: -8, type_: Some(Box::new(Type::Int { name: "".to_string() })) }));
             return Some(Node::Div { token: nt, lhs: node, rhs: num8, type_: None });
         }
 

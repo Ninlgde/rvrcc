@@ -3,15 +3,24 @@ use crate::Node;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Type {
     // int 整型
-    Int {},
+    Int {
+        // 名称
+        name: String,
+    },
     // 指针类型
     Ptr {
+        // 名称
+        name: String,
         // 指向的类型
         base: Option<Box<Type>>,
     },
     Func {
+        // 名称
+        name: String,
         // 返回的类型
-        return_type: Option<Box<Type>>
+        return_type: Option<Box<Type>>,
+        // 形参
+        params: Vec<Type>,
     },
 }
 
@@ -28,12 +37,44 @@ impl Type {
         matches!(self, Type::Func {.. })
     }
 
-    pub fn pointer_to(base: Box<Type>) -> Box<Self> {
-        Box::new(Type::Ptr { base: Some(base) })
+    pub fn get_name(&self) -> &str {
+        match self {
+            Type::Int { name } => name,
+            Type::Ptr { name, .. } => name,
+            Type::Func { name, .. } => name,
+        }
     }
 
-    pub fn func_type(return_type: Box<Type>) -> Box<Self> {
-        Box::new(Type::Func { return_type: Some(return_type) })
+    pub fn set_name(&mut self, s: String) {
+        match self {
+            Type::Int { name, .. } => *name = s,
+            Type::Ptr { name, .. } => *name = s,
+            Type::Func { name, .. } => *name = s,
+        }
+    }
+
+    pub fn add_param(&mut self, param: Type) {
+        match self {
+            Type::Func { params, .. } => {
+                params.push(param);
+            }
+            _ => ()
+        }
+    }
+
+    pub fn get_params(&self) -> Vec<Type> {
+        match self {
+            Type::Func { params, .. } => params.to_vec(),
+            _ => panic!("get params for error type")
+        }
+    }
+
+    pub fn pointer_to(base: Box<Type>) -> Box<Self> {
+        Box::new(Type::Ptr { name: String::new(), base: Some(base) })
+    }
+
+    pub fn func_type(return_type: Box<Type>, params: Vec<Type>) -> Box<Self> {
+        Box::new(Type::Func { name: String::new(), return_type: Some(return_type), params })
     }
 }
 
@@ -64,12 +105,12 @@ pub fn add_type(node: &mut Node) {
         | Node::Le { lhs, rhs, type_, .. } => {
             add_type(lhs.as_mut().unwrap());
             add_type(rhs.as_mut().unwrap());
-            *type_ = Some(Box::new(Type::Int {}));
+            *type_ = Some(Box::new(Type::Int { name: "".to_string() }));
         }
         Node::Var { type_, .. }
         | Node::Num { type_, .. }
         | Node::FuncCall { type_, .. } => {
-            *type_ = Some(Box::new(Type::Int {}))
+            *type_ = Some(Box::new(Type::Int { name: "".to_string() }))
         }
         // 将节点类型设为 指针，并指向左部的类型
         Node::Addr { unary, type_, .. } => {
@@ -85,7 +126,7 @@ pub fn add_type(node: &mut Node) {
                     *type_ = Some(unary_t);
                 }
                 Type::Int { .. } => {
-                    *type_ = Some(Box::new(Type::Int {}));
+                    *type_ = Some(Box::new(Type::Int { name: "".to_string() }));
                 }
                 _ => {}
             }

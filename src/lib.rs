@@ -133,6 +133,8 @@ pub struct Var {
 pub struct Function {
     // 函数名
     name: String,
+    // 方法参数
+    params: Vec<Var>,
     // 函数体
     body: Node,
     // 本地变量
