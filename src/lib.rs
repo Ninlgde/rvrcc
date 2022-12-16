@@ -119,30 +119,73 @@ impl Token {
 // 生成AST（抽象语法树），语法解析
 //
 
-/// 本地变量
+/// 变量 或 函数
 #[derive(Clone)]
-pub struct Var {
+#[allow(dead_code)]
+pub struct Obj {
     // 变量名
     name: String,
     // fp的偏移量
     offset: isize,
     // 类型
     type_: Box<Type>,
-}
-
-/// 函数
-#[allow(dead_code)]
-pub struct Function {
-    // 函数名
-    name: String,
     // 方法参数
-    params: Vec<Rc<RefCell<Var>>>,
+    params: Vec<Rc<RefCell<Obj>>>,
     // 函数体
-    body: Node,
+    body: Option<Node>,
     // 本地变量
-    locals: Vec<Rc<RefCell<Var>>>,
+    locals: Vec<Rc<RefCell<Obj>>>,
     // 栈大小
     stack_size: isize,
+    // 是否是函数
+    is_func: bool,
+    // 是 局部或全局 变量
+    is_local: bool,
+}
+
+impl Obj {
+    /// 新增一个局部变量
+    pub fn new_lvar(name: String, type_: Box<Type>) -> Self {
+        Obj {
+            name,
+            offset: 0,
+            type_,
+            params: vec![],
+            body: None,
+            locals: vec![],
+            stack_size: 0,
+            is_func: false,
+            is_local: true,
+        }
+    }
+    /// 新增一个全局变量
+    pub fn new_gvar(name: String, type_: Box<Type>) -> Self {
+        Obj {
+            name,
+            offset: 0,
+            type_,
+            params: vec![],
+            body: None,
+            locals: vec![],
+            stack_size: 0,
+            is_func: false,
+            is_local: false,
+        }
+    }
+
+    pub fn new_func(name: String, params: Vec<Rc<RefCell<Obj>>>, locals: Vec<Rc<RefCell<Obj>>>, body: Option<Node>, type_: Box<Type>) -> Self {
+        Obj {
+            name,
+            offset: 0,
+            type_,
+            params,
+            body,
+            locals,
+            stack_size: 0,
+            is_func: true,
+            is_local: false,
+        }
+    }
 }
 
 // AST的节点种类
@@ -344,7 +387,7 @@ pub enum Node {
         // 对应的token,增加翻译阶段的报错信息
         token: Token,
         // 存储ND_VAR的字符串
-        var: Option<Rc<RefCell<Var>>>,
+        var: Option<Rc<RefCell<Obj>>>,
         // 类型
         type_: Option<Box<Type>>,
     },

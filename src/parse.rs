@@ -1,5 +1,5 @@
 //! AST parser
-//! program = function_definition*
+//! program = (function_definition* | global-variable)*
 //! function_definition = declspec declarator "(" ")" "{" compound_stmt*
 //! declspec = "int"
 //! declarator = "*"* ident type_suffix
@@ -31,11 +31,11 @@ use std::cell::RefCell;
 use std::slice::Iter;
 use std::iter::{Enumerate, Peekable};
 use std::rc::Rc;
-use crate::{error_token, Function, Node, Var, Token, Type, error_at};
+use crate::{error_token, Node, Obj, Token, Type, error_at};
 use crate::ctype::add_type;
 use crate::keywords::{KW_ELSE, KW_FOR, KW_IF, KW_RETURN, KW_SIZEOF, KW_WHILE};
 
-pub fn parse(tokens: &Vec<Token>) -> Vec<Function> {
+pub fn parse(tokens: &Vec<Token>) -> Vec<Rc<RefCell<Obj>>> {
     let mut parser = Parser::new(tokens);
     parser.parse()
 }
@@ -44,7 +44,9 @@ struct Parser<'a> {
     tokens: &'a Vec<Token>,
     peekable: Peekable<Enumerate<Iter<'a, Token>>>,
     // 本地变量
-    locals: Vec<Rc<RefCell<Var>>>,
+    locals: Vec<Rc<RefCell<Obj>>>,
+    // 全局变量
+    globals: Vec<Rc<RefCell<Obj>>>,
 }
 
 impl<'a> Parser<'a> {
@@ -53,59 +55,52 @@ impl<'a> Parser<'a> {
             tokens,
             peekable: tokens.iter().enumerate().peekable(),
             locals: Vec::new(),
+            globals: Vec::new(),
         }
     }
 
     /// 语法解析入口函数
     /// program = function_definition*
-    pub fn parse(&mut self) -> Vec<Function> {
+    pub fn parse(&mut self) -> Vec<Rc<RefCell<Obj>>> {
         // "{"
-        let mut functions = Vec::new();
-
         loop {
             let (_, token) = self.peekable.peek().unwrap();
             if token.at_eof() {
                 break;
             }
 
-            let function = self.function_definition().unwrap();
-            functions.push(function);
+            // declspec
+            let base_type = self.declspec();
+            self.function_definition(base_type);
         }
 
-        functions
+        self.globals.to_vec()
     }
 
     /// function_definition = declspec declarator "(" ")" "{" compound_stmt*
-    fn function_definition(&mut self) -> Option<Function> {
-        // declspec
-        let mut base_type = self.declspec();
-
+    fn function_definition(&mut self, mut base_type: Box<Type>) {
         // declarator
         // 声明获取到变量类型，包括变量名
         base_type = self.declarator(base_type);
-
-        self.skip("{");
+        let name = base_type.get_name().to_string();
 
         // 本地变量清空
         self.locals.clear();
-
         self.create_param_lvars(base_type.get_params());
-
         let params = self.locals.to_vec();
 
+        self.skip("{");
+
         // compound_stmt
-        let node = self.compound_stmt().unwrap();
+        let body = self.compound_stmt();
 
-        // 构建返回值
-        let function = Function {
-            name: base_type.get_name().to_string(),
+        let function = Obj::new_func(
+            name,
             params,
-            body: node,
-            locals: self.locals.to_vec(),
-            stack_size: 0,
-        };
-
-        Some(function)
+            self.locals.to_vec(),
+            body,
+            base_type);
+        self.globals.push(Rc::new(RefCell::new(function)));
     }
 
     /// 将形参添加到locals
@@ -117,9 +112,9 @@ impl<'a> Parser<'a> {
     }
 
     /// 创建新的左值
-    fn new_lvar(&mut self, base_type: Box<Type>) -> Option<Rc<RefCell<Var>>> {
+    fn new_lvar(&mut self, base_type: Box<Type>) -> Option<Rc<RefCell<Obj>>> {
         let name = base_type.get_name().to_string();
-        let nvar = Rc::new(RefCell::new(Var { name, offset: 0, type_: base_type }));
+        let nvar = Rc::new(RefCell::new(Obj::new_lvar(name, base_type)));
         self.locals.push(Rc::clone(&nvar));
         Some(nvar)
     }
@@ -791,7 +786,7 @@ impl<'a> Parser<'a> {
         return Some(node);
     }
 
-    fn find_var(&self, name: &String) -> Option<&Rc<RefCell<Var>>> {
+    fn find_var(&self, name: &String) -> Option<&Rc<RefCell<Obj>>> {
         self.locals.iter().find(|item| {
             let i = item.borrow();
             i.name == *name

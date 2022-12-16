@@ -1,17 +1,22 @@
-use crate::{error_token, Function, Node, Type};
+use std::cell::RefCell;
+use std::rc::Rc;
+use crate::{error_token, Node, Type, Obj};
 
 static mut CURRENT_FUNCTION_NAME: String = String::new();
 
 /// 形参name
 const ARG_NAMES: [&str; 6] = ["a0", "a1", "a2", "a3", "a4", "a5"];
 
-pub fn codegen(program: &mut Vec<Function>) {
+pub fn codegen(program: &mut Vec<Rc<RefCell<Obj>>>) {
     assign_lvar_offsets(program);
     for function in program {
+        let function = function.borrow();
+        if !function.is_func { continue; }
         // 声明一个全局main段，同时也是程序入口段
         print!("\n  # 定义全局{}段\n", function.name);
         print!("  .globl {}\n", function.name);
-        // main段标签
+
+        print!("  .text\n");
         print!("# ====={}段开始===============\n", function.name);
         print!("# {}段标签\n", function.name);
         print!("{}:\n", function.name);
@@ -55,7 +60,7 @@ pub fn codegen(program: &mut Vec<Function>) {
         }
 
         print!("# ====={}段主体===============\n", function.name);
-        gen_stmt(&function.body);
+        gen_stmt(function.body.as_ref().unwrap());
 
         // Epilogue，后语
         // 输出return段标签
@@ -334,8 +339,10 @@ fn gen_addr(node: &Box<Node>, depth: &mut usize) {
     }
 }
 
-fn assign_lvar_offsets(program: &mut Vec<Function>) {
+fn assign_lvar_offsets(program: &mut Vec<Rc<RefCell<Obj>>>) {
     for func in program {
+        let mut func = func.borrow_mut();
+        if !func.is_func { continue; }
         let mut offset = 0;
         for var in func.locals.iter().rev() {
             let mut v = var.borrow_mut();
