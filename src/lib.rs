@@ -152,156 +152,154 @@ pub enum Node {
     Add {
         // 对应的token,增加翻译阶段的报错信息
         token: Token,
-        // 类型
-        type_: Option<Box<Type>>,
         // 左部，left-hand side
         lhs: Option<Box<Node>>,
         // 右部，right-hand side
         rhs: Option<Box<Node>>,
+        // 类型
+        type_: Option<Box<Type>>,
     },
     // -
     Sub {
         // 对应的token,增加翻译阶段的报错信息
         token: Token,
-        // 类型
-        type_: Option<Box<Type>>,
         // 左部，left-hand side
         lhs: Option<Box<Node>>,
         // 右部，right-hand side
         rhs: Option<Box<Node>>,
+        // 类型
+        type_: Option<Box<Type>>,
     },
     // *
     Mul {
         // 对应的token,增加翻译阶段的报错信息
         token: Token,
-        // 类型
-        type_: Option<Box<Type>>,
         // 左部，left-hand side
         lhs: Option<Box<Node>>,
         // 右部，right-hand side
         rhs: Option<Box<Node>>,
+        // 类型
+        type_: Option<Box<Type>>,
     },
     // /
     Div {
         // 对应的token,增加翻译阶段的报错信息
         token: Token,
-        // 类型
-        type_: Option<Box<Type>>,
         // 左部，left-hand side
         lhs: Option<Box<Node>>,
         // 右部，right-hand side
         rhs: Option<Box<Node>>,
+        // 类型
+        type_: Option<Box<Type>>,
     },
     // 负号-
     Neg {
         // 对应的token,增加翻译阶段的报错信息
         token: Token,
-        // 类型
-        type_: Option<Box<Type>>,
         // 一元单节点
         unary: Option<Box<Node>>,
+        // 类型
+        type_: Option<Box<Type>>,
     },
     // ==
     Eq {
         // 对应的token,增加翻译阶段的报错信息
         token: Token,
-        // 类型
-        type_: Option<Box<Type>>,
         // 左部，left-hand side
         lhs: Option<Box<Node>>,
         // 右部，right-hand side
         rhs: Option<Box<Node>>,
+        // 类型
+        type_: Option<Box<Type>>,
     },
     // !=
     Ne {
         // 对应的token,增加翻译阶段的报错信息
         token: Token,
-        // 类型
-        type_: Option<Box<Type>>,
         // 左部，left-hand side
         lhs: Option<Box<Node>>,
         // 右部，right-hand side
         rhs: Option<Box<Node>>,
+        // 类型
+        type_: Option<Box<Type>>,
     },
     // <
     Lt {
         // 对应的token,增加翻译阶段的报错信息
         token: Token,
-        // 类型
-        type_: Option<Box<Type>>,
         // 左部，left-hand side
         lhs: Option<Box<Node>>,
         // 右部，right-hand side
         rhs: Option<Box<Node>>,
+        // 类型
+        type_: Option<Box<Type>>,
     },
     // <=
     Le {
         // 对应的token,增加翻译阶段的报错信息
         token: Token,
-        // 类型
-        type_: Option<Box<Type>>,
         // 左部，left-hand side
         lhs: Option<Box<Node>>,
         // 右部，right-hand side
         rhs: Option<Box<Node>>,
+        // 类型
+        type_: Option<Box<Type>>,
     },
     // 赋值
     Assign {
         // 对应的token,增加翻译阶段的报错信息
         token: Token,
-        // 类型
-        type_: Option<Box<Type>>,
         // 左部，left-hand side
         lhs: Option<Box<Node>>,
         // 右部，right-hand side
         rhs: Option<Box<Node>>,
+        // 类型
+        type_: Option<Box<Type>>,
     },
     // 取地址 &
     Addr {
         // 对应的token,增加翻译阶段的报错信息
         token: Token,
-        // 类型
-        type_: Option<Box<Type>>,
         // 一元单节点
         unary: Option<Box<Node>>,
+        // 类型
+        type_: Option<Box<Type>>,
     },
     // 解引用 *
     DeRef {
         // 对应的token,增加翻译阶段的报错信息
         token: Token,
-        // 类型
-        type_: Option<Box<Type>>,
         // 一元单节点
         unary: Option<Box<Node>>,
+        // 类型
+        type_: Option<Box<Type>>,
     },
     // 返回
     Return {
         // 对应的token,增加翻译阶段的报错信息
         token: Token,
-        // 类型
-        type_: Option<Box<Type>>,
         // 一元单节点
         unary: Option<Box<Node>>,
+        // 类型
+        type_: Option<Box<Type>>,
     },
     // "if"，条件判断
     If {
         // 对应的token,增加翻译阶段的报错信息
         token: Token,
-        // 类型
-        type_: Option<Box<Type>>,
         // 条件内的表达式
         cond: Option<Box<Node>>,
         // 符合条件后的语句
         then: Option<Box<Node>>,
         // 不符合条件后的语句
         els: Option<Box<Node>>,
+        // 类型
+        type_: Option<Box<Type>>,
     },
     // "for" 或 "while"，循环
     For {
         // 对应的token,增加翻译阶段的报错信息
         token: Token,
-        // 类型
-        type_: Option<Box<Type>>,
         // 初始化语句
         init: Option<Box<Node>>,
         // 递增语句
@@ -310,52 +308,54 @@ pub enum Node {
         cond: Option<Box<Node>>,
         // 符合条件后的语句
         then: Option<Box<Node>>,
+        // 类型
+        type_: Option<Box<Type>>,
     },
     // { ... }，代码块
     Block {
         // 对应的token,增加翻译阶段的报错信息
         token: Token,
-        // 类型
-        type_: Option<Box<Type>>,
         // 代码块
         body: Vec<Node>,
+        // 类型
+        type_: Option<Box<Type>>,
     },
     FuncCall {
         // 对应的token,增加翻译阶段的报错信息
         token: Token,
-        // 类型
-        type_: Option<Box<Type>>,
         // 变量名
         func_name: String,
         // 入参
         args: Vec<Node>,
+        // 类型
+        type_: Option<Box<Type>>,
     },
     // 表达式语句
     ExprStmt {
         // 对应的token,增加翻译阶段的报错信息
         token: Token,
-        // 类型
-        type_: Option<Box<Type>>,
         // 一元单节点
         unary: Option<Box<Node>>,
+        // 类型
+        type_: Option<Box<Type>>,
     },
     // 变量
     Var {
         // 对应的token,增加翻译阶段的报错信息
         token: Token,
-        // 类型
-        type_: Option<Box<Type>>,
         // 存储ND_VAR的字符串
         var: Option<Rc<RefCell<Var>>>,
+        // 类型
+        type_: Option<Box<Type>>,
     },
     // 数字
     Num {
         // 对应的token,增加翻译阶段的报错信息
         token: Token,
-        // 类型
-        type_: Option<Box<Type>>,
         // 存储ND_NUM种类的值
         val: i32,
+        // 类型
+        type_: Option<Box<Type>>,
     },
 }
 
