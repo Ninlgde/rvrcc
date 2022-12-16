@@ -45,8 +45,8 @@ impl Type {
         matches!(self, Type::Int {..})
     }
 
-    pub fn is_ptr(&self) -> bool {
-        matches!(self, Type::Ptr { .. })
+    pub fn has_base(&self) -> bool {
+        matches!(self, Type::Ptr { .. }) || matches!(self, Type::Array { .. })
     }
 
     pub fn is_func(&self) -> bool {

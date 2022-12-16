@@ -22,7 +22,8 @@
 //! relational = add ("<" add | "<=" add | ">" add | ">=" add)*
 //! add = mul ("+" mul | "-" mul)*
 //! mul = unary ("*" unary | "/" unary)*
-//! unary = ("+" | "-" | "*" | "&") unary | primary
+//! unary = ("+" | "-" | "*" | "&") unary | postfix
+//! postfix = primary ("[" expr "]")*
 //! primary = "(" expr ")" | ident func-args? | num
 //! func_call = ident "(" (assign ("," assign)*)? ")"
 
@@ -527,7 +528,7 @@ impl<'a> Parser<'a> {
         }
 
         // 不能解析 ptr + ptr
-        if lhs_t.is_ptr() && rhs_t.is_ptr() {
+        if lhs_t.has_base() && rhs_t.has_base() {
             error_token!(&nt, "invalid operands");
             return None;
         }
@@ -535,19 +536,20 @@ impl<'a> Parser<'a> {
         // 将 num + ptr 转换为 ptr + num
         let n_lhs;
         let n_rhs;
-        if lhs_t.is_ptr() && rhs_t.is_ptr() {
+        let size;
+        if !lhs_t.has_base() && rhs_t.has_base() {
             n_lhs = rhs;
             n_rhs = lhs;
+            size = lhs_t.get_size() as i32;
         } else {
             n_lhs = lhs;
             n_rhs = rhs;
+            size = lhs_t.get_base_size() as i32;
         }
 
         // ptr + num
-        // 指针加法，ptr+1，这里的1不是1个字节，而是1个元素的空间，所以需要 ×8 操作
-        // riscv 的变量是从大往小排列的,所以这里取负
-        let offset: i32 = lhs_t.get_base_size() as i32;
-        let num8 = Some(Box::new(Node::Num { token: nt.clone(), val: offset, type_: None }));
+        // 指针加法，ptr+1，这里的1不是1个字节，而是1个元素的空间，所以需要 ×size 操作
+        let num8 = Some(Box::new(Node::Num { token: nt.clone(), val: size, type_: None }));
         let f_rhs = Some(Box::new(Node::Mul { token: nt.clone(), lhs: n_rhs, rhs: num8, type_: None }));
         Some(Node::Add { token: nt, lhs: n_lhs, rhs: f_rhs, type_: None })
     }
@@ -566,21 +568,19 @@ impl<'a> Parser<'a> {
         }
 
         // ptr - num
-        if lhs_t.is_ptr() && rhs_t.is_int() {
-            // riscv 的变量是从大往小排列的,所以这里取负
-            let offset: i32 = lhs_t.get_base_size() as i32;
-            let num8 = Some(Box::new(Node::Num { token: nt.clone(), val: offset, type_: None }));
+        if lhs_t.has_base() && rhs_t.is_int() {
+            let size: i32 = lhs_t.get_base_size() as i32;
+            let num8 = Some(Box::new(Node::Num { token: nt.clone(), val: size, type_: None }));
             let mut f_rhs = Some(Box::new(Node::Mul { token: nt.clone(), lhs: rhs, rhs: num8, type_: None }));
             add_type(f_rhs.as_mut().unwrap());
             return Some(Node::Sub { token: nt, lhs, rhs: f_rhs, type_: Some(lhs_t) });
         }
 
         // ptr - ptr，返回两指针间有多少元素
-        if lhs_t.is_ptr() && rhs_t.is_ptr() {
+        if lhs_t.has_base() && rhs_t.has_base() {
             let node = Some(Box::new(Node::Sub { token: nt.clone(), lhs, rhs, type_: Some(Type::new_int()) }));
-            // riscv 的变量是从大往小排列的,所以这里取负
-            let offset: i32 = lhs_t.get_base_size() as i32;
-            let num8 = Some(Box::new(Node::Num { token: nt.clone(), val: offset, type_: Some(Type::new_int()) }));
+            let size: i32 = lhs_t.get_base_size() as i32;
+            let num8 = Some(Box::new(Node::Num { token: nt.clone(), val: size, type_: Some(Type::new_int()) }));
             return Some(Node::Div { token: nt, lhs: node, rhs: num8, type_: None });
         }
 
@@ -649,7 +649,7 @@ impl<'a> Parser<'a> {
     }
 
     /// 解析一元运算
-    /// unary = ("+" | "-" | "*" | "&") unary | primary
+    /// unary = ("+" | "-" | "*" | "&") unary | postfix
     fn unary(&mut self) -> Option<Node> {
         let (pos, token) = self.peekable.peek().unwrap();
         let nt = self.tokens[*pos].clone();
@@ -679,7 +679,31 @@ impl<'a> Parser<'a> {
         }
 
         // primary
-        self.primary()
+        self.postfix()
+    }
+
+    /// postfix = primary ("[" expr "]")*
+    fn postfix(&mut self) -> Option<Node> {
+        // primary
+        let mut node = self.primary().unwrap();
+
+        // ("[" expr "]")*
+        loop {
+            let (pos, token) = self.peekable.peek().unwrap();
+            let nt = self.tokens[*pos].clone();
+            if !token.equal("[") {
+                break;
+            }
+
+            // x[y] 等价于 *(x+y)
+            self.peekable.next();
+            let idx = self.expr().unwrap();
+            self.skip("]");
+            let unary = self.add_with_type(Some(Box::new(node)), Some(Box::new(idx)), nt.clone()).unwrap();
+            node = Node::DeRef { token: nt.clone(), unary: Some(Box::new(unary)), type_: None }
+        }
+
+        Some(node)
     }
 
     /// 解析括号、数字、变量
