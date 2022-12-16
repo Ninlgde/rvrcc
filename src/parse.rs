@@ -3,7 +3,7 @@
 //! function_definition = declspec declarator "(" ")" "{" compound_stmt*
 //! declspec = "int"
 //! declarator = "*"* ident type_suffix
-//! type_suffix = "(" func_params | "[" num "]" | ε
+//! type_suffix = "(" func_params | "[" num "]" type_suffix | ε
 //! func_params = (param ("," param)*)? ")"
 //! param = declspec declarator
 //! compound_stmt = (declaration | stmt)* "}"
@@ -158,8 +158,8 @@ impl<'a> Parser<'a> {
         type_
     }
 
-    /// type_suffix = "(" func_params | "[" num "]" | ε
-    fn type_suffix(&mut self, type_: Box<Type>) -> Box<Type> {
+    /// type_suffix = "(" func_params | "[" num "]" type_suffix | ε
+    fn type_suffix(&mut self, mut type_: Box<Type>) -> Box<Type> {
         let (_, token) = self.peekable.peek().unwrap();
         // "(" func_params
         if token.equal("(") {
@@ -173,6 +173,7 @@ impl<'a> Parser<'a> {
             let size = self.get_number();
             self.peekable.next(); // 跳过这个数字
             self.skip("]"); // 跳过]
+            type_ = self.type_suffix(type_);
             return Type::array_of(type_, size as usize);
         }
 
