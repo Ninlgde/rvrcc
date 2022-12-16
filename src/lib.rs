@@ -1,6 +1,8 @@
 extern crate core;
 
 use core::fmt;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 mod tokenize;
 mod parse;
@@ -134,11 +136,11 @@ pub struct Function {
     // 函数名
     name: String,
     // 方法参数
-    params: Vec<Var>,
+    params: Vec<Rc<RefCell<Var>>>,
     // 函数体
     body: Node,
     // 本地变量
-    locals: Vec<Var>,
+    locals: Vec<Rc<RefCell<Var>>>,
     // 栈大小
     stack_size: isize,
 }
@@ -344,7 +346,7 @@ pub enum Node {
         // 类型
         type_: Option<Box<Type>>,
         // 存储ND_VAR的字符串
-        var: Option<Box<Var>>,
+        var: Option<Rc<RefCell<Var>>>,
     },
     // 数字
     Num {

@@ -3,8 +3,8 @@
 //! function_definition = declspec declarator "(" ")" "{" compound_stmt*
 //! declspec = "int"
 //! declarator = "*"* ident type_suffix
-//! type_suffix = ("(" func_params? ")")?
-//! func_params = param ("," param)*
+//! type_suffix = "(" func_params | "[" num "]" | ε
+//! func_params = (param ("," param)*)? ")"
 //! param = declspec declarator
 //! compound_stmt = (declaration | stmt)* "}"
 //! declaration =
@@ -26,8 +26,10 @@
 //! primary = "(" expr ")" | ident func-args? | num
 //! func_call = ident "(" (assign ("," assign)*)? ")"
 
+use std::cell::RefCell;
 use std::slice::Iter;
 use std::iter::{Enumerate, Peekable};
+use std::rc::Rc;
 use crate::{error_token, Function, Node, Var, Token, Type, error_at};
 use crate::ctype::add_type;
 use crate::keywords::{KW_ELSE, KW_FOR, KW_IF, KW_RETURN, KW_WHILE};
@@ -40,7 +42,8 @@ pub fn parse(tokens: &Vec<Token>) -> Vec<Function> {
 struct Parser<'a> {
     tokens: &'a Vec<Token>,
     peekable: Peekable<Enumerate<Iter<'a, Token>>>,
-    locals: Vec<Var>,
+    // 本地变量
+    locals: Vec<Rc<RefCell<Var>>>,
 }
 
 impl<'a> Parser<'a> {
@@ -92,15 +95,13 @@ impl<'a> Parser<'a> {
         // compound_stmt
         let node = self.compound_stmt().unwrap();
 
-        // 计算栈总深度
-        let offset: isize = (self.locals.len() * 8) as isize;
         // 构建返回值
         let function = Function {
             name: base_type.get_name().to_string(),
             params,
             body: node,
             locals: self.locals.to_vec(),
-            stack_size: align_to(offset, 16),
+            stack_size: 0,
         };
 
         Some(function)
@@ -115,11 +116,10 @@ impl<'a> Parser<'a> {
     }
 
     /// 创建新的左值
-    fn new_lvar(&mut self, base_type: Box<Type>) -> Option<Var> {
+    fn new_lvar(&mut self, base_type: Box<Type>) -> Option<Rc<RefCell<Var>>> {
         let name = base_type.get_name().to_string();
-        let offset: isize = -(((self.locals.len() + 1) * 8) as isize);
-        let nvar = Var { name, offset, type_: base_type };
-        self.locals.push(nvar.clone());
+        let nvar = Rc::new(RefCell::new(Var { name, offset: 0, type_: base_type }));
+        self.locals.push(Rc::clone(&nvar));
         Some(nvar)
     }
 
@@ -127,7 +127,7 @@ impl<'a> Parser<'a> {
     /// declarator specifier
     fn declspec(&mut self) -> Box<Type> {
         self.skip("int");
-        Box::new(Type::Int { name: "".to_string() })
+        Type::new_int()
     }
 
     /// declarator = "*"* ident type_suffix
@@ -158,38 +158,50 @@ impl<'a> Parser<'a> {
         type_
     }
 
-    /// type_suffix = ("(" func_params? ")")?
-    /// func_params = param ("," param)*
-    /// param = declspec declarator
+    /// type_suffix = "(" func_params | "[" num "]" | ε
     fn type_suffix(&mut self, type_: Box<Type>) -> Box<Type> {
         let (_, token) = self.peekable.peek().unwrap();
-        // ("(" func_params? ")")?
+        // "(" func_params
         if token.equal("(") {
             self.peekable.next();
+            return self.func_params(type_);
+        }
 
-            let mut params = vec![];
-            loop {
-                let (_, token) = self.peekable.peek().unwrap();
-                if token.equal(")") {
-                    break;
-                }
-                // funcParams = param ("," param)*
-                // param = declspec declarator
-                if params.len() > 0 {
-                    self.skip(",");
-                }
-
-                let mut t = self.declspec();
-                t = self.declarator(t);
-
-                params.push(*t);
-            }
-            self.skip(")");
-
-            return Type::func_type(type_, params);
+        // "[" num "]"
+        if token.equal("[") {
+            self.peekable.next();
+            let size = self.get_number();
+            self.peekable.next(); // 跳过这个数字
+            self.skip("]"); // 跳过]
+            return Type::array_of(type_, size as usize);
         }
 
         return type_;
+    }
+
+    /// func_params = (param ("," param)*)? ")"
+    /// param = declspec declarator
+    fn func_params(&mut self, type_: Box<Type>) -> Box<Type> {
+        let mut params = vec![];
+        loop {
+            let (_, token) = self.peekable.peek().unwrap();
+            if token.equal(")") {
+                break;
+            }
+            // funcParams = param ("," param)*
+            // param = declspec declarator
+            if params.len() > 0 {
+                self.skip(",");
+            }
+
+            let mut t = self.declspec();
+            t = self.declarator(t);
+
+            params.push(*t);
+        }
+        self.skip(")");
+
+        return Type::func_type(type_, params);
     }
 
     /// 解析复合语句
@@ -253,7 +265,7 @@ impl<'a> Parser<'a> {
             let obj = self.find_var(&name.to_string());
             let nvar;
             if let Some(var) = obj {
-                nvar = Var { name: name.to_string(), offset: var.offset, type_: var.type_.clone() };
+                nvar = Rc::clone(var);
             } else {
                 nvar = self.new_lvar(base_type.clone()).unwrap();
             }
@@ -266,7 +278,7 @@ impl<'a> Parser<'a> {
             }
 
             // 解析“=”后面的Token
-            let lhs = Some(Box::new(Node::Var { token: nt, var: Some(Box::new(nvar.clone())), type_: Some(base_type.clone()) }));
+            let lhs = Some(Box::new(Node::Var { token: nt, var: Some(Rc::clone(&nvar)), type_: Some(base_type.clone()) }));
             // 解析递归赋值语句
             self.peekable.next();
             let rhs = Some(Box::new(self.assign().unwrap()));
@@ -532,8 +544,9 @@ impl<'a> Parser<'a> {
 
         // ptr + num
         // 指针加法，ptr+1，这里的1不是1个字节，而是1个元素的空间，所以需要 ×8 操作
-        // riscv 的变量是从大往小排列的,所以这里是-8
-        let num8 = Some(Box::new(Node::Num { token: nt.clone(), val: -8, type_: None }));
+        // riscv 的变量是从大往小排列的,所以这里取负
+        let offset: i32 = lhs_t.get_base_size() as i32;
+        let num8 = Some(Box::new(Node::Num { token: nt.clone(), val: offset, type_: None }));
         let f_rhs = Some(Box::new(Node::Mul { token: nt.clone(), lhs: n_rhs, rhs: num8, type_: None }));
         Some(Node::Add { token: nt, lhs: n_lhs, rhs: f_rhs, type_: None })
     }
@@ -553,8 +566,9 @@ impl<'a> Parser<'a> {
 
         // ptr - num
         if lhs_t.is_ptr() && rhs_t.is_int() {
-            // riscv 的变量是从大往小排列的,所以这里是-8
-            let num8 = Some(Box::new(Node::Num { token: nt.clone(), val: -8, type_: None }));
+            // riscv 的变量是从大往小排列的,所以这里取负
+            let offset: i32 = lhs_t.get_base_size() as i32;
+            let num8 = Some(Box::new(Node::Num { token: nt.clone(), val: offset, type_: None }));
             let mut f_rhs = Some(Box::new(Node::Mul { token: nt.clone(), lhs: rhs, rhs: num8, type_: None }));
             add_type(f_rhs.as_mut().unwrap());
             return Some(Node::Sub { token: nt, lhs, rhs: f_rhs, type_: Some(lhs_t) });
@@ -562,9 +576,10 @@ impl<'a> Parser<'a> {
 
         // ptr - ptr，返回两指针间有多少元素
         if lhs_t.is_ptr() && rhs_t.is_ptr() {
-            let node = Some(Box::new(Node::Sub { token: nt.clone(), lhs, rhs, type_: Some(Box::new(Type::Int { name: "".to_string() })) }));
-            // riscv 的变量是从大往小排列的,所以这里是-8
-            let num8 = Some(Box::new(Node::Num { token: nt.clone(), val: -8, type_: Some(Box::new(Type::Int { name: "".to_string() })) }));
+            let node = Some(Box::new(Node::Sub { token: nt.clone(), lhs, rhs, type_: Some(Type::new_int()) }));
+            // riscv 的变量是从大往小排列的,所以这里取负
+            let offset: i32 = lhs_t.get_base_size() as i32;
+            let num8 = Some(Box::new(Node::Num { token: nt.clone(), val: offset, type_: Some(Type::new_int()) }));
             return Some(Node::Div { token: nt, lhs: node, rhs: num8, type_: None });
         }
 
@@ -693,8 +708,7 @@ impl<'a> Parser<'a> {
                 let obj = self.find_var(t_str);
                 let node;
                 if let Some(var) = obj {
-                    let nvar = Var { name: t_str.to_string(), offset: var.offset, type_: var.type_.clone() };
-                    node = Node::Var { token: nt, var: Some(Box::new(nvar)), type_: None };
+                    node = Node::Var { token: nt, var: Some(var.clone()), type_: None };
                 } else {
                     error_at!(*offset, "undefined variable");
                     return None;
@@ -743,8 +757,11 @@ impl<'a> Parser<'a> {
         return Some(node);
     }
 
-    fn find_var(&self, name: &String) -> Option<&Var> {
-        self.locals.iter().find(|item| { item.name == *name })
+    fn find_var(&self, name: &String) -> Option<&Rc<RefCell<Var>>> {
+        self.locals.iter().find(|item| {
+            let i = item.borrow();
+            i.name == *name
+        })
     }
 
     fn skip(&mut self, s: &str) {
@@ -763,10 +780,17 @@ impl<'a> Parser<'a> {
         }
         return false;
     }
-}
 
-// 对齐到Align的整数倍
-fn align_to(n: isize, align: isize) -> isize {
-    // (0,Align]返回Align
-    (n + align - 1) / align * align
+    fn get_number(&mut self) -> i32 {
+        let (_, token) = self.peekable.peek().unwrap();
+        return match token {
+            Token::Num { val, .. } => {
+                *val
+            }
+            _ => {
+                error_token!(token, "expect a number");
+                0 // 不会走到这里
+            }
+        };
+    }
 }

@@ -1,11 +1,12 @@
-use crate::{error_token, Function, Node};
+use crate::{error_token, Function, Node, Type};
 
 static mut CURRENT_FUNCTION_NAME: String = String::new();
 
 /// 形参name
 const ARG_NAMES: [&str; 6] = ["a0", "a1", "a2", "a3", "a4", "a5"];
 
-pub fn codegen(program: &Vec<Function>) {
+pub fn codegen(program: &mut Vec<Function>) {
+    assign_lvar_offsets(program);
     for function in program {
         // 声明一个全局main段，同时也是程序入口段
         print!("\n  # 定义全局{}段\n", function.name);
@@ -47,6 +48,7 @@ pub fn codegen(program: &Vec<Function>) {
 
         let mut i = 0;
         for p in function.params.iter() {
+            let p = p.borrow();
             print!("  # 将{}寄存器的值存入{}的栈地址\n", ARG_NAMES[i], p.name);
             print!("  sd {}, {}(fp)\n", ARG_NAMES[i], p.offset);
             i += 1;
@@ -257,9 +259,7 @@ fn gen_expr(node: &Box<Node>, depth: &mut usize) {
             push(depth);
             // 右部是右值，为表达式的值
             gen_expr(rhs.as_ref().unwrap(), depth);
-            pop("a1", depth);
-            print!("  # 将a0的值，写入到a1中存放的地址\n");
-            print!("  sd a0, 0(a1)\n");
+            store(depth);
         }
         Node::FuncCall { func_name, args, .. } => {
             let mut argc = 0;
@@ -280,17 +280,14 @@ fn gen_expr(node: &Box<Node>, depth: &mut usize) {
         Node::Addr { unary, .. } => {
             gen_addr(unary.as_ref().unwrap(), depth);
         }
-        Node::DeRef { unary, .. } => {
+        Node::DeRef { unary, type_, .. } => {
             gen_expr(unary.as_ref().unwrap(), depth);
-            print!("  # 读取a0中存放的地址，得到的值存入a0\n");
-            print!("  ld a0, 0(a0)\n");
+            load(type_.as_ref().unwrap().clone());
         }
-        Node::Var { var: _var, .. } => {
+        Node::Var { var: _var, type_, .. } => {
             // 计算出变量的地址，然后存入a0
             gen_addr(node, depth);
-            // 访问a0地址中存储的数据，存入到a0当中
-            print!("  # 读取a0中存放的地址，得到的值存入a0\n");
-            print!("  ld a0, 0(a0)\n");
+            load(type_.as_ref().unwrap().clone());
         }
         // 加载数字到a0
         Node::Num { val, .. } => {
@@ -320,9 +317,10 @@ fn gen_addr(node: &Box<Node>, depth: &mut usize) {
     match node.as_ref() {
         // 变量
         Node::Var { var, .. } => {
+            let var = var.as_ref().unwrap().borrow();
             // 偏移量是相对于fp的
-            let offset = var.as_ref().unwrap().offset;
-            print!("  # 获取变量{}的栈内地址为{}(fp)\n", var.as_ref().unwrap().name,
+            let offset = var.offset;
+            print!("  # 获取变量{}的栈内地址为{}(fp)\n", var.name,
                    offset);
             print!("  addi a0, fp, {}\n", offset);
         }
@@ -334,6 +332,25 @@ fn gen_addr(node: &Box<Node>, depth: &mut usize) {
             error_token!(node.as_ref().get_token(), "not an lvalue")
         }
     }
+}
+
+fn assign_lvar_offsets(program: &mut Vec<Function>) {
+    for func in program {
+        let mut offset = 0;
+        for var in func.locals.iter().rev() {
+            let mut v = var.borrow_mut();
+            offset += v.type_.get_size() as isize;
+            v.offset = -offset;
+        }
+
+        func.stack_size = align_to(offset, 16);
+    }
+}
+
+// 对齐到Align的整数倍
+fn align_to(n: isize, align: isize) -> isize {
+    // (0,Align]返回Align
+    (n + align - 1) / align * align
 }
 
 /// 压栈，将结果临时压入栈中备用
@@ -353,4 +370,22 @@ fn pop(reg: &str, depth: &mut usize) {
     print!("  ld {}, 0(sp)\n", reg);
     print!("  addi sp, sp, 8\n");
     *depth -= 1;
+}
+
+fn load(type_: Box<Type>) {
+    match *type_ {
+        Type::Array { .. } => {
+            return;
+        }
+        _ => {}
+    }
+
+    print!("  # 读取a0中存放的地址，得到的值存入a0\n");
+    print!("  ld a0, 0(a0)\n");
+}
+
+fn store(depth: &mut usize) {
+    pop("a1", depth);
+    print!("  # 将a0的值，写入到a1中存放的地址\n");
+    print!("  sd a0, 0(a1)\n");
 }
