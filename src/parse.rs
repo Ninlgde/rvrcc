@@ -24,7 +24,7 @@
 //! mul = unary ("*" unary | "/" unary)*
 //! unary = ("+" | "-" | "*" | "&") unary | postfix
 //! postfix = primary ("[" expr "]")*
-//! primary = "(" expr ")" | ident func-args? | num
+//! primary = "(" expr ")" | "sizeof" unary | ident func-args? | num
 //! func_call = ident "(" (assign ("," assign)*)? ")"
 
 use std::cell::RefCell;
@@ -33,7 +33,7 @@ use std::iter::{Enumerate, Peekable};
 use std::rc::Rc;
 use crate::{error_token, Function, Node, Var, Token, Type, error_at};
 use crate::ctype::add_type;
-use crate::keywords::{KW_ELSE, KW_FOR, KW_IF, KW_RETURN, KW_WHILE};
+use crate::keywords::{KW_ELSE, KW_FOR, KW_IF, KW_RETURN, KW_SIZEOF, KW_WHILE};
 
 pub fn parse(tokens: &Vec<Token>) -> Vec<Function> {
     let mut parser = Parser::new(tokens);
@@ -707,7 +707,7 @@ impl<'a> Parser<'a> {
     }
 
     /// 解析括号、数字、变量
-    /// primary = "(" expr ")" | ident args? | num
+    /// primary = "(" expr ")" | "sizeof" unary | ident args? | num
     fn primary(&mut self) -> Option<Node> {
         // "(" expr ")"
         let (pos, token) = self.peekable.peek().unwrap();
@@ -717,6 +717,15 @@ impl<'a> Parser<'a> {
             let node = self.expr();
             self.skip(")");
             return node;
+        }
+
+        if token.equal(KW_SIZEOF) {
+            self.peekable.next();
+            let mut node = self.unary();
+            add_type(node.as_mut().unwrap());
+            let (pos, _) = self.peekable.peek().unwrap();
+            let nt = self.tokens[*pos].clone();
+            return Some(Node::Num { token: nt, type_: None, val: node.as_ref().unwrap().get_type().as_ref().unwrap().get_size() as i32 });
         }
 
         // ident args?
