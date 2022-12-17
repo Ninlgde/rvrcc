@@ -1,4 +1,5 @@
 use std::env;
+use std::io::Write;
 use std::process::exit;
 use rvrcc::{codegen, open_file_for_write, parse, tokenize_file};
 
@@ -22,13 +23,18 @@ fn main() {
 
     let (input_path, output_path) = parse_args(args);
 
-    let file = open_file_for_write(&output_path);
+    let mut file = open_file_for_write(&output_path);
 
-    let tokens = tokenize_file(input_path);
+    let tokens = tokenize_file(input_path.to_string());
 
     let mut program = parse(&tokens);
 
+    write_file(&mut file, format!(".file 1 \"{}\"\n", input_path.to_string()).as_str());
     codegen(&mut program, file);
+}
+
+fn write_file(f: &mut impl Write, s: &str) {
+    f.write_all(s.as_ref()).unwrap();
 }
 
 fn parse_args(args: Vec<String>) -> (String, String) {
