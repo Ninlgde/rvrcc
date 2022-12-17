@@ -229,6 +229,21 @@ pub fn add_type(node: &mut Node) {
         | Node::ExprStmt { unary, .. } => {
             add_type(unary.as_mut().unwrap());
         }
+        Node::StmtExpr { token, body, type_, .. } => {
+            let last = body.last().unwrap().clone();
+            for node in body {
+                add_type(node);
+            }
+            match last {
+                Node::ExprStmt { unary, .. } => {
+                    let t = unary.as_ref().unwrap().get_type().as_ref().unwrap().clone();
+                    *type_ = Some(t);
+                }
+                _ => {
+                    error_token!(token, "statement expression returning void is not supported");
+                }
+            }
+        }
         Node::If { cond, then, els, .. } => {
             add_type(cond.as_mut().unwrap());
             add_type(then.as_mut().unwrap());

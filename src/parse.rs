@@ -24,7 +24,12 @@
 //! mul = unary ("*" unary | "/" unary)*
 //! unary = ("+" | "-" | "*" | "&") unary | postfix
 //! postfix = primary ("[" expr "]")*
-//! primary = "(" expr ")" | "sizeof" unary | ident func-args?| str | num
+//! primary =  "(" "{" stmt+ "}" ")"
+//!         | "(" expr ")"
+//!         | "sizeof" unary
+//!         | ident funcArgs?
+//!         | str
+//!         | num
 //! func_call = ident "(" (assign ("," assign)*)? ")"
 
 use std::cell::RefCell;
@@ -64,8 +69,9 @@ impl<'a> Parser<'a> {
         (self.cursor, &self.tokens[self.cursor])
     }
 
-    fn next(&mut self) {
+    fn next(&mut self) -> &mut Self {
         self.cursor += 1;
+        self
     }
 
     /// 语法解析入口函数
@@ -740,11 +746,27 @@ impl<'a> Parser<'a> {
     }
 
     /// 解析括号、数字、变量
-    /// primary = "(" expr ")" | "sizeof" unary | ident args?| str | num
+    /// primary = "(" "{" stmt+ "}" ")"
+    ///         | "(" expr ")"
+    ///         | "sizeof" unary
+    ///         | ident funcArgs?
+    ///         | str
+    ///         | num
     fn primary(&mut self) -> Option<Node> {
-        // "(" expr ")"
+        // "(" "{" stmt+ "}" ")"
         let (pos, token) = self.current();
         let nt = self.tokens[pos].clone();
+        let next = &self.tokens[pos + 1];
+        if token.equal("(") && next.equal("{") {
+            // This is a GNU statement expresssion.
+            self.next().next();
+            let body = self.compound_stmt().unwrap().get_body().to_vec();
+            let node = Node::StmtExpr { token: nt, body, type_: None };
+            self.skip(")");
+            return Some(node);
+        }
+
+        // "(" expr ")"
         if token.equal("(") {
             self.next();
             let node = self.expr();

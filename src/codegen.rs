@@ -317,6 +317,11 @@ fn gen_expr(node: &Box<Node>, depth: &mut usize) {
             gen_expr(rhs.as_ref().unwrap(), depth);
             store(type_.as_ref().unwrap().clone(), depth);
         }
+        Node::StmtExpr { body, .. } => {
+            for node in body {
+                gen_stmt(node);
+            }
+        }
         Node::FuncCall { func_name, args, .. } => {
             let mut argc = 0;
             for arg in args.to_vec() {
