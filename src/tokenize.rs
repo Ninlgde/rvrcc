@@ -141,8 +141,8 @@ fn read_string_literal(chars: &Vec<u8>, pos: &mut usize) -> String {
     while i < *pos {
         let mut c = chars[i] as char;
         if c == '\\' {
-            c = read_escaped_char(chars[i + 1] as char);
-            i += 2;
+            i += 1; // skip \\
+            c = read_escaped_char(chars, &mut i);
             new_chars.push(c as u8);
         } else {
             i += 1;
@@ -156,7 +156,28 @@ fn read_string_literal(chars: &Vec<u8>, pos: &mut usize) -> String {
 }
 
 /// 读取转义字符
-fn read_escaped_char(c: char) -> char {
+fn read_escaped_char(chars: &Vec<u8>, pos: &mut usize) -> char {
+    let mut c = chars[*pos] as char;
+    if '0' <= c && c <= '7' {
+        // 读取一个八进制数字，不能长于三位
+        // \abc = (a*8+b)*8+c
+        let mut r = c as u8 - '0' as u8;
+        *pos += 1;
+        c = chars[*pos] as char;
+        if '0' <= c && c <= '7' {
+            r = (r << 3) + (c as u8 - '0' as u8);
+            *pos += 1;
+            c = chars[*pos] as char;
+            if '0' <= c && c <= '7' {
+                r = (r << 3) + (c as u8 - '0' as u8);
+                *pos += 1;
+            }
+        }
+
+        return r as char;
+    }
+
+    *pos += 1;
     match c {
         'a' => 7 as char,       // 响铃（警报）
         'b' => 8 as char,       // 退格
