@@ -27,9 +27,9 @@ fn emit_data(program: &mut Vec<Rc<RefCell<Obj>>>) {
                     print!("{}:\n", name);
                     // 打印出字符串的内容，包括转义字符
                     print!("  # 字符串字面量\n");
-                    let chars = init_data.as_ref().unwrap().clone().into_bytes();
+                    let chars = init_data.as_ref().unwrap();
                     for i in chars {
-                        let c = i as char;
+                        let c = *i as char;
                         if !c.is_ascii_control() {
                             print!("  .byte {}\t# {}\n", i, c);
                         } else {

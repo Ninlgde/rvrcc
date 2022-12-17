@@ -33,7 +33,7 @@ pub fn tokenize() -> Vec<Token> {
         // 解析字符串字面量
         if c == '"' {
             let mut val = read_string_literal(&chars, &mut pos);
-            val.push('\0');
+            val.push('\0' as u8);
             let len = val.len();
             let type_ = Type::array_of(Type::new_char(), len);
             let t = Token::Str { val, type_, offset: old_pos };
@@ -133,7 +133,7 @@ fn read_ident(chars: &Vec<u8>, pos: &mut usize) {
     }
 }
 
-fn read_string_literal(chars: &Vec<u8>, pos: &mut usize) -> String {
+fn read_string_literal(chars: &Vec<u8>, pos: &mut usize) -> Vec<u8> {
     let old_pos = *pos; // +1 忽略"
     string_literal_end(chars, pos);
     let mut new_chars = vec![];
@@ -150,9 +150,7 @@ fn read_string_literal(chars: &Vec<u8>, pos: &mut usize) -> String {
         }
     }
 
-    let val = slice_to_string(&new_chars, 0, new_chars.len());
-
-    val
+    new_chars
 }
 
 /// 读取转义字符
@@ -172,6 +170,24 @@ fn read_escaped_char(chars: &Vec<u8>, pos: &mut usize) -> char {
                 r = (r << 3) + (c as u8 - '0' as u8);
                 *pos += 1;
             }
+        }
+
+        return r as char;
+    }
+
+    if c == 'x' {
+        *pos += 1;
+        c = chars[*pos] as char;
+        if !c.is_digit(16) {
+            error_at!(*pos, "invalid hex escape sequence");
+            return '\0';
+        }
+
+        let mut r = 0u8;
+        while c.is_digit(16) {
+            r = (r << 4) + from_hex(c);
+            *pos += 1;
+            c = chars[*pos] as char;
         }
 
         return r as char;
@@ -209,4 +225,20 @@ fn string_literal_end(chars: &Vec<u8>, pos: &mut usize) {
         }
         *pos += 1;
     }
+}
+
+// 返回一位十六进制转十进制
+// hexDigit = [0-9a-fA-F]
+// 16: 0 1 2 3 4 5 6 7 8 9  A  B  C  D  E  F
+// 10: 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15
+fn from_hex(c: char) -> u8 {
+    if '0' <= c && c <= '9' {
+        return c as u8 - '0' as u8;
+    }
+
+    if 'a' <= c && c <= 'f' {
+        return c as u8 - 'a' as u8 + 10;
+    }
+
+    return c as u8 - 'A' as u8 + 10;
 }

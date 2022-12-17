@@ -84,7 +84,7 @@ pub enum Token {
     // 字符串
     Str {
         // 值
-        val: String,
+        val: Vec<u8>,
         // 类型
         type_: Box<Type>,
         // 在解析的字符串内的位置
@@ -141,7 +141,7 @@ pub enum Obj {
         // 是 局部或全局 变量
         is_local: bool,
         // 全局变量
-        init_data: Option<String>,
+        init_data: Option<Vec<u8>>,
     },
     Func {
         // 变量名
@@ -192,7 +192,7 @@ impl Obj {
         matches!(self, Self::Func {..})
     }
 
-    fn new_var(name: String, type_: Box<Type>, is_local: bool, init_data: Option<String>) -> Self {
+    fn new_var(name: String, type_: Box<Type>, is_local: bool, init_data: Option<Vec<u8>>) -> Self {
         Self::Var { name, type_, is_local, init_data, offset: 0 }
     }
 
@@ -200,7 +200,7 @@ impl Obj {
         Self::new_var(name, type_, true, None)
     }
 
-    fn new_gvar(name: String, type_: Box<Type>, init_data: Option<String>) -> Self {
+    fn new_gvar(name: String, type_: Box<Type>, init_data: Option<Vec<u8>>) -> Self {
         Self::new_var(name, type_, false, init_data)
     }
 
