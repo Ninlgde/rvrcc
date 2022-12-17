@@ -32,10 +32,9 @@ pub fn tokenize() -> Vec<Token> {
 
         // 解析字符串字面量
         if c == '"' {
-            read_string_literal(&chars, &mut pos);
-            let mut val = slice_to_string(&chars, old_pos + 1, pos); // +1 -1 是为了忽略两边的双引号
+            let mut val = read_string_literal(&chars, &mut pos);
             val.push('\0');
-            let len = pos - old_pos;
+            let len = val.len();
             let type_ = Type::array_of(Type::new_char(), len);
             let t = Token::Str { val, type_, offset: old_pos };
             tokens.push(t);
@@ -134,7 +133,46 @@ fn read_ident(chars: &Vec<u8>, pos: &mut usize) {
     }
 }
 
-fn read_string_literal(chars: &Vec<u8>, pos: &mut usize) {
+fn read_string_literal(chars: &Vec<u8>, pos: &mut usize) -> String {
+    let old_pos = *pos; // +1 忽略"
+    string_literal_end(chars, pos);
+    let mut new_chars = vec![];
+    let mut i = old_pos + 1;
+    while i < *pos {
+        let mut c = chars[i] as char;
+        if c == '\\' {
+            c = read_escaped_char(chars[i + 1] as char);
+            i += 2;
+            new_chars.push(c as u8);
+        } else {
+            i += 1;
+            new_chars.push(c as u8);
+        }
+    }
+
+    let val = slice_to_string(&new_chars, 0, new_chars.len());
+
+    val
+}
+
+/// 读取转义字符
+fn read_escaped_char(c: char) -> char {
+    match c {
+        'a' => 7 as char,       // 响铃（警报）
+        'b' => 8 as char,       // 退格
+        't' => 9 as char,       // 水平制表符，tab
+        'n' => 10 as char,      // 换行
+        'v' => 11 as char,      // 垂直制表符
+        'f' => 12 as char,      // 换页
+        'r' => 13 as char,      // 回车
+        // 属于GNU C拓展
+        'e' => 27 as char,      // 转义符
+        _ => c                  // 默认将原字符返回
+    }
+}
+
+/// 读取到字符串字面量结尾
+fn string_literal_end(chars: &Vec<u8>, pos: &mut usize) {
     *pos += 1; // 忽略"
     loop {
         let c = chars[*pos] as char;
@@ -144,6 +182,9 @@ fn read_string_literal(chars: &Vec<u8>, pos: &mut usize) {
         if c == '\n' || c == '\0' {
             error_at!(*pos, "unclosed string literal");
             return;
+        }
+        if c == '\\' { // 遇到\\
+            *pos += 1;
         }
         *pos += 1;
     }
