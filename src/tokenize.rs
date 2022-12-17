@@ -21,6 +21,37 @@ pub fn tokenize(path: String, input: String) -> Vec<Token> {
     let mut pos = 0;
 
     while pos < chars.len() {
+        // 跳过行注释
+        if starts_with(&chars, pos, "//") {
+            pos += 2;
+
+            loop {
+                let c = chars[pos] as char;
+                if c == '\n' {
+                    break;
+                }
+                pos += 1;
+            }
+            continue;
+        }
+
+        // 跳过块注释
+        if starts_with(&chars, pos, "/*") {
+            pos += 2;
+            loop {
+                if pos + 2 >= chars.len() {
+                    error_at!(pos, "unclosed block comment")
+                }
+                // 查找第一个"*/"的位置
+                if starts_with(&chars, pos, "*/") {
+                    pos += 2; // maybe bug?
+                    break;
+                }
+                pos += 1;
+            }
+            continue;
+        }
+
         let c = chars[pos] as char;
         let old_pos = pos;
         // 跳过所有空白符如：空格、回车

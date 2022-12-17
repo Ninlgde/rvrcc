@@ -10,7 +10,7 @@ print_error() {
 
 # 使用rvrcc变异输入,并将汇编代码输入到tmp.s中
 # 如果运行不成功，则会执行print_error并退出。成功时会短路
-./target/release/rvrcc test.c > tmp.s || print_error
+./target/release/rvrcc -o tmp.s tmp.c || print_error
 
 # 使用riscv64-gcc编译tmp.s成可执行文件tmp
 riscv64-unknown-elf-gcc -o tmp tmp.s
