@@ -1,4 +1,13 @@
-pub const KEYWORDS: [&str; 7] = [KW_RETURN, KW_IF, KW_ELSE, KW_FOR, KW_WHILE, KW_INT, KW_SIZEOF];
+pub const KEYWORDS: [&str; 8] = [
+    KW_RETURN,
+    KW_IF,
+    KW_ELSE,
+    KW_FOR,
+    KW_WHILE,
+    KW_INT,
+    KW_SIZEOF,
+    KW_CHAR
+];
 
 /// 关键字: 返回
 pub const KW_RETURN: &str = "return";
@@ -14,3 +23,5 @@ pub const KW_WHILE: &str = "while";
 pub const KW_INT: &str = "int";
 /// 关键字: sizeof
 pub const KW_SIZEOF: &str = "sizeof";
+/// 关键字: char字符
+pub const KW_CHAR: &str = "char";

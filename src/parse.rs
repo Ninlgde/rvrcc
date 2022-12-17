@@ -1,7 +1,7 @@
 //! AST parser
 //! program = (function_definition* | global-variable)*
 //! function_definition = declspec declarator "(" ")" "{" compound_stmt*
-//! declspec = "int"
+//! declspec = "char" | "int"
 //! declarator = "*"* ident type_suffix
 //! type_suffix = "(" func_params | "[" num "]" type_suffix | ε
 //! func_params = (param ("," param)*)? ")"
@@ -31,7 +31,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use crate::{error_token, Node, Obj, Token, Type, error_at};
 use crate::ctype::add_type;
-use crate::keywords::{KW_ELSE, KW_FOR, KW_IF, KW_RETURN, KW_SIZEOF, KW_WHILE};
+use crate::keywords::{KW_CHAR, KW_ELSE, KW_FOR, KW_IF, KW_INT, KW_RETURN, KW_SIZEOF, KW_WHILE};
 
 pub fn parse(tokens: &Vec<Token>) -> Vec<Rc<RefCell<Obj>>> {
     let mut parser = Parser::new(tokens);
@@ -105,18 +105,6 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn is_function(&mut self) -> bool {
-        let (start, token) = self.current();
-        if token.equal(";") {
-            return false;
-        }
-
-        let type_ = self.declarator(Type::new_int());
-
-        self.cursor = start;
-        return type_.is_func();
-    }
-
     /// function_definition = declspec declarator "(" ")" "{" compound_stmt*
     fn function_definition(&mut self, mut base_type: Box<Type>) {
         // declarator
@@ -146,7 +134,6 @@ impl<'a> Parser<'a> {
     /// 将形参添加到locals
     fn create_param_lvars(&mut self, params: Vec<Type>) {
         for param in params.iter() {
-            // 倒序插入
             self.new_lvar(Box::new(param.clone()));
         }
     }
@@ -159,10 +146,15 @@ impl<'a> Parser<'a> {
         Some(nvar)
     }
 
-    /// declspec = "int"
+    /// declspec = "char" | "int"
     /// declarator specifier
     fn declspec(&mut self) -> Box<Type> {
-        self.skip("int");
+        let (_, token) = self.current();
+        if token.equal(KW_CHAR) {
+            self.next();
+            return Type::new_char();
+        }
+        self.skip(KW_INT);
         Type::new_int()
     }
 
@@ -234,7 +226,8 @@ impl<'a> Parser<'a> {
             let mut t = self.declspec();
             t = self.declarator(t);
 
-            params.push(*t);
+            // 倒序插入
+            params.insert(0, *t);
         }
         self.skip(")");
 
@@ -256,7 +249,7 @@ impl<'a> Parser<'a> {
                 break;
             }
             let mut node;
-            if token.equal("int") {
+            if self.is_type_name() {
                 // declaration
                 node = self.declaration().unwrap();
             } else {
@@ -868,5 +861,22 @@ impl<'a> Parser<'a> {
                 0 // 不会走到这里
             }
         };
+    }
+
+    /// 判断是否是方法,要回档哦
+    fn is_function(&mut self) -> bool {
+        let (start, token) = self.current();
+        if token.equal(";") {
+            return false;
+        }
+        let type_ = self.declarator(Type::new_int());
+        // 游标回档
+        self.cursor = start;
+        return type_.is_func();
+    }
+
+    fn is_type_name(&self) -> bool {
+        let (_, token) = self.current();
+        return token.equal(KW_INT) || token.equal(KW_CHAR);
     }
 }
