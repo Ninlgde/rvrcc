@@ -1,9 +1,22 @@
-use crate::{error_at, INPUT, Token, Type};
+use std::fs::File;
+use std::io;
+use std::io::Read;
+use crate::{error_at, INPUT, FILE_NAME, Token, Type, slice_to_string, read_file};
 use crate::keywords::KEYWORDS;
 
+/// 对文件的终结符解析
+pub fn tokenize_file(path: String) -> Vec<Token> {
+    let input = read_file(&path);
+    // tokenize
+    tokenize(path, input)
+}
+
 /// 终结符解析
-pub fn tokenize() -> Vec<Token> {
-    let input = unsafe { &INPUT };
+pub fn tokenize(path: String, input: String) -> Vec<Token> {
+    unsafe {
+        FILE_NAME = path.to_string();
+        INPUT = input.to_string();
+    }
 
     let mut tokens: Vec<Token> = vec![];
 
@@ -70,13 +83,6 @@ pub fn tokenize() -> Vec<Token> {
 
     // Head无内容，所以直接返回Next
     tokens
-}
-
-fn slice_to_string(chars: &Vec<u8>, start: usize, end: usize) -> String {
-    // 使用vec和copy_from_slice 解决cannot move的问题
-    let mut dst = vec![0; end - start];
-    dst.copy_from_slice(&chars[start..end]);
-    String::from_utf8(dst).unwrap()
 }
 
 /// 传入程序的参数为str类型，因为需要转换为需要long类型
