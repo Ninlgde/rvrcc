@@ -784,7 +784,7 @@ impl<'a> Parser<'a> {
                 return Some(node);
             }
             Token::Str { val, type_, .. } => {
-                let var = self.new_string_literal(val.to_string(), type_.clone());
+                let var = self.new_string_literal(val.to_vec(), type_.clone());
                 let node = Node::Var { token: nt, var: Some(var), type_: None };
                 self.next();
                 return Some(node);
@@ -889,7 +889,7 @@ impl<'a> Parser<'a> {
         return token.equal(KW_INT) || token.equal(KW_CHAR);
     }
 
-    fn new_string_literal(&mut self, str_data: String, base_type: Box<Type>) -> Rc<RefCell<Obj>> {
+    fn new_string_literal(&mut self, str_data: Vec<u8>, base_type: Box<Type>) -> Rc<RefCell<Obj>> {
         let name = format!(".L..{}", self.unique_idx);
         self.unique_idx += 1;
         let gvar = Rc::new(RefCell::new(Obj::new_gvar(name, base_type, Some(str_data))));
