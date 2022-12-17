@@ -9,6 +9,13 @@ pub enum Type {
         // 大小, sizeof返回的值
         size: usize,
     },
+    // char 字符
+    Char {
+        // 名称
+        name: String,
+        // 大小, sizeof返回的值
+        size: usize,
+    },
     // 指针类型
     Ptr {
         // 名称
@@ -42,20 +49,21 @@ pub enum Type {
 
 impl Type {
     pub fn is_int(&self) -> bool {
-        matches!(self, Type::Int {..})
+        matches!(self, Type::Int {..}) || matches!(self, Type::Char {..})
     }
 
     pub fn has_base(&self) -> bool {
-        matches!(self, Type::Ptr { .. }) || matches!(self, Type::Array { .. })
+        matches!(self, Type::Ptr {..}) || matches!(self, Type::Array {..})
     }
 
     pub fn is_func(&self) -> bool {
-        matches!(self, Type::Func {.. })
+        matches!(self, Type::Func {..})
     }
 
     pub fn get_name(&self) -> &str {
         match self {
             Type::Int { name, .. } => name,
+            Type::Char { name, .. } => name,
             Type::Ptr { name, .. } => name,
             Type::Func { name, .. } => name,
             Type::Array { name, .. } => name,
@@ -65,6 +73,7 @@ impl Type {
     pub fn set_name(&mut self, s: String) {
         match self {
             Type::Int { name, .. } => *name = s,
+            Type::Char { name, .. } => *name = s,
             Type::Ptr { name, .. } => *name = s,
             Type::Func { name, .. } => *name = s,
             Type::Array { name, .. } => *name = s,
@@ -74,6 +83,7 @@ impl Type {
     pub fn get_size(&self) -> usize {
         match self {
             Type::Int { size, .. } => *size,
+            Type::Char { size, .. } => *size,
             Type::Ptr { size, .. } => *size,
             Type::Func { size, .. } => *size,
             Type::Array { size, .. } => *size,
@@ -95,7 +105,7 @@ impl Type {
     pub fn add_param(&mut self, param: Type) {
         match self {
             Type::Func { params, .. } => {
-                params.push(param);
+                params.insert(0, param);
             }
             _ => ()
         }
@@ -110,6 +120,10 @@ impl Type {
 
     pub fn new_int() -> Box<Self> {
         Box::new(Type::Int { name: "".to_string(), size: 8 })
+    }
+
+    pub fn new_char() -> Box<Self> {
+        Box::new(Type::Char { name: "".to_string(), size: 1 })
     }
 
     pub fn pointer_to(base: Box<Type>) -> Box<Self> {

@@ -31,7 +31,7 @@ fn emit_data(program: &mut Vec<Rc<RefCell<Obj>>>) {
 }
 
 fn emit_text(program: &mut Vec<Rc<RefCell<Obj>>>) {
-    for function in program {
+    for function in program.iter().rev() {
         let function = function.borrow();
         if !function.is_func { continue; }
         // 声明一个全局main段，同时也是程序入口段
@@ -75,10 +75,15 @@ fn emit_text(program: &mut Vec<Rc<RefCell<Obj>>>) {
         print!("  addi sp, sp, -{}\n", function.stack_size);
 
         let mut i = 0;
-        for p in function.params.iter() {
+        for p in function.params.iter().rev() {
             let p = p.borrow();
+            let size = p.type_.get_size();
             print!("  # 将{}寄存器的值存入{}的栈地址\n", ARG_NAMES[i], p.name);
-            print!("  sd {}, {}(fp)\n", ARG_NAMES[i], p.offset);
+            if size == 1 {
+                print!("  sb {}, {}(fp)\n", ARG_NAMES[i], p.offset);
+            } else {
+                print!("  sd {}, {}(fp)\n", ARG_NAMES[i], p.offset);
+            }
             i += 1;
         }
 
@@ -281,13 +286,13 @@ fn gen_expr(node: &Box<Node>, depth: &mut usize) {
             print!("  slt a0, a1, a0\n");
             print!("  xori a0, a0, 1\n");
         }
-        Node::Assign { lhs, rhs, .. } => {
+        Node::Assign { lhs, rhs, type_, .. } => {
             // 左部是左值，保存值到的地址
             gen_addr(lhs.as_ref().unwrap(), depth);
             push(depth);
             // 右部是右值，为表达式的值
             gen_expr(rhs.as_ref().unwrap(), depth);
-            store(depth);
+            store(type_.as_ref().unwrap().clone(), depth);
         }
         Node::FuncCall { func_name, args, .. } => {
             let mut argc = 0;
@@ -416,11 +421,21 @@ fn load(type_: Box<Type>) {
     }
 
     print!("  # 读取a0中存放的地址，得到的值存入a0\n");
-    print!("  ld a0, 0(a0)\n");
+    let size = type_.get_size();
+    if size == 1 {
+        print!("  lb a0, 0(a0)\n");
+    } else {
+        print!("  ld a0, 0(a0)\n");
+    }
 }
 
-fn store(depth: &mut usize) {
+fn store(type_: Box<Type>, depth: &mut usize) {
     pop("a1", depth);
     print!("  # 将a0的值，写入到a1中存放的地址\n");
-    print!("  sd a0, 0(a1)\n");
+    let size = type_.get_size();
+    if size == 1 {
+        print!("  sb a0, 0(a1)\n");
+    } else {
+        print!("  sd a0, 0(a1)\n");
+    }
 }
