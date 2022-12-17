@@ -1,4 +1,4 @@
-use crate::{error_at, INPUT, Token};
+use crate::{error_at, INPUT, Token, Type};
 use crate::keywords::KEYWORDS;
 
 /// 终结符解析
@@ -27,6 +27,19 @@ pub fn tokenize() -> Vec<Token> {
             let t_str = slice_to_string(&chars, old_pos, pos);
             let t = Token::Num { val, t_str, offset: old_pos };
             tokens.push(t);
+            continue;
+        }
+
+        // 解析字符串字面量
+        if c == '"' {
+            read_string_literal(&chars, &mut pos);
+            let mut val = slice_to_string(&chars, old_pos + 1, pos); // +1 -1 是为了忽略两边的双引号
+            val.push('\0');
+            let len = pos - old_pos;
+            let type_ = Type::array_of(Type::new_char(), len);
+            let t = Token::Str { val, type_, offset: old_pos };
+            tokens.push(t);
+            pos += 1; // 跳过"
             continue;
         }
 
@@ -118,5 +131,20 @@ fn read_ident(chars: &Vec<u8>, pos: &mut usize) {
                 break;
             }
         }
+    }
+}
+
+fn read_string_literal(chars: &Vec<u8>, pos: &mut usize) {
+    *pos += 1; // 忽略"
+    loop {
+        let c = chars[*pos] as char;
+        if c == '"' {
+            break;
+        }
+        if c == '\n' || c == '\0' {
+            error_at!(*pos, "unclosed string literal");
+            return;
+        }
+        *pos += 1;
     }
 }

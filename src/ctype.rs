@@ -193,7 +193,7 @@ pub fn add_type(node: &mut Node) {
         }
         Node::Var { type_, var, .. } => {
             let var = var.as_ref().unwrap().borrow();
-            let vt = var.type_.as_ref().clone();
+            let vt = var.get_type().as_ref().clone();
             *type_ = Some(Box::new(vt));
         }
         // 将节点类型设为 指针，并指向左部的类型

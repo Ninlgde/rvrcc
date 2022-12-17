@@ -2,7 +2,7 @@ use std::env;
 use rvrcc::{codegen, INPUT, parse, tokenize};
 
 fn main() {
-    // let input = "int x; int main() { return x; }";
+    // let input = "int main() { return \"abc\"[0]; }";
     let args: Vec<String> = env::args().collect();
 
     if args.len() != 2 {
