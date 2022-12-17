@@ -1,6 +1,6 @@
 use std::cell::RefCell;
 use std::rc::Rc;
-use crate::{error_token, Node, Type, Obj};
+use crate::{error_token, Node, Type, Obj, align_to};
 
 static mut CURRENT_FUNCTION_NAME: String = String::new();
 
@@ -13,6 +13,25 @@ pub fn codegen(program: &mut Vec<Rc<RefCell<Obj>>>) {
     emit_data(program);
     // 生成代码
     emit_text(program);
+}
+
+fn assign_lvar_offsets(program: &mut Vec<Rc<RefCell<Obj>>>) {
+    for func in program {
+        let f = &mut *func.borrow_mut();
+        match f {
+            Obj::Func { locals, stack_size, .. } => {
+                let mut offset = 0;
+                for var in locals.iter().rev() {
+                    let mut v = var.borrow_mut();
+                    offset += v.get_type().get_size() as isize;
+                    v.set_offset(-offset);
+                }
+
+                *stack_size = align_to(offset, 16);
+            }
+            _ => {}
+        }
+    }
 }
 
 fn emit_data(program: &mut Vec<Rc<RefCell<Obj>>>) {
@@ -402,31 +421,6 @@ fn gen_addr(node: &Box<Node>, depth: &mut usize) {
             error_token!(node.as_ref().get_token(), "not an lvalue")
         }
     }
-}
-
-fn assign_lvar_offsets(program: &mut Vec<Rc<RefCell<Obj>>>) {
-    for func in program {
-        let f = &mut *func.borrow_mut();
-        match f {
-            Obj::Func { locals, stack_size, .. } => {
-                let mut offset = 0;
-                for var in locals.iter().rev() {
-                    let mut v = var.borrow_mut();
-                    offset += v.get_type().get_size() as isize;
-                    v.set_offset(-offset);
-                }
-
-                *stack_size = align_to(offset, 16);
-            }
-            _ => {}
-        }
-    }
-}
-
-// 对齐到Align的整数倍
-fn align_to(n: isize, align: isize) -> isize {
-    // (0,Align]返回Align
-    (n + align - 1) / align * align
 }
 
 /// 压栈，将结果临时压入栈中备用
