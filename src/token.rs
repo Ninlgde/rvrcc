@@ -8,6 +8,8 @@ pub enum Token {
         t_str: String,
         // 在解析的字符串内的位置
         offset: usize,
+        // 行号
+        line_no: usize,
     },
     // 操作符如： + -
     Punct {
@@ -15,12 +17,16 @@ pub enum Token {
         t_str: String,
         // 在解析的字符串内的位置
         offset: usize,
+        // 行号
+        line_no: usize,
     },
     Keyword {
         // token 名
         t_str: String,
         // 在解析的字符串内的位置
         offset: usize,
+        // 行号
+        line_no: usize,
     },
     // 数字
     Num {
@@ -30,6 +36,8 @@ pub enum Token {
         t_str: String,
         // 在解析的字符串内的位置
         offset: usize,
+        // 行号
+        line_no: usize,
     },
     // 字符串
     Str {
@@ -39,10 +47,14 @@ pub enum Token {
         type_: Box<Type>,
         // 在解析的字符串内的位置
         offset: usize,
+        // 行号
+        line_no: usize,
     },
     // 文件终止符，即文件的最后
     Eof {
         offset: usize,
+        // 行号
+        line_no: usize,
     },
 }
 
@@ -54,12 +66,24 @@ impl Token {
             Self::Keyword { offset, .. } => *offset,
             Self::Num { offset, .. } => *offset,
             Self::Str { offset, .. } => *offset,
-            Self::Eof { offset } => *offset,
+            Self::Eof { offset, .. } => *offset,
         }
     }
+
+    pub fn get_line_no(&self) -> usize {
+        match self {
+            Self::Ident { line_no, .. } => *line_no,
+            Self::Punct { line_no, .. } => *line_no,
+            Self::Keyword { line_no, .. } => *line_no,
+            Self::Num { line_no, .. } => *line_no,
+            Self::Str { line_no, .. } => *line_no,
+            Self::Eof { line_no, .. } => *line_no,
+        }
+    }
+
     pub fn at_eof(&self) -> bool {
         match self {
-            Self::Eof { offset: _offset } => true,
+            Self::Eof { offset: _offset, .. } => true,
             _ => false
         }
     }
