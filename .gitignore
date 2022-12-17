@@ -23,7 +23,7 @@ a.out
 /thirdparty
 
 # 生成的最终的rvcc可执行文件
-/rvcc
+/rvrcc
 
 # 测试生成的可执行文件
 /test/*.exe

@@ -1,6 +1,6 @@
 use std::fs::File;
 use std::io;
-use std::io::Read;
+use std::io::{Read, stdout, Write};
 
 /// 从chars中拷贝[start, end)的字符
 pub fn slice_to_string(chars: &Vec<u8>, start: usize, end: usize) -> String {
@@ -34,4 +34,15 @@ pub fn read_file(path: &String) -> String {
     }
 
     return buffer;
+}
+
+/// 打开一个可写入的文件
+pub fn open_file_for_write(path: &String) -> Box<dyn Write> {
+    return if path.eq("-") {
+        let f = stdout();
+        Box::new(f.lock())
+    } else {
+        let f = File::create(path);
+        Box::new(f.expect("error to open file"))
+    };
 }
