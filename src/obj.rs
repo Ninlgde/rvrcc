@@ -80,3 +80,34 @@ impl Obj {
         Self::Func { name, params, locals, body, type_, stack_size: 0 }
     }
 }
+
+#[derive(Clone)]
+pub struct VarScope {
+    // 变量域名称
+    name: String,
+    // 对应的变量
+    var: Rc<RefCell<Obj>>,
+}
+
+pub struct Scope {
+    vars: Vec<VarScope>,
+}
+
+impl Scope {
+    pub fn new() -> Self {
+        Self { vars: vec![] }
+    }
+
+    pub fn add_var(&mut self, name: String, var: Rc<RefCell<Obj>>) {
+        self.vars.insert(0, VarScope { name, var })
+    }
+
+    pub fn get_var(&self, name: &str) -> Option<Rc<RefCell<Obj>>> {
+        for scope in self.vars.to_vec() {
+            if name.eq(scope.name.as_str()) {
+                return Some(scope.var);
+            }
+        }
+        return None;
+    }
+}
