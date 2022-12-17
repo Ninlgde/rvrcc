@@ -1,6 +1,3 @@
-use std::fs::File;
-use std::io;
-use std::io::Read;
 use crate::{error_at, INPUT, FILE_NAME, Token, Type, slice_to_string, read_file};
 use crate::keywords::KEYWORDS;
 
