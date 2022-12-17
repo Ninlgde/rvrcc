@@ -179,6 +179,7 @@ impl<'a> Generator<'a> {
     }
 
     fn gen_stmt(&mut self, node: &Box<Node>) {
+        self.write_file(format!("  .loc 1 {}", node.get_token().get_line_no()));
         match node.as_ref() {
             // 生成for或while循环语句
             Node::For { init, inc, cond, then, .. } => {
@@ -275,7 +276,8 @@ impl<'a> Generator<'a> {
     }
 
     /// 生成表达式
-    fn gen_expr(&mut self, node: &Box<Node>) {
+    fn gen_expr(&mut self, node: &Box<Node>) {// .loc 文件编号 行号
+        self.write_file(format!("  .loc 1 {}", node.get_token().get_line_no()));
         match node.as_ref() {
             Node::Add { lhs, rhs, .. } => {
                 self.gen_lrhs(lhs.as_ref().unwrap(), rhs.as_ref().unwrap());
