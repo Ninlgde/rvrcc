@@ -6,6 +6,7 @@ rvrcc:
 # 测试标签，运行测试脚本
 test: rvrcc
 	./test.sh
+	./test-driver.sh
 
 # 清理标签，清理所有非源代码文件
 clean:
