@@ -9,6 +9,28 @@ const ARG_NAMES: [&str; 6] = ["a0", "a1", "a2", "a3", "a4", "a5"];
 
 pub fn codegen(program: &mut Vec<Rc<RefCell<Obj>>>) {
     assign_lvar_offsets(program);
+    // 生成数据
+    emit_data(program);
+    // 生成代码
+    emit_text(program);
+}
+
+fn emit_data(program: &mut Vec<Rc<RefCell<Obj>>>) {
+    for var in program {
+        let var = var.borrow();
+        if var.is_func { continue; }
+
+        print!("  # 数据段标签\n");
+        print!("  .data\n");
+        print!("  .globl {}\n", var.name);
+        print!("  # 全局变量{}\n", var.name);
+        print!("{}:\n", var.name);
+        print!("  # 零填充{}位\n", var.type_.get_size());
+        print!("  .zero {}\n", var.type_.get_size());
+    }
+}
+
+fn emit_text(program: &mut Vec<Rc<RefCell<Obj>>>) {
     for function in program {
         let function = function.borrow();
         if !function.is_func { continue; }
@@ -16,6 +38,7 @@ pub fn codegen(program: &mut Vec<Rc<RefCell<Obj>>>) {
         print!("\n  # 定义全局{}段\n", function.name);
         print!("  .globl {}\n", function.name);
 
+        print!("  # 代码段标签\n");
         print!("  .text\n");
         print!("# ====={}段开始===============\n", function.name);
         print!("# {}段标签\n", function.name);
@@ -323,11 +346,16 @@ fn gen_addr(node: &Box<Node>, depth: &mut usize) {
         // 变量
         Node::Var { var, .. } => {
             let var = var.as_ref().unwrap().borrow();
-            // 偏移量是相对于fp的
-            let offset = var.offset;
-            print!("  # 获取变量{}的栈内地址为{}(fp)\n", var.name,
-                   offset);
-            print!("  addi a0, fp, {}\n", offset);
+            if var.is_local {
+                // 偏移量是相对于fp的
+                let offset = var.offset;
+                print!("  # 获取局部变量{}的栈内地址为{}(fp)\n", var.name,
+                       offset);
+                print!("  addi a0, fp, {}\n", offset);
+            } else {
+                print!("  # 获取全局变量{}的地址\n", var.name);
+                print!("  la a0, {}\n", var.name);
+            }
         }
         // 解引用*
         Node::DeRef { unary, .. } => {
