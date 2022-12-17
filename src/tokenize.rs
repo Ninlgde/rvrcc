@@ -20,6 +20,8 @@ pub fn tokenize(path: String, input: String) -> Vec<Token> {
     let chars = input.clone().into_bytes();
     let mut pos = 0;
 
+    let mut line_no = 1usize;
+
     while pos < chars.len() {
         // 跳过行注释
         if starts_with(&chars, pos, "//") {
@@ -28,6 +30,7 @@ pub fn tokenize(path: String, input: String) -> Vec<Token> {
             loop {
                 let c = chars[pos] as char;
                 if c == '\n' {
+                    line_no += 1; // 单核注释 行号+1
                     break;
                 }
                 pos += 1;
@@ -40,12 +43,17 @@ pub fn tokenize(path: String, input: String) -> Vec<Token> {
             pos += 2;
             loop {
                 if pos + 2 >= chars.len() {
-                    error_at!(pos, "unclosed block comment")
+                    error_at!(line_no, pos, "unclosed block comment")
                 }
                 // 查找第一个"*/"的位置
                 if starts_with(&chars, pos, "*/") {
                     pos += 2; // maybe bug?
                     break;
+                }
+                // 统计多行测试里所有的回车
+                let c = chars[pos] as char;
+                if c == '\n' {
+                    line_no += 1;
                 }
                 pos += 1;
             }
@@ -53,6 +61,10 @@ pub fn tokenize(path: String, input: String) -> Vec<Token> {
         }
 
         let c = chars[pos] as char;
+        // 统计代码里的回车
+        if c == '\n' {
+            line_no += 1;
+        }
         let old_pos = pos;
         // 跳过所有空白符如：空格、回车
         if c.is_whitespace() {
@@ -66,7 +78,7 @@ pub fn tokenize(path: String, input: String) -> Vec<Token> {
             // 否则下述操作将使第一个Token的地址不在Head中。
             let val = strtol(&chars, &mut pos, 10) as i32;
             let t_str = slice_to_string(&chars, old_pos, pos);
-            let t = Token::Num { val, t_str, offset: old_pos };
+            let t = Token::Num { val, t_str, offset: old_pos, line_no };
             tokens.push(t);
             continue;
         }
@@ -77,7 +89,7 @@ pub fn tokenize(path: String, input: String) -> Vec<Token> {
             val.push('\0' as u8);
             let len = val.len();
             let type_ = Type::array_of(Type::new_char(), len);
-            let t = Token::Str { val, type_, offset: old_pos };
+            let t = Token::Str { val, type_, offset: old_pos, line_no };
             tokens.push(t);
             pos += 1; // 跳过"
             continue;
@@ -87,9 +99,9 @@ pub fn tokenize(path: String, input: String) -> Vec<Token> {
         if old_pos != pos {
             let t_str = slice_to_string(&chars, old_pos, pos);
             if KEYWORDS.contains(&&*t_str) {
-                tokens.push(Token::Keyword { t_str, offset: old_pos })
+                tokens.push(Token::Keyword { t_str, offset: old_pos, line_no })
             } else {
-                tokens.push(Token::Ident { t_str, offset: old_pos });
+                tokens.push(Token::Ident { t_str, offset: old_pos, line_no });
             }
             continue;
         }
@@ -98,16 +110,16 @@ pub fn tokenize(path: String, input: String) -> Vec<Token> {
         read_punct(&chars, &mut pos);
         if pos != old_pos {
             let t_str = slice_to_string(&chars, old_pos, pos);
-            tokens.push(Token::Punct { t_str, offset: old_pos });
+            tokens.push(Token::Punct { t_str, offset: old_pos, line_no });
             continue;
         }
 
         // 处理无法识别的字符
-        error_at!(pos, "invalid token");
+        error_at!(line_no, pos, "invalid token");
     }
 
     // 解析结束，增加一个EOF，表示终止符。
-    tokens.push(Token::Eof { offset: pos });
+    tokens.push(Token::Eof { offset: pos, line_no });
 
     // Head无内容，所以直接返回Next
     tokens
@@ -213,7 +225,7 @@ fn read_escaped_char(chars: &Vec<u8>, pos: &mut usize) -> char {
         *pos += 1;
         c = chars[*pos] as char;
         if !c.is_digit(16) {
-            error_at!(*pos, "invalid hex escape sequence");
+            error_at!(0, *pos, "invalid hex escape sequence");
             return '\0';
         }
 
@@ -251,7 +263,7 @@ fn string_literal_end(chars: &Vec<u8>, pos: &mut usize) {
             break;
         }
         if c == '\n' || c == '\0' {
-            error_at!(*pos, "unclosed string literal");
+            error_at!(0, *pos, "unclosed string literal");
             return;
         }
         if c == '\\' { // 遇到\\

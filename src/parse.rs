@@ -798,7 +798,7 @@ impl<'a> Parser<'a> {
 
         // ident args?
         match token {
-            Token::Ident { t_str, offset } => {
+            Token::Ident { t_str, offset, line_no } => {
                 // 函数调用
                 // args = "(" ")"
                 if self.tokens[pos + 1].equal("(") {
@@ -812,7 +812,7 @@ impl<'a> Parser<'a> {
                 if let Some(var) = obj {
                     node = Node::Var { token: nt, var: Some(var.clone()), type_: None };
                 } else {
-                    error_at!(*offset, "undefined variable");
+                    error_at!(*line_no, *offset, "undefined variable");
                     return None;
                 }
                 self.next();
@@ -824,7 +824,7 @@ impl<'a> Parser<'a> {
                 self.next();
                 return Some(node);
             }
-            Token::Num { val, t_str: _t_str, offset: _offset } => {
+            Token::Num { val, t_str: _t_str, offset: _offset, .. } => {
                 let node = Node::Num { token: nt, val: *val, type_: None };
                 self.next();
                 return Some(node);

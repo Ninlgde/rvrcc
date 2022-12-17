@@ -2,7 +2,7 @@ use core::fmt;
 use crate::{FILE_NAME, INPUT, slice_to_string, Token};
 
 /// 根据偏移位置计算出行号和行的起始与结束
-fn find_line_info(chars: &Vec<u8>, offset: usize) -> (usize, usize, usize) {
+fn find_line_info(chars: &Vec<u8>, s_line_no: usize, offset: usize) -> (usize, usize, usize) {
     let mut line_start = offset;
     let mut line_end = offset;
     let mut line_no = 1;
@@ -20,24 +20,29 @@ fn find_line_info(chars: &Vec<u8>, offset: usize) -> (usize, usize, usize) {
         }
         line_end += 1;
     }
-    // 计算行号
-    let mut i = 0usize;
-    while i < offset {
-        let c = chars[i] as char;
-        if c == '\n' {
-            line_no += 1;
+    if s_line_no == 0 {
+        // 计算行号
+        let mut i = 0usize;
+        while i < offset {
+            let c = chars[i] as char;
+            if c == '\n' {
+                line_no += 1;
+            }
+            i += 1;
         }
-        i += 1;
+    } else {
+        line_no = s_line_no;
     }
     // 返回 行号, 起始, 结束
     (line_no, line_start, line_end)
 }
 
 // 字符解析出错，并退出程序
-pub fn print_with_error(offset: usize, args: fmt::Arguments) {
+pub fn print_with_error(mut line_no: usize, offset: usize, args: fmt::Arguments) {
     let input = unsafe { INPUT.to_string().into_bytes() };
     let file_name = unsafe { FILE_NAME.to_string() };
-    let (line_no, line_start, line_end) = find_line_info(&input, offset);
+    let (n_line_no, line_start, line_end) = find_line_info(&input, line_no, offset);
+    line_no = if line_no == 0 { n_line_no } else { line_no };
 
     let file_lineno = format!("{}:{}: ", file_name, line_no);
     let line = slice_to_string(&input, line_start, line_end);
@@ -55,15 +60,15 @@ pub fn print_with_error(offset: usize, args: fmt::Arguments) {
 
 // Tok解析出错，并退出程序
 pub fn print_with_token_error(token: &Token, args: fmt::Arguments) {
-    print_with_error(token.get_offset(), args);
+    print_with_error(token.get_line_no(), token.get_offset(), args);
 }
 
 
 /// error at offset
 #[macro_export]
 macro_rules! error_at {
-    ($offset:expr, $fmt: literal $(, $($arg: tt)+)?) => {
-        $crate::error_print::print_with_error($offset, format_args!(concat!($fmt, "") $(, $($arg)+)?))
+    ($line_no:expr, $offset:expr, $fmt: literal $(, $($arg: tt)+)?) => {
+        $crate::error_print::print_with_error($line_no, $offset, format_args!(concat!($fmt, "") $(, $($arg)+)?))
     }
 }
 
