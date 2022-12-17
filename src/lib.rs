@@ -183,8 +183,7 @@ impl Obj {
 
     pub fn get_type(&self) -> &Box<Type> {
         match self {
-            Self::Var { type_, .. } => type_,
-            Self::Func { type_, .. } => type_,
+            Self::Var { type_, .. } | Self::Func { type_, .. } => type_,
         }
     }
 
@@ -208,75 +207,6 @@ impl Obj {
         Self::Func { name, params, locals, body, type_, stack_size: 0 }
     }
 }
-
-/// 变量 或 函数
-// #[derive(Clone)]
-// #[allow(dead_code)]
-// pub struct Obj {
-//     // 变量名
-//     name: String,
-//     // fp的偏移量
-//     offset: isize,
-//     // 类型
-//     type_: Box<Type>,
-//     // 方法参数
-//     params: Vec<Rc<RefCell<Obj>>>,
-//     // 函数体
-//     body: Option<Node>,
-//     // 本地变量
-//     locals: Vec<Rc<RefCell<Obj>>>,
-//     // 栈大小
-//     stack_size: isize,
-//     // 是否是函数
-//     is_func: bool,
-//     // 是 局部或全局 变量
-//     is_local: bool,
-// }
-//
-// impl Obj {
-//     /// 新增一个局部变量
-//     pub fn new_lvar(name: String, type_: Box<Type>) -> Self {
-//         Obj {
-//             name,
-//             offset: 0,
-//             type_,
-//             params: vec![],
-//             body: None,
-//             locals: vec![],
-//             stack_size: 0,
-//             is_func: false,
-//             is_local: true,
-//         }
-//     }
-//     /// 新增一个全局变量
-//     pub fn new_gvar(name: String, type_: Box<Type>) -> Self {
-//         Obj {
-//             name,
-//             offset: 0,
-//             type_,
-//             params: vec![],
-//             body: None,
-//             locals: vec![],
-//             stack_size: 0,
-//             is_func: false,
-//             is_local: false,
-//         }
-//     }
-//
-//     pub fn new_func(name: String, params: Vec<Rc<RefCell<Obj>>>, locals: Vec<Rc<RefCell<Obj>>>, body: Option<Node>, type_: Box<Type>) -> Self {
-//         Obj {
-//             name,
-//             offset: 0,
-//             type_,
-//             params,
-//             body,
-//             locals,
-//             stack_size: 0,
-//             is_func: true,
-//             is_local: false,
-//         }
-//     }
-// }
 
 // AST的节点种类
 #[derive(Clone)]
@@ -472,6 +402,15 @@ pub enum Node {
         // 类型
         type_: Option<Box<Type>>,
     },
+    // 语句表达式
+    StmtExpr {
+        // 对应的token,增加翻译阶段的报错信息
+        token: Token,
+        // 代码块
+        body: Vec<Node>,
+        // 类型
+        type_: Option<Box<Type>>,
+    },
     // 变量
     Var {
         // 对应的token,增加翻译阶段的报错信息
@@ -495,51 +434,60 @@ pub enum Node {
 impl Node {
     pub fn get_token(&self) -> &Token {
         match self {
-            Node::Add { token, .. } => token,
-            Node::Sub { token, .. } => token,
-            Node::Mul { token, .. } => token,
-            Node::Div { token, .. } => token,
-            Node::Neg { token, .. } => token,
-            Node::Eq { token, .. } => token,
-            Node::Ne { token, .. } => token,
-            Node::Lt { token, .. } => token,
-            Node::Le { token, .. } => token,
-            Node::Assign { token, .. } => token,
-            Node::Addr { token, .. } => token,
-            Node::DeRef { token, .. } => token,
-            Node::Return { token, .. } => token,
-            Node::If { token, .. } => token,
-            Node::For { token, .. } => token,
-            Node::Block { token, .. } => token,
-            Node::FuncCall { token, .. } => token,
-            Node::ExprStmt { token, .. } => token,
-            Node::Var { token, .. } => token,
-            Node::Num { token, .. } => token,
+            Node::Add { token, .. }
+            | Node::Sub { token, .. }
+            | Node::Mul { token, .. }
+            | Node::Div { token, .. }
+            | Node::Neg { token, .. }
+            | Node::Eq { token, .. }
+            | Node::Ne { token, .. }
+            | Node::Lt { token, .. }
+            | Node::Le { token, .. }
+            | Node::Assign { token, .. }
+            | Node::Addr { token, .. }
+            | Node::DeRef { token, .. }
+            | Node::Return { token, .. }
+            | Node::If { token, .. }
+            | Node::For { token, .. }
+            | Node::Block { token, .. }
+            | Node::FuncCall { token, .. }
+            | Node::ExprStmt { token, .. }
+            | Node::StmtExpr { token, .. }
+            | Node::Var { token, .. }
+            | Node::Num { token, .. } => token,
         }
     }
 
     pub fn get_type(&self) -> &Option<Box<Type>> {
         match self {
-            Node::Add { type_, .. } => type_,
-            Node::Sub { type_, .. } => type_,
-            Node::Mul { type_, .. } => type_,
-            Node::Div { type_, .. } => type_,
-            Node::Neg { type_, .. } => type_,
-            Node::Eq { type_, .. } => type_,
-            Node::Ne { type_, .. } => type_,
-            Node::Lt { type_, .. } => type_,
-            Node::Le { type_, .. } => type_,
-            Node::Assign { type_, .. } => type_,
-            Node::Addr { type_, .. } => type_,
-            Node::DeRef { type_, .. } => type_,
-            Node::Return { type_, .. } => type_,
-            Node::If { type_, .. } => type_,
-            Node::For { type_, .. } => type_,
-            Node::Block { type_, .. } => type_,
-            Node::FuncCall { type_, .. } => type_,
-            Node::ExprStmt { type_, .. } => type_,
-            Node::Var { type_, .. } => type_,
-            Node::Num { type_, .. } => type_,
+            Node::Add { type_, .. }
+            | Node::Sub { type_, .. }
+            | Node::Mul { type_, .. }
+            | Node::Div { type_, .. }
+            | Node::Neg { type_, .. }
+            | Node::Eq { type_, .. }
+            | Node::Ne { type_, .. }
+            | Node::Lt { type_, .. }
+            | Node::Le { type_, .. }
+            | Node::Assign { type_, .. }
+            | Node::Addr { type_, .. }
+            | Node::DeRef { type_, .. }
+            | Node::Return { type_, .. }
+            | Node::If { type_, .. }
+            | Node::For { type_, .. }
+            | Node::Block { type_, .. }
+            | Node::FuncCall { type_, .. }
+            | Node::ExprStmt { type_, .. }
+            | Node::StmtExpr { type_, .. }
+            | Node::Var { type_, .. }
+            | Node::Num { type_, .. } => type_,
+        }
+    }
+
+    pub fn get_body(&self) -> &Vec<Node> {
+        match self {
+            Node::Block { body, .. } => { body }
+            _ => panic!("get body from wrong node")
         }
     }
 }
