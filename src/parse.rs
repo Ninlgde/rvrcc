@@ -37,6 +37,7 @@ use std::rc::Rc;
 use crate::{error_token, Node, Obj, Token, Type, error_at};
 use crate::ctype::add_type;
 use crate::keywords::{KW_CHAR, KW_ELSE, KW_FOR, KW_IF, KW_INT, KW_RETURN, KW_SIZEOF, KW_WHILE};
+use crate::obj::Scope;
 
 pub fn parse(tokens: &Vec<Token>) -> Vec<Rc<RefCell<Obj>>> {
     let mut parser = Parser::new(tokens);
@@ -52,6 +53,8 @@ struct Parser<'a> {
     globals: Vec<Rc<RefCell<Obj>>>,
     // 唯一名称idx
     unique_idx: usize,
+    // 变量域
+    scopes: Vec<Scope>,
 }
 
 impl<'a> Parser<'a> {
@@ -62,13 +65,16 @@ impl<'a> Parser<'a> {
             locals: Vec::new(),
             globals: Vec::new(),
             unique_idx: 0,
+            scopes: vec![Scope::new()],
         }
     }
 
+    /// 获取当前游标和游标所指的token
     fn current(&self) -> (usize, &Token) {
         (self.cursor, &self.tokens[self.cursor])
     }
 
+    // 指向下一个
     fn next(&mut self) -> &mut Self {
         self.cursor += 1;
         self
@@ -108,9 +114,10 @@ impl<'a> Parser<'a> {
 
             base_type = self.declarator(base_type);
             let name = base_type.get_name().to_string();
-            let gvar = Obj::new_gvar(name, base_type.clone(), None);
+            let gvar = Rc::new(RefCell::new(Obj::new_gvar(name.to_string(), base_type.clone(), None)));
 
-            self.globals.push(Rc::new(RefCell::new(gvar)));
+            self.globals.push(gvar.clone());
+            self.push_scope(name.to_string(), gvar.clone());
         }
     }
 
@@ -123,6 +130,8 @@ impl<'a> Parser<'a> {
 
         // 本地变量清空
         self.locals.clear();
+        // 进入新的域
+        self.enter_scope();
         self.create_param_lvars(base_type.get_params());
         let params = self.locals.to_vec();
 
@@ -131,13 +140,19 @@ impl<'a> Parser<'a> {
         // compound_stmt
         let body = self.compound_stmt();
 
-        let function = Obj::new_func(
+        let function = Rc::new(RefCell::new(Obj::new_func(
             name,
             params,
             self.locals.to_vec(),
             body,
-            base_type);
-        self.globals.push(Rc::new(RefCell::new(function)));
+            base_type)));
+        // 结束当前域
+        self.leave_scope();
+        self.globals.push(function);
+    }
+
+    fn push_scope(&mut self, name: String, var: Rc<RefCell<Obj>>) {
+        self.scopes[0].add_var(name, var);
     }
 
     /// 将形参添加到locals
@@ -150,8 +165,9 @@ impl<'a> Parser<'a> {
     /// 创建新的左值
     fn new_lvar(&mut self, base_type: Box<Type>) -> Option<Rc<RefCell<Obj>>> {
         let name = base_type.get_name().to_string();
-        let nvar = Rc::new(RefCell::new(Obj::new_lvar(name, base_type)));
-        self.locals.push(Rc::clone(&nvar));
+        let nvar = Rc::new(RefCell::new(Obj::new_lvar(name.to_string(), base_type)));
+        self.locals.push(nvar.clone());
+        self.push_scope(name.to_string(), nvar.clone());
         Some(nvar)
     }
 
@@ -250,6 +266,9 @@ impl<'a> Parser<'a> {
         let (pos, _) = self.current();
         let nt = self.tokens[pos].clone();
 
+        // 进入新的域
+        self.enter_scope();
+
         // 逐句解析,并压入nodes
         // (declaration | stmt)* "}"
         loop {
@@ -271,6 +290,9 @@ impl<'a> Parser<'a> {
 
         let node = Node::Block { token: nt, body: nodes, type_: None };
         self.next();
+
+        // 结束当前的域
+        self.leave_scope();
 
         Some(node)
     }
@@ -300,16 +322,7 @@ impl<'a> Parser<'a> {
             // declarator
             // 声明获取到变量类型，包括变量名
             base_type = self.declarator(base_type);
-            let name = base_type.get_name();
-
-            // 判断变量是否加入过locals,如果加入了,则不重复加入
-            let obj = self.find_var(&name.to_string());
-            let nvar;
-            if let Some(var) = obj {
-                nvar = Rc::clone(var);
-            } else {
-                nvar = self.new_lvar(base_type.clone()).unwrap();
-            }
+            let nvar = self.new_lvar(base_type.clone()).unwrap();
 
             let (pos, token) = self.current();
             let nt = self.tokens[pos].clone();
@@ -319,7 +332,7 @@ impl<'a> Parser<'a> {
             }
 
             // 解析“=”后面的Token
-            let lhs = Some(Box::new(Node::Var { token: nt, var: Some(Rc::clone(&nvar)), type_: Some(base_type.clone()) }));
+            let lhs = Some(Box::new(Node::Var { token: nt, var: Some(nvar.clone()), type_: Some(base_type.clone()) }));
             // 解析递归赋值语句
             self.next();
             let rhs = Some(Box::new(self.assign().unwrap()));
@@ -829,8 +842,7 @@ impl<'a> Parser<'a> {
     fn func_call(&mut self, func_name: String) -> Option<Node> {
         let (pos, _) = self.current();
         let nt = self.tokens[pos].clone();
-        self.next(); // 跳到(
-        self.next(); // 调到参数或者)
+        self.next().next(); // 1. 跳到(  2.调到参数或者)
 
         let mut nodes = vec![];
 
@@ -852,16 +864,23 @@ impl<'a> Parser<'a> {
         return Some(node);
     }
 
-    fn find_var(&self, name: &String) -> Option<&Rc<RefCell<Obj>>> {
-        let r = self.locals.iter().find(|item| {
-            let i = item.borrow();
-            name.eq(i.get_name())
-        });
-        if r.is_some() { return r; }
-        self.globals.iter().find(|item| {
-            let i = item.borrow();
-            name.eq(i.get_name())
-        })
+    fn enter_scope(&mut self) {
+        let scope = Scope::new();
+        self.scopes.insert(0, scope);
+    }
+
+    fn leave_scope(&mut self) {
+        self.scopes.remove(0);
+    }
+
+    /// 通过名称，查找一个变量
+    fn find_var(&self, name: &String) -> Option<Rc<RefCell<Obj>>> {
+        for scope in self.scopes.iter() {
+            if let Some(var) = scope.get_var(name) {
+                return Some(var.clone());
+            }
+        }
+        return None;
     }
 
     fn skip(&mut self, s: &str) {
@@ -914,9 +933,10 @@ impl<'a> Parser<'a> {
     fn new_string_literal(&mut self, str_data: Vec<u8>, base_type: Box<Type>) -> Rc<RefCell<Obj>> {
         let name = format!(".L..{}", self.unique_idx);
         self.unique_idx += 1;
-        let gvar = Rc::new(RefCell::new(Obj::new_gvar(name, base_type, Some(str_data))));
+        let gvar = Rc::new(RefCell::new(Obj::new_gvar(name.to_string(), base_type, Some(str_data))));
         // 加入globals
         self.globals.push(gvar.clone());
+        self.push_scope(name.to_string(), gvar.clone());
         gvar
     }
 }
