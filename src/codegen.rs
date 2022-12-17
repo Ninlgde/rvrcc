@@ -17,97 +17,120 @@ pub fn codegen(program: &mut Vec<Rc<RefCell<Obj>>>) {
 
 fn emit_data(program: &mut Vec<Rc<RefCell<Obj>>>) {
     for var in program {
-        let var = var.borrow();
-        if var.is_func { continue; }
-
-        print!("  # 数据段标签\n");
-        print!("  .data\n");
-        print!("  .globl {}\n", var.name);
-        print!("  # 全局变量{}\n", var.name);
-        print!("{}:\n", var.name);
-        print!("  # 零填充{}位\n", var.type_.get_size());
-        print!("  .zero {}\n", var.type_.get_size());
+        let var = &*var.borrow();
+        match var {
+            Obj::Var { name, type_, init_data, .. } => {
+                print!("  # 数据段标签\n");
+                print!("  .data\n");
+                // 判断是否有初始值
+                if init_data.is_some() {
+                    print!("{}:\n", name);
+                    // 打印出字符串的内容，包括转义字符
+                    print!("  # 字符串字面量\n");
+                    let chars = init_data.as_ref().unwrap().clone().into_bytes();
+                    for i in chars {
+                        let c = i as char;
+                        if !c.is_ascii_control() {
+                            print!("  .byte {}\t# {}\n", i, c);
+                        } else {
+                            print!("  .byte {}\n", i);
+                        }
+                    }
+                } else {
+                    print!("  # 全局段{}\n", name);
+                    print!("  .globl {}\n", name);
+                    print!("{}:\n", name);
+                    print!("  # 全局变量零填充{}位\n", type_.get_size());
+                    print!("  .zero {}\n", type_.get_size());
+                }
+            }
+            _ => {}
+        }
     }
 }
 
 fn emit_text(program: &mut Vec<Rc<RefCell<Obj>>>) {
     for function in program.iter().rev() {
-        let function = function.borrow();
-        if !function.is_func { continue; }
-        // 声明一个全局main段，同时也是程序入口段
-        print!("\n  # 定义全局{}段\n", function.name);
-        print!("  .globl {}\n", function.name);
+        let function = &*function.borrow();
+        match function {
+            Obj::Func { name, body, params, stack_size, .. } => {
+                // 声明一个全局main段，同时也是程序入口段
+                print!("\n  # 定义全局{}段\n", name);
+                print!("  .globl {}\n", name);
 
-        print!("  # 代码段标签\n");
-        print!("  .text\n");
-        print!("# ====={}段开始===============\n", function.name);
-        print!("# {}段标签\n", function.name);
-        print!("{}:\n", function.name);
-        unsafe {
-            CURRENT_FUNCTION_NAME = function.name.to_string();
-        }
+                print!("  # 代码段标签\n");
+                print!("  .text\n");
+                print!("# ====={}段开始===============\n", name);
+                print!("# {}段标签\n", name);
+                print!("{}:\n", name);
+                unsafe {
+                    CURRENT_FUNCTION_NAME = name.to_string();
+                }
 
-        // 栈布局
-        //-------------------------------// sp
-        //              ra
-        //-------------------------------// ra = sp-8
-        //              fp
-        //-------------------------------// fp = sp-16
-        //             变量
-        //-------------------------------// sp = sp-16-StackSize
-        //           表达式计算
-        //-------------------------------//
+                // 栈布局
+                //-------------------------------// sp
+                //              ra
+                //-------------------------------// ra = sp-8
+                //              fp
+                //-------------------------------// fp = sp-16
+                //             变量
+                //-------------------------------// sp = sp-16-StackSize
+                //           表达式计算
+                //-------------------------------//
 
-        // Prologue, 前言
-        // 将ra寄存器压栈,保存ra的值
-        print!("  # 将ra寄存器压栈,保存ra的值\n");
-        print!("  addi sp, sp, -16\n");
-        print!("  sd ra, 8(sp)\n");
-        // 将fp压入栈中，保存fp的值
-        print!("  # 将fp压栈，fp属于“被调用者保存”的寄存器，需要恢复原值\n");
-        print!("  sd fp, 0(sp)\n");
-        // 将sp写入fp
-        print!("  # 将sp的值写入fp\n");
-        print!("  mv fp, sp\n");
+                // Prologue, 前言
+                // 将ra寄存器压栈,保存ra的值
+                print!("  # 将ra寄存器压栈,保存ra的值\n");
+                print!("  addi sp, sp, -16\n");
+                print!("  sd ra, 8(sp)\n");
+                // 将fp压入栈中，保存fp的值
+                print!("  # 将fp压栈，fp属于“被调用者保存”的寄存器，需要恢复原值\n");
+                print!("  sd fp, 0(sp)\n");
+                // 将sp写入fp
+                print!("  # 将sp的值写入fp\n");
+                print!("  mv fp, sp\n");
 
-        // 偏移量为实际变量所用的栈大小
-        print!("  # sp腾出StackSize大小的栈空间\n");
-        print!("  addi sp, sp, -{}\n", function.stack_size);
+                // 偏移量为实际变量所用的栈大小
+                print!("  # sp腾出StackSize大小的栈空间\n");
+                print!("  addi sp, sp, -{}\n", stack_size);
 
-        let mut i = 0;
-        for p in function.params.iter().rev() {
-            let p = p.borrow();
-            let size = p.type_.get_size();
-            print!("  # 将{}寄存器的值存入{}的栈地址\n", ARG_NAMES[i], p.name);
-            if size == 1 {
-                print!("  sb {}, {}(fp)\n", ARG_NAMES[i], p.offset);
-            } else {
-                print!("  sd {}, {}(fp)\n", ARG_NAMES[i], p.offset);
+                let mut i = 0;
+                for p in params.iter().rev() {
+                    let p = p.borrow();
+                    let size = p.get_type().get_size();
+                    print!("  # 将{}寄存器的值存入{}的栈地址\n", ARG_NAMES[i], p.get_name());
+                    if size == 1 {
+                        print!("  sb {}, {}(fp)\n", ARG_NAMES[i], p.get_offset());
+                    } else {
+                        print!("  sd {}, {}(fp)\n", ARG_NAMES[i], p.get_offset());
+                    }
+                    i += 1;
+                }
+
+                print!("# ====={}段主体===============\n", name);
+                gen_stmt(body.as_ref().unwrap());
+
+                // Epilogue，后语
+                // 输出return段标签
+                print!("# ====={}段结束===============\n", name);
+                print!("# return段标签\n");
+                print!(".L.return.{}:\n", name);
+                // 将fp的值改写回sp
+                print!("  # 将fp的值写回sp\n");
+                print!("  mv sp, fp\n");
+                // 将最早fp保存的值弹栈，恢复fp。
+                print!("  # 将最早fp保存的值弹栈，恢复fp和sp\n");
+                print!("  ld fp, 0(sp)\n");
+                // 将ra寄存器弹栈,恢复ra的值
+                print!("  # 将ra寄存器弹栈,恢复ra的值\n");
+                print!("  ld ra, 8(sp)\n");
+                print!("  addi sp, sp, 16\n");
+                // 返回
+                print!("  # 返回a0值给系统调用\n");
+                print!("  ret\n");
             }
-            i += 1;
+            _ => {}
         }
-
-        print!("# ====={}段主体===============\n", function.name);
-        gen_stmt(function.body.as_ref().unwrap());
-
-        // Epilogue，后语
-        // 输出return段标签
-        print!("# ====={}段结束===============\n", function.name);
-        print!("# return段标签\n");
-        print!(".L.return.{}:\n", function.name);
-        // 将fp的值改写回sp
-        print!("  # 将fp的值写回sp\n");
-        print!("  mv sp, fp\n");
-        // 将最早fp保存的值弹栈，恢复fp。
-        print!("  # 将最早fp保存的值弹栈，恢复fp和sp\n");
-        print!("  ld fp, 0(sp)\n");
-        // 将ra寄存器弹栈,恢复ra的值
-        print!("  # 将ra寄存器弹栈,恢复ra的值\n");
-        print!("  ld ra, 8(sp)\n");
-        print!("  addi sp, sp, 16\n");
-        // 返回
-        print!("  # 返回a0值给系统调用\n");
-        print!("  ret\n");
     }
 }
 
@@ -350,16 +373,20 @@ fn gen_addr(node: &Box<Node>, depth: &mut usize) {
     match node.as_ref() {
         // 变量
         Node::Var { var, .. } => {
-            let var = var.as_ref().unwrap().borrow();
-            if var.is_local {
-                // 偏移量是相对于fp的
-                let offset = var.offset;
-                print!("  # 获取局部变量{}的栈内地址为{}(fp)\n", var.name,
-                       offset);
-                print!("  addi a0, fp, {}\n", offset);
-            } else {
-                print!("  # 获取全局变量{}的地址\n", var.name);
-                print!("  la a0, {}\n", var.name);
+            let var = &*var.as_ref().unwrap().borrow();
+            match var {
+                Obj::Var { is_local, offset, name, .. } => {
+                    if *is_local {
+                        // 偏移量是相对于fp的
+                        print!("  # 获取局部变量{}的栈内地址为{}(fp)\n", name,
+                               offset);
+                        print!("  addi a0, fp, {}\n", offset);
+                    } else {
+                        print!("  # 获取全局变量{}的地址\n", name);
+                        print!("  la a0, {}\n", name);
+                    }
+                }
+                _ => {}
             }
         }
         // 解引用*
@@ -374,16 +401,20 @@ fn gen_addr(node: &Box<Node>, depth: &mut usize) {
 
 fn assign_lvar_offsets(program: &mut Vec<Rc<RefCell<Obj>>>) {
     for func in program {
-        let mut func = func.borrow_mut();
-        if !func.is_func { continue; }
-        let mut offset = 0;
-        for var in func.locals.iter().rev() {
-            let mut v = var.borrow_mut();
-            offset += v.type_.get_size() as isize;
-            v.offset = -offset;
-        }
+        let f = &mut *func.borrow_mut();
+        match f {
+            Obj::Func { locals, stack_size, .. } => {
+                let mut offset = 0;
+                for var in locals.iter().rev() {
+                    let mut v = var.borrow_mut();
+                    offset += v.get_type().get_size() as isize;
+                    v.set_offset(-offset);
+                }
 
-        func.stack_size = align_to(offset, 16);
+                *stack_size = align_to(offset, 16);
+            }
+            _ => {}
+        }
     }
 }
 

@@ -24,7 +24,7 @@
 //! mul = unary ("*" unary | "/" unary)*
 //! unary = ("+" | "-" | "*" | "&") unary | postfix
 //! postfix = primary ("[" expr "]")*
-//! primary = "(" expr ")" | "sizeof" unary | ident func-args? | num
+//! primary = "(" expr ")" | "sizeof" unary | ident func-args?| str | num
 //! func_call = ident "(" (assign ("," assign)*)? ")"
 
 use std::cell::RefCell;
@@ -45,6 +45,8 @@ struct Parser<'a> {
     locals: Vec<Rc<RefCell<Obj>>>,
     // 全局变量
     globals: Vec<Rc<RefCell<Obj>>>,
+    // 唯一名称idx
+    unique_idx: usize,
 }
 
 impl<'a> Parser<'a> {
@@ -54,6 +56,7 @@ impl<'a> Parser<'a> {
             cursor: 0,
             locals: Vec::new(),
             globals: Vec::new(),
+            unique_idx: 0,
         }
     }
 
@@ -99,7 +102,7 @@ impl<'a> Parser<'a> {
 
             base_type = self.declarator(base_type);
             let name = base_type.get_name().to_string();
-            let gvar = Obj::new_gvar(name, base_type.clone());
+            let gvar = Obj::new_gvar(name, base_type.clone(), None);
 
             self.globals.push(Rc::new(RefCell::new(gvar)));
         }
@@ -737,7 +740,7 @@ impl<'a> Parser<'a> {
     }
 
     /// 解析括号、数字、变量
-    /// primary = "(" expr ")" | "sizeof" unary | ident args? | num
+    /// primary = "(" expr ")" | "sizeof" unary | ident args?| str | num
     fn primary(&mut self) -> Option<Node> {
         // "(" expr ")"
         let (pos, token) = self.current();
@@ -777,6 +780,12 @@ impl<'a> Parser<'a> {
                     error_at!(*offset, "undefined variable");
                     return None;
                 }
+                self.next();
+                return Some(node);
+            }
+            Token::Str { val, type_, .. } => {
+                let var = self.new_string_literal(val.to_string(), type_.clone());
+                let node = Node::Var { token: nt, var: Some(var), type_: None };
                 self.next();
                 return Some(node);
             }
@@ -824,12 +833,12 @@ impl<'a> Parser<'a> {
     fn find_var(&self, name: &String) -> Option<&Rc<RefCell<Obj>>> {
         let r = self.locals.iter().find(|item| {
             let i = item.borrow();
-            i.name == *name
+            name.eq(i.get_name())
         });
         if r.is_some() { return r; }
         self.globals.iter().find(|item| {
             let i = item.borrow();
-            i.name == *name
+            name.eq(i.get_name())
         })
     }
 
@@ -878,5 +887,14 @@ impl<'a> Parser<'a> {
     fn is_type_name(&self) -> bool {
         let (_, token) = self.current();
         return token.equal(KW_INT) || token.equal(KW_CHAR);
+    }
+
+    fn new_string_literal(&mut self, str_data: String, base_type: Box<Type>) -> Rc<RefCell<Obj>> {
+        let name = format!(".L..{}", self.unique_idx);
+        self.unique_idx += 1;
+        let gvar = Rc::new(RefCell::new(Obj::new_gvar(name, base_type, Some(str_data))));
+        // 加入globals
+        self.globals.push(gvar.clone());
+        gvar
     }
 }
