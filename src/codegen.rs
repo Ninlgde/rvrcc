@@ -39,28 +39,28 @@ fn emit_data(program: &mut Vec<Rc<RefCell<Obj>>>) {
         let var = &*var.borrow();
         match var {
             Obj::Var { name, type_, init_data, .. } => {
-                print!("  # 数据段标签\n");
-                print!("  .data\n");
+                println!("  # 数据段标签");
+                println!("  .data");
                 // 判断是否有初始值
                 if init_data.is_some() {
-                    print!("{}:\n", name);
+                    println!("{}:", name);
                     // 打印出字符串的内容，包括转义字符
-                    print!("  # 字符串字面量\n");
+                    println!("  # 字符串字面量");
                     let chars = init_data.as_ref().unwrap();
                     for i in chars {
                         let c = *i as char;
                         if !c.is_ascii_control() {
-                            print!("  .byte {}\t# {}\n", i, c);
+                            println!("  .byte {}\t# {}", i, c);
                         } else {
-                            print!("  .byte {}\n", i);
+                            println!("  .byte {}", i);
                         }
                     }
                 } else {
-                    print!("  # 全局段{}\n", name);
-                    print!("  .globl {}\n", name);
-                    print!("{}:\n", name);
-                    print!("  # 全局变量零填充{}位\n", type_.get_size());
-                    print!("  .zero {}\n", type_.get_size());
+                    println!("  # 全局段{}", name);
+                    println!("  .globl {}", name);
+                    println!("{}:", name);
+                    println!("  # 全局变量零填充{}位", type_.get_size());
+                    println!("  .zero {}", type_.get_size());
                 }
             }
             _ => {}
@@ -74,14 +74,14 @@ fn emit_text(program: &mut Vec<Rc<RefCell<Obj>>>) {
         match function {
             Obj::Func { name, body, params, stack_size, .. } => {
                 // 声明一个全局main段，同时也是程序入口段
-                print!("\n  # 定义全局{}段\n", name);
-                print!("  .globl {}\n", name);
+                println!("\n  # 定义全局{}段", name);
+                println!("  .globl {}", name);
 
-                print!("  # 代码段标签\n");
-                print!("  .text\n");
-                print!("# ====={}段开始===============\n", name);
-                print!("# {}段标签\n", name);
-                print!("{}:\n", name);
+                println!("  # 代码段标签");
+                println!("  .text");
+                println!("# ====={}段开始===============", name);
+                println!("# {}段标签", name);
+                println!("{}:", name);
                 unsafe {
                     CURRENT_FUNCTION_NAME = name.to_string();
                 }
@@ -99,54 +99,54 @@ fn emit_text(program: &mut Vec<Rc<RefCell<Obj>>>) {
 
                 // Prologue, 前言
                 // 将ra寄存器压栈,保存ra的值
-                print!("  # 将ra寄存器压栈,保存ra的值\n");
-                print!("  addi sp, sp, -16\n");
-                print!("  sd ra, 8(sp)\n");
+                println!("  # 将ra寄存器压栈,保存ra的值");
+                println!("  addi sp, sp, -16");
+                println!("  sd ra, 8(sp)");
                 // 将fp压入栈中，保存fp的值
-                print!("  # 将fp压栈，fp属于“被调用者保存”的寄存器，需要恢复原值\n");
-                print!("  sd fp, 0(sp)\n");
+                println!("  # 将fp压栈，fp属于“被调用者保存”的寄存器，需要恢复原值");
+                println!("  sd fp, 0(sp)");
                 // 将sp写入fp
-                print!("  # 将sp的值写入fp\n");
-                print!("  mv fp, sp\n");
+                println!("  # 将sp的值写入fp");
+                println!("  mv fp, sp");
 
                 // 偏移量为实际变量所用的栈大小
-                print!("  # sp腾出StackSize大小的栈空间\n");
-                print!("  addi sp, sp, -{}\n", stack_size);
+                println!("  # sp腾出StackSize大小的栈空间");
+                println!("  addi sp, sp, -{}", stack_size);
 
                 let mut i = 0;
                 for p in params.iter().rev() {
                     let p = p.borrow();
                     let size = p.get_type().get_size();
-                    print!("  # 将{}寄存器的值存入{}的栈地址\n", ARG_NAMES[i], p.get_name());
+                    println!("  # 将{}寄存器的值存入{}的栈地址", ARG_NAMES[i], p.get_name());
                     if size == 1 {
-                        print!("  sb {}, {}(fp)\n", ARG_NAMES[i], p.get_offset());
+                        println!("  sb {}, {}(fp)", ARG_NAMES[i], p.get_offset());
                     } else {
-                        print!("  sd {}, {}(fp)\n", ARG_NAMES[i], p.get_offset());
+                        println!("  sd {}, {}(fp)", ARG_NAMES[i], p.get_offset());
                     }
                     i += 1;
                 }
 
-                print!("# ====={}段主体===============\n", name);
+                println!("# ====={}段主体===============", name);
                 gen_stmt(body.as_ref().unwrap());
 
                 // Epilogue，后语
                 // 输出return段标签
-                print!("# ====={}段结束===============\n", name);
-                print!("# return段标签\n");
-                print!(".L.return.{}:\n", name);
+                println!("# ====={}段结束===============", name);
+                println!("# return段标签");
+                println!(".L.return.{}:", name);
                 // 将fp的值改写回sp
-                print!("  # 将fp的值写回sp\n");
-                print!("  mv sp, fp\n");
+                println!("  # 将fp的值写回sp");
+                println!("  mv sp, fp");
                 // 将最早fp保存的值弹栈，恢复fp。
-                print!("  # 将最早fp保存的值弹栈，恢复fp和sp\n");
-                print!("  ld fp, 0(sp)\n");
+                println!("  # 将最早fp保存的值弹栈，恢复fp和sp");
+                println!("  ld fp, 0(sp)");
                 // 将ra寄存器弹栈,恢复ra的值
-                print!("  # 将ra寄存器弹栈,恢复ra的值\n");
-                print!("  ld ra, 8(sp)\n");
-                print!("  addi sp, sp, 16\n");
+                println!("  # 将ra寄存器弹栈,恢复ra的值");
+                println!("  ld ra, 8(sp)");
+                println!("  addi sp, sp, 16");
                 // 返回
-                print!("  # 返回a0值给系统调用\n");
-                print!("  ret\n");
+                println!("  # 返回a0值给系统调用");
+                println!("  ret");
             }
             _ => {}
         }
@@ -166,39 +166,39 @@ fn gen_stmt(node: &Node) {
                 c = COUNT;
                 COUNT += 1;
             }
-            print!("\n# =====循环语句{}===============\n", c);
+            println!("\n# =====循环语句{}===============", c);
             // 生成初始化语句
             if init.is_some() {
-                print!("\n# init语句{}\n", c);
+                println!("\n# init语句{}", c);
                 gen_stmt(init.as_ref().unwrap());
             }
             // 输出循环头部标签
-            print!("\n# 循环{}的.L.begin.{}段标签\n", c, c);
-            print!(".L.begin.{}:\n", c);
+            println!("\n# 循环{}的.L.begin.{}段标签", c, c);
+            println!(".L.begin.{}:", c);
             // 处理循环条件语句
-            print!("# cond表达式{}\n", c);
+            println!("# cond表达式{}", c);
             if cond.is_some() {
                 // 生成条件循环语句
                 gen_expr(cond.as_ref().unwrap(), &mut depth);
                 // 判断结果是否为0，为0则跳转到结束部分
-                print!("  # 若a0为0，则跳转到循环{}的.L.end.{}段\n", c, c);
-                print!("  beqz a0, .L.end.{}\n", c);
+                println!("  # 若a0为0，则跳转到循环{}的.L.end.{}段", c, c);
+                println!("  beqz a0, .L.end.{}", c);
             }
             // 生成循环体语句
-            print!("\n# then语句{}\n", c);
+            println!("\n# then语句{}", c);
             gen_stmt(then.as_ref().unwrap());
             // 处理循环递增语句
             if inc.is_some() {
                 // 生成循环递增语句
-                print!("\n# inc语句{}\n", c);
+                println!("\n# inc语句{}", c);
                 gen_expr(inc.as_ref().unwrap(), &mut depth);
             }
             // 跳转到循环头部
-            print!("  # 跳转到循环{}的.L.begin.{}段\n", c, c);
-            print!("  j .L.begin.{}\n", c);
+            println!("  # 跳转到循环{}的.L.begin.{}段", c, c);
+            println!("  j .L.begin.{}", c);
             // 输出循环尾部标签
-            print!("\n# 循环{}的.L.end.{}段标签\n", c, c);
-            print!(".L.end.{}:\n", c);
+            println!("\n# 循环{}的.L.end.{}段标签", c, c);
+            println!(".L.end.{}:", c);
         }
         // 生成if语句
         Node::If { cond, then, els, .. } => {
@@ -208,30 +208,30 @@ fn gen_stmt(node: &Node) {
                 c = COUNT;
                 COUNT += 1;
             }
-            print!("\n# =====分支语句{}==============\n", c);
+            println!("\n# =====分支语句{}==============", c);
             // 生成条件内语句
-            print!("\n# cond表达式{}\n", c);
+            println!("\n# cond表达式{}", c);
             gen_expr(cond.as_ref().unwrap(), &mut depth);
             // 判断结果是否为0，为0则跳转到else标签
-            print!("  # 若a0为0，则跳转到分支{}的.L.else.{}段\n", c, c);
-            print!("  beqz a0, .L.else.{}\n", c);
+            println!("  # 若a0为0，则跳转到分支{}的.L.else.{}段", c, c);
+            println!("  beqz a0, .L.else.{}", c);
             // 生成符合条件后的语句
-            print!("\n# then语句{}\n", c);
+            println!("\n# then语句{}", c);
             gen_stmt(then.as_ref().unwrap());
             // 执行完后跳转到if语句后面的语句
-            print!("  # 跳转到分支{}的.L.end.{}段\n", c, c);
-            print!("  j .L.end.{}\n", c);
+            println!("  # 跳转到分支{}的.L.end.{}段", c, c);
+            println!("  j .L.end.{}", c);
             // else代码块，else可能为空，故输出标签
-            print!("\n# else语句{}\n", c);
-            print!("# 分支{}的.L.else.{}段标签\n", c, c);
-            print!(".L.else.{}:\n", c);
+            println!("\n# else语句{}", c);
+            println!("# 分支{}的.L.else.{}段标签", c, c);
+            println!(".L.else.{}:", c);
             // 生成不符合条件后的语句
             if els.is_some() {
                 gen_stmt(els.as_ref().unwrap());
             }
             // 结束if语句，继续执行后面的语句
-            print!("\n# 分支{}的.L.end.{}段标签\n", c, c);
-            print!(".L.end.{}:\n", c);
+            println!("\n# 分支{}的.L.end.{}段标签", c, c);
+            println!(".L.end.{}:", c);
         }
         // 生成代码块，遍历代码块的语句vec
         Node::Block { body, .. } => {
@@ -245,13 +245,13 @@ fn gen_stmt(node: &Node) {
         }
         // 生成return语句
         Node::Return { unary, .. } => {
-            print!("# 返回语句\n");
+            println!("# 返回语句");
             gen_expr(unary.as_ref().unwrap(), &mut depth);
             // 无条件跳转语句，跳转到.L.return段
             // j offset是 jal x0, offset的别名指令
             unsafe {
-                print!("  # 跳转到.L.return.{}段\n", CURRENT_FUNCTION_NAME);
-                print!("  j .L.return.{}\n", CURRENT_FUNCTION_NAME);
+                println!("  # 跳转到.L.return.{}段", CURRENT_FUNCTION_NAME);
+                println!("  j .L.return.{}", CURRENT_FUNCTION_NAME);
             }
         }
         _ => {
@@ -267,66 +267,66 @@ fn gen_expr(node: &Box<Node>, depth: &mut usize) {
         Node::Add { lhs, rhs, .. } => {
             gen_lrhs(lhs.as_ref().unwrap(), rhs.as_ref().unwrap(), depth);
             // + a0=a0+a1
-            print!("  # a0+a1，结果写入a0\n");
-            print!("  add a0, a0, a1\n");
+            println!("  # a0+a1，结果写入a0");
+            println!("  add a0, a0, a1");
         }
         Node::Sub { lhs, rhs, .. } => {
             gen_lrhs(lhs.as_ref().unwrap(), rhs.as_ref().unwrap(), depth);
             // - a0=a0-a1
-            print!("  # a0-a1，结果写入a0\n");
-            print!("  sub a0, a0, a1\n");
+            println!("  # a0-a1，结果写入a0");
+            println!("  sub a0, a0, a1");
         }
         Node::Mul { lhs, rhs, .. } => {
             gen_lrhs(lhs.as_ref().unwrap(), rhs.as_ref().unwrap(), depth);
             // * a0=a0*a1
-            print!("  # a0×a1，结果写入a0\n");
-            print!("  mul a0, a0, a1\n");
+            println!("  # a0×a1，结果写入a0");
+            println!("  mul a0, a0, a1");
         }
         Node::Div { lhs, rhs, .. } => {
             gen_lrhs(lhs.as_ref().unwrap(), rhs.as_ref().unwrap(), depth);
             // / a0=a0/a1
-            print!("  # a0÷a1，结果写入a0\n");
-            print!("  div a0, a0, a1\n");
+            println!("  # a0÷a1，结果写入a0");
+            println!("  div a0, a0, a1");
         }
         // 对寄存器取反
         Node::Neg { unary, .. } => {
             gen_expr(unary.as_ref().unwrap(), depth);
             // neg a0, a0是sub a0, x0, a0的别名, 即a0=0-a0
-            print!("  # 对a0值进行取反\n");
-            print!("  neg a0, a0\n");
+            println!("  # 对a0值进行取反");
+            println!("  neg a0, a0");
         }
         Node::Eq { lhs, rhs, .. } => {
             gen_lrhs(lhs.as_ref().unwrap(), rhs.as_ref().unwrap(), depth);
             // a0=a0^a1，异或指令
-            print!("  # 判断是否a0=a1\n");
-            print!("  xor a0, a0, a1\n");
+            println!("  # 判断是否a0=a1");
+            println!("  xor a0, a0, a1");
             // a0==a1
             // a0=a0^a1, sltiu a0, a0, 1
             // 等于0则置1
-            print!("  seqz a0, a0\n");
+            println!("  seqz a0, a0");
         }
         Node::Ne { lhs, rhs, .. } => {
             gen_lrhs(lhs.as_ref().unwrap(), rhs.as_ref().unwrap(), depth);
             // a0=a0^a1，异或指令
-            print!("  # 判断是否a0≠a1\n");
-            print!("  xor a0, a0, a1\n");
+            println!("  # 判断是否a0≠a1");
+            println!("  xor a0, a0, a1");
             // a0!=a1
             // a0=a0^a1, sltu a0, x0, a0
             // 不等于0则置1
-            print!("  snez a0, a0\n");
+            println!("  snez a0, a0");
         }
         Node::Lt { lhs, rhs, .. } => {
             gen_lrhs(lhs.as_ref().unwrap(), rhs.as_ref().unwrap(), depth);
-            print!("  # 判断a0<a1\n");
-            print!("  slt a0, a0, a1\n");
+            println!("  # 判断a0<a1");
+            println!("  slt a0, a0, a1");
         }
         Node::Le { lhs, rhs, .. } => {
             gen_lrhs(lhs.as_ref().unwrap(), rhs.as_ref().unwrap(), depth);
             // a0<=a1等价于
             // a0=a1<a0, a0=a0^1
-            print!("  # 判断是否a0≤a1\n");
-            print!("  slt a0, a1, a0\n");
-            print!("  xori a0, a0, 1\n");
+            println!("  # 判断是否a0≤a1");
+            println!("  slt a0, a1, a0");
+            println!("  xori a0, a0, 1");
         }
         Node::Assign { lhs, rhs, type_, .. } => {
             // 左部是左值，保存值到的地址
@@ -354,8 +354,8 @@ fn gen_expr(node: &Box<Node>, depth: &mut usize) {
                 pop(ARG_NAMES[i], depth);
             }
 
-            print!("  # 调用{}函数\n", func_name);
-            print!("  call {}\n", func_name);
+            println!("  # 调用{}函数", func_name);
+            println!("  call {}", func_name);
         }
         Node::Addr { unary, .. } => {
             gen_addr(unary.as_ref().unwrap(), depth);
@@ -371,8 +371,8 @@ fn gen_expr(node: &Box<Node>, depth: &mut usize) {
         }
         // 加载数字到a0
         Node::Num { val, .. } => {
-            print!("  # 将{}加载到a0中\n", *val);
-            print!("  li a0, {}\n", *val);
+            println!("  # 将{}加载到a0中", *val);
+            println!("  li a0, {}", *val);
         }
         _ => {
             error_token!(node.as_ref().get_token(), "invalid expression")
@@ -402,12 +402,12 @@ fn gen_addr(node: &Box<Node>, depth: &mut usize) {
                 Obj::Var { is_local, offset, name, .. } => {
                     if *is_local {
                         // 偏移量是相对于fp的
-                        print!("  # 获取局部变量{}的栈内地址为{}(fp)\n", name,
+                        println!("  # 获取局部变量{}的栈内地址为{}(fp)", name,
                                offset);
-                        print!("  addi a0, fp, {}\n", offset);
+                        println!("  addi a0, fp, {}", offset);
                     } else {
-                        print!("  # 获取全局变量{}的地址\n", name);
-                        print!("  la a0, {}\n", name);
+                        println!("  # 获取全局变量{}的地址", name);
+                        println!("  la a0, {}", name);
                     }
                 }
                 _ => {}
@@ -428,17 +428,17 @@ fn gen_addr(node: &Box<Node>, depth: &mut usize) {
 /// 当前栈指针的地址就是sp，将a0的值压入栈
 /// 不使用寄存器存储的原因是因为需要存储的值的数量是变化的。
 fn push(depth: &mut usize) {
-    print!("  # 压栈，将a0的值存入栈顶\n");
-    print!("  addi sp, sp, -8\n");
-    print!("  sd a0, 0(sp)\n");
+    println!("  # 压栈，将a0的值存入栈顶");
+    println!("  addi sp, sp, -8");
+    println!("  sd a0, 0(sp)");
     *depth += 1;
 }
 
 /// 弹栈，将sp指向的地址的值，弹出到a1
 fn pop(reg: &str, depth: &mut usize) {
-    print!("  # 弹栈，将栈顶的值存入{}\n", reg);
-    print!("  ld {}, 0(sp)\n", reg);
-    print!("  addi sp, sp, 8\n");
+    println!("  # 弹栈，将栈顶的值存入{}", reg);
+    println!("  ld {}, 0(sp)", reg);
+    println!("  addi sp, sp, 8");
     *depth -= 1;
 }
 
@@ -450,22 +450,22 @@ fn load(type_: Box<Type>) {
         _ => {}
     }
 
-    print!("  # 读取a0中存放的地址，得到的值存入a0\n");
+    println!("  # 读取a0中存放的地址，得到的值存入a0");
     let size = type_.get_size();
     if size == 1 {
-        print!("  lb a0, 0(a0)\n");
+        println!("  lb a0, 0(a0)");
     } else {
-        print!("  ld a0, 0(a0)\n");
+        println!("  ld a0, 0(a0)");
     }
 }
 
 fn store(type_: Box<Type>, depth: &mut usize) {
     pop("a1", depth);
-    print!("  # 将a0的值，写入到a1中存放的地址\n");
+    println!("  # 将a0的值，写入到a1中存放的地址");
     let size = type_.get_size();
     if size == 1 {
-        print!("  sb a0, 0(a1)\n");
+        println!("  sb a0, 0(a1)");
     } else {
-        print!("  sd a0, 0(a1)\n");
+        println!("  sd a0, 0(a1)");
     }
 }
