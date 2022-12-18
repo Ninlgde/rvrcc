@@ -1,7 +1,7 @@
 //! AST parser
 //! program = (function_definition* | global-variable)*
 //! function_definition = declspec declarator "(" ")" "{" compound_stmt*
-//! declspec = "char" | "int" | struct_declare
+//! declspec = "char" | "int" | struct_declare | union_declare
 //! declarator = "*"* ident type_suffix
 //! type_suffix = "(" func_params | "[" num "]" type_suffix | ε
 //! func_params = (param ("," param)*)? ")"
@@ -24,7 +24,9 @@
 //! mul = unary ("*" unary | "/" unary)*
 //! unary = ("+" | "-" | "*" | "&") unary | postfix
 //! struct_members = (declspec declarator (","  declarator)* ";")*
-//! struct_declare = "{" struct_members
+//! struct_declare = struct_union_declare
+//! union_declare = struct_union_declare
+//! struct_union_declare = ident? ("{" struct_members)?
 //! postfix = primary ("[" expr "]" | "." ident)* | "->" ident)*
 //! primary =  "(" "{" stmt+ "}" ")"
 //!         | "(" expr ")"
@@ -36,7 +38,7 @@
 
 use crate::ctype::{add_type, TypeKind};
 use crate::keywords::{
-    KW_CHAR, KW_ELSE, KW_FOR, KW_IF, KW_INT, KW_RETURN, KW_SIZEOF, KW_STRUCT, KW_WHILE,
+    KW_CHAR, KW_ELSE, KW_FOR, KW_IF, KW_INT, KW_RETURN, KW_SIZEOF, KW_STRUCT, KW_UNION, KW_WHILE,
 };
 use crate::node::NodeKind;
 use crate::obj::{Member, Scope};
@@ -185,7 +187,7 @@ impl<'a> Parser<'a> {
         Some(nvar)
     }
 
-    /// declspec = "char" | "int" | struct_declare
+    /// declspec = "char" | "int" | struct_declare | union_declare
     /// declarator specifier
     fn declspec(&mut self) -> Box<Type> {
         let (_, token) = self.current();
@@ -203,6 +205,11 @@ impl<'a> Parser<'a> {
         if token.equal(KW_STRUCT) {
             self.next();
             return self.struct_declare();
+        }
+
+        if token.equal(KW_UNION) {
+            self.next();
+            return self.union_declare();
         }
 
         error_token!(token, "typename expected");
@@ -874,8 +881,51 @@ impl<'a> Parser<'a> {
         type_.members = members;
     }
 
-    /// struct_declare = "{" struct_members
+    /// struct_declare = struct_union_declare
     fn struct_declare(&mut self) -> Box<Type> {
+        let mut type_ = self.struct_union_declare();
+        type_.kind = TypeKind::Struct;
+
+        let mut offset: usize = 0;
+
+        for member in &mut type_.members {
+            let align = member.type_.as_ref().unwrap().align;
+            offset = align_to(offset as isize, align as isize) as usize;
+            member.set_offset(offset);
+            offset += member.type_.as_ref().unwrap().size;
+
+            if type_.align < align {
+                type_.align = align;
+            }
+        }
+        type_.size = align_to(offset as isize, type_.align as isize) as usize;
+
+        type_
+    }
+
+    /// union_declare = struct_union_declare
+    fn union_declare(&mut self) -> Box<Type> {
+        let mut type_ = self.struct_union_declare();
+        type_.kind = TypeKind::Union;
+
+        // 联合体需要设置为最大的对齐量与大小，变量偏移量都默认为0
+        for member in &mut type_.members {
+            let align = member.type_.as_ref().unwrap().align;
+            let size = member.type_.as_ref().unwrap().size;
+            if type_.align < align {
+                type_.align = align;
+            }
+            if type_.size < size {
+                type_.size = size;
+            }
+        }
+        type_.size = align_to(type_.size as isize, type_.align as isize) as usize;
+
+        type_
+    }
+
+    /// struct_union_declare = ident? ("{" struct_members)?
+    fn struct_union_declare(&mut self) -> Box<Type> {
         let mut tag = None;
         let (_, tag_token) = self.current();
         if tag_token.is_ident() {
@@ -893,31 +943,15 @@ impl<'a> Parser<'a> {
             return type_.unwrap();
         }
 
-        let mut type_ = Type::new_struct();
+        let mut type_ = Type::new_union_struct();
         self.next();
         self.struct_members(&mut type_);
         type_.align = 1;
-
-        let mut offset: usize = 0;
-
-        for member in &mut type_.members {
-            let align = member.type_.as_ref().unwrap().align;
-            offset = align_to(offset as isize, align as isize) as usize;
-            member.set_offset(offset);
-            offset += member.type_.as_ref().unwrap().size;
-
-            if type_.align < align {
-                type_.align = align;
-            }
-        }
-
-        type_.size = align_to(offset as isize, type_.align as isize) as usize;
 
         // 如果有名称就注册结构体类型
         if tag.is_some() {
             self.push_tag_scope(tag.unwrap().get_name(), type_.clone());
         }
-
         type_
     }
 
@@ -932,12 +966,13 @@ impl<'a> Parser<'a> {
         None
     }
 
+    /// 构建结构体成员的节点
     fn struct_ref(&mut self, mut lhs: Box<Node>) -> Option<Node> {
         add_type(lhs.as_mut());
 
         let lhs_t = lhs.get_type().as_ref().unwrap().clone();
-        if lhs_t.kind != TypeKind::Struct {
-            error_token!(&lhs.as_ref().token, "not a struct");
+        if lhs_t.kind != TypeKind::Struct && lhs_t.kind != TypeKind::Union {
+            error_token!(&lhs.as_ref().token, "not a struct nor a union");
         }
 
         let (pos, _) = self.current();
@@ -1181,7 +1216,10 @@ impl<'a> Parser<'a> {
 
     fn is_type_name(&self) -> bool {
         let (_, token) = self.current();
-        return token.equal(KW_INT) || token.equal(KW_CHAR) || token.equal(KW_STRUCT);
+        return token.equal(KW_INT)
+            || token.equal(KW_CHAR)
+            || token.equal(KW_STRUCT)
+            || token.equal(KW_UNION);
     }
 
     fn new_string_literal(&mut self, str_data: Vec<u8>, base_type: Box<Type>) -> Rc<RefCell<Obj>> {

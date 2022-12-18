@@ -10,6 +10,7 @@ pub enum TypeKind {
     Func,
     Array,
     Struct,
+    Union,
 }
 
 #[derive(Clone)]
@@ -79,7 +80,7 @@ impl Type {
         Box::new(type_)
     }
 
-    pub fn new_struct() -> Box<Self> {
+    pub fn new_union_struct() -> Box<Self> {
         let type_ = Self::new(TypeKind::Struct, 0, 0);
         Box::new(type_)
     }
