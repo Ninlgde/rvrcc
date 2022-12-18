@@ -114,7 +114,7 @@ pub struct VarScope {
     var: Rc<RefCell<Obj>>,
 }
 
-/// 结构体标签的域
+/// 结构体标签和联合体标签的域
 #[derive(Clone)]
 pub struct TagScope {
     // 域名称
