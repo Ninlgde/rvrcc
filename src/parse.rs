@@ -25,7 +25,7 @@
 //! unary = ("+" | "-" | "*" | "&") unary | postfix
 //! struct_members = (declspec declarator (","  declarator)* ";")*
 //! struct_declare = "{" struct_members
-//! postfix = primary ("[" expr "]" | "." ident)*
+//! postfix = primary ("[" expr "]" | "." ident)* | "->" ident)*
 //! primary =  "(" "{" stmt+ "}" ")"
 //!         | "(" expr ")"
 //!         | "sizeof" unary
@@ -948,7 +948,7 @@ impl<'a> Parser<'a> {
         Some(node)
     }
 
-    /// postfix = primary ("[" expr "]" | "." ident)*
+    /// postfix = primary ("[" expr "]" | "." ident)* | "->" ident)*
     fn postfix(&mut self) -> Option<Node> {
         // primary
         let mut node = self.primary().unwrap();
@@ -971,6 +971,15 @@ impl<'a> Parser<'a> {
 
             // "." ident
             if token.equal(".") {
+                self.next();
+                node = self.struct_ref(Box::new(node)).unwrap();
+                self.next();
+                continue;
+            }
+
+            // "->" ident
+            if token.equal("->") {
+                node = Node::new_unary(NodeKind::DeRef, Box::new(node), nt);
                 self.next();
                 node = self.struct_ref(Box::new(node)).unwrap();
                 self.next();
