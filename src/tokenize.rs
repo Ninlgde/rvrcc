@@ -178,12 +178,13 @@ fn starts_with(chars: &Vec<u8>, pos: usize, sub: &str) -> bool {
 }
 
 fn read_punct(chars: &Vec<u8>, pos: &mut usize) {
-    if starts_with(chars, *pos, "==")
-        || starts_with(chars, *pos, "!=")
-        || starts_with(chars, *pos, ">=")
-        || starts_with(chars, *pos, "<=")
-    {
-        *pos += 2;
+    let ops = vec!["==", "!=", "<=", ">=", "->"];
+
+    for op in ops {
+        if starts_with(chars, *pos, op) {
+            *pos += 2;
+            break;
+        }
     }
 
     let c = chars[*pos] as char;

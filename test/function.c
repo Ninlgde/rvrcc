@@ -26,9 +26,9 @@ int sub_char(char a, char b, char c) {
 }
 
 int fib(int x) {
-    if (x <= 1)
+    if (x<=1)
         return 1;
-    return fib(x - 1) + fib(x - 2);
+    return fib(x-1) + fib(x-2);
 }
 
 int main() {
@@ -37,12 +37,12 @@ int main() {
     // [26] 支持最多6个参数的函数定义
     ASSERT(8, add2(3, 5));
     ASSERT(2, sub2(5, 3));
-    ASSERT(21, add6(1, 2, 3, 4, 5, 6));
-    ASSERT(66, add6(1, 2, add6(3, 4, 5, 6, 7, 8), 9, 10, 11));
-    ASSERT(136, add6(1, 2, add6(3, add6(4, 5, 6, 7, 8, 9), 10, 11, 12, 13), 14, 15, 16));
+    ASSERT(21, add6(1,2,3,4,5,6));
+    ASSERT(66, add6(1,2,add6(3,4,5,6,7,8),9,10,11));
+    ASSERT(136, add6(1,2,add6(3,add6(4,5,6,7,8,9),10,11,12,13),14,15,16));
 
-    ASSERT(7, add2(3, 4));
-    ASSERT(1, sub2(4, 3));
+    ASSERT(7, add2(3,4));
+    ASSERT(1, sub2(4,3));
     ASSERT(55, fib(9));
 
     ASSERT(1, ({ sub_char(7, 3, 3); }));
