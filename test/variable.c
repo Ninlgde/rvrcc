@@ -176,6 +176,24 @@ int main() {
         x;
     }));
 
+    // [51] 对齐局部变量
+    ASSERT(15, ({
+        int x;
+        int y;
+        char z;
+        char *a = &y;
+        char *b = &z;
+        b - a;
+    }));
+    ASSERT(1, ({
+        int x;
+        char y;
+        int z;
+        char *a = &y;
+        char *b = &z;
+        b - a;
+    }));
+
     printf("OK\n");
     return 0;
 }
