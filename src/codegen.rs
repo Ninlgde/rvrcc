@@ -2,6 +2,8 @@ use std::cell::RefCell;
 use std::io::Write;
 use std::rc::Rc;
 use crate::{error_token, Node, Type, Obj, align_to};
+use crate::ctype::TypeKind;
+use crate::node::NodeKind;
 
 /// 形参name
 const ARG_NAMES: [&str; 6] = ["a0", "a1", "a2", "a3", "a4", "a5"];
@@ -180,38 +182,39 @@ impl<'a> Generator<'a> {
 
     fn gen_stmt(&mut self, node: &Box<Node>) {
         self.write_file(format!("  .loc 1 {}", node.get_token().get_line_no()));
-        match node.as_ref() {
+
+        match node.kind {
             // 生成for或while循环语句
-            Node::For { init, inc, cond, then, .. } => {
+            NodeKind::For => {
                 // 代码段计数
                 let c: u32 = self.counter;
                 self.counter += 1;
                 self.write_file(format!("\n# =====循环语句{}===============", c));
                 // 生成初始化语句
-                if init.is_some() {
+                if node.init.is_some() {
                     self.write_file(format!("\n# init语句{}", c));
-                    self.gen_stmt(init.as_ref().unwrap());
+                    self.gen_stmt(node.init.as_ref().unwrap());
                 }
                 // 输出循环头部标签
                 self.write_file(format!("\n# 循环{}的.L.begin.{}段标签", c, c));
                 self.write_file(format!(".L.begin.{}:", c));
                 // 处理循环条件语句
                 self.write_file(format!("# cond表达式{}", c));
-                if cond.is_some() {
+                if node.cond.is_some() {
                     // 生成条件循环语句
-                    self.gen_expr(cond.as_ref().unwrap());
+                    self.gen_expr(node.cond.as_ref().unwrap());
                     // 判断结果是否为0，为0则跳转到结束部分
                     self.write_file(format!("  # 若a0为0，则跳转到循环{}的.L.end.{}段", c, c));
                     self.write_file(format!("  beqz a0, .L.end.{}", c));
                 }
                 // 生成循环体语句
                 self.write_file(format!("\n# then语句{}", c));
-                self.gen_stmt(then.as_ref().unwrap());
+                self.gen_stmt(node.then.as_ref().unwrap());
                 // 处理循环递增语句
-                if inc.is_some() {
+                if node.inc.is_some() {
                     // 生成循环递增语句
                     self.write_file(format!("\n# inc语句{}", c));
-                    self.gen_expr(inc.as_ref().unwrap());
+                    self.gen_expr(node.inc.as_ref().unwrap());
                 }
                 // 跳转到循环头部
                 self.write_file(format!("  # 跳转到循环{}的.L.begin.{}段", c, c));
@@ -221,20 +224,20 @@ impl<'a> Generator<'a> {
                 self.write_file(format!(".L.end.{}:", c));
             }
             // 生成if语句
-            Node::If { cond, then, els, .. } => {
+            NodeKind::If => {
                 // 代码段计数
                 let c: u32 = self.counter;
                 self.counter += 1;
                 self.write_file(format!("\n# =====分支语句{}==============", c));
                 // 生成条件内语句
                 self.write_file(format!("\n# cond表达式{}", c));
-                self.gen_expr(cond.as_ref().unwrap());
+                self.gen_expr(node.cond.as_ref().unwrap());
                 // 判断结果是否为0，为0则跳转到else标签
                 self.write_file(format!("  # 若a0为0，则跳转到分支{}的.L.else.{}段", c, c));
                 self.write_file(format!("  beqz a0, .L.else.{}", c));
                 // 生成符合条件后的语句
                 self.write_file(format!("\n# then语句{}", c));
-                self.gen_stmt(then.as_ref().unwrap());
+                self.gen_stmt(node.then.as_ref().unwrap());
                 // 执行完后跳转到if语句后面的语句
                 self.write_file(format!("  # 跳转到分支{}的.L.end.{}段", c, c));
                 self.write_file(format!("  j .L.end.{}", c));
@@ -243,34 +246,34 @@ impl<'a> Generator<'a> {
                 self.write_file(format!("# 分支{}的.L.else.{}段标签", c, c));
                 self.write_file(format!(".L.else.{}:", c));
                 // 生成不符合条件后的语句
-                if els.is_some() {
-                    self.gen_stmt(els.as_ref().unwrap());
+                if node.els.is_some() {
+                    self.gen_stmt(node.els.as_ref().unwrap());
                 }
                 // 结束if语句，继续执行后面的语句
                 self.write_file(format!("\n# 分支{}的.L.end.{}段标签", c, c));
                 self.write_file(format!(".L.end.{}:", c));
             }
             // 生成代码块，遍历代码块的语句vec
-            Node::Block { body, .. } => {
-                for s in body.into_iter() {
+            NodeKind::Block => {
+                for s in &node.body {
                     self.gen_stmt(&Box::new(s.clone()));
                 }
             }
             // 生成表达式语句
-            Node::ExprStmt { unary, .. } => {
-                self.gen_expr(unary.as_ref().unwrap());
+            NodeKind::ExprStmt => {
+                self.gen_expr(node.lhs.as_ref().unwrap());
             }
             // 生成return语句
-            Node::Return { unary, .. } => {
+            NodeKind::Return => {
                 self.write_file(format!("# 返回语句"));
-                self.gen_expr(unary.as_ref().unwrap());
+                self.gen_expr(node.lhs.as_ref().unwrap());
                 // 无条件跳转语句，跳转到.L.return段
                 // j offset是 jal x0, offset的别名指令
                 self.write_file(format!("  # 跳转到.L.return.{}段", self.current_function_name));
                 self.write_file(format!("  j .L.return.{}", self.current_function_name));
             }
             _ => {
-                error_token!(node.get_token(), "invalid statement")
+                error_token!(&node.token, "invalid statement")
             }
         }
     }
@@ -278,87 +281,66 @@ impl<'a> Generator<'a> {
     /// 生成表达式
     fn gen_expr(&mut self, node: &Box<Node>) {// .loc 文件编号 行号
         self.write_file(format!("  .loc 1 {}", node.get_token().get_line_no()));
-        match node.as_ref() {
-            Node::Add { lhs, rhs, .. } => {
-                self.gen_lrhs(lhs.as_ref().unwrap(), rhs.as_ref().unwrap());
-                // + a0=a0+a1
-                self.write_file(format!("  # a0+a1，结果写入a0"));
-                self.write_file(format!("  add a0, a0, a1"));
-            }
-            Node::Sub { lhs, rhs, .. } => {
-                self.gen_lrhs(lhs.as_ref().unwrap(), rhs.as_ref().unwrap());
-                // - a0=a0-a1
-                self.write_file(format!("  # a0-a1，结果写入a0"));
-                self.write_file(format!("  sub a0, a0, a1"));
-            }
-            Node::Mul { lhs, rhs, .. } => {
-                self.gen_lrhs(lhs.as_ref().unwrap(), rhs.as_ref().unwrap());
-                // * a0=a0*a1
-                self.write_file(format!("  # a0×a1，结果写入a0"));
-                self.write_file(format!("  mul a0, a0, a1"));
-            }
-            Node::Div { lhs, rhs, .. } => {
-                self.gen_lrhs(lhs.as_ref().unwrap(), rhs.as_ref().unwrap());
-                // / a0=a0/a1
-                self.write_file(format!("  # a0÷a1，结果写入a0"));
-                self.write_file(format!("  div a0, a0, a1"));
+
+        match node.kind {
+            // 加载数字到a0
+            NodeKind::Num => {
+                self.write_file(format!("  # 将{}加载到a0中", node.val));
+                self.write_file(format!("  li a0, {}", node.val));
+                return;
             }
             // 对寄存器取反
-            Node::Neg { unary, .. } => {
-                self.gen_expr(unary.as_ref().unwrap());
+            NodeKind::Neg => {
+                self.gen_expr(node.lhs.as_ref().unwrap());
                 // neg a0, a0是sub a0, x0, a0的别名, 即a0=0-a0
                 self.write_file(format!("  # 对a0值进行取反"));
                 self.write_file(format!("  neg a0, a0"));
+                return;
             }
-            Node::Eq { lhs, rhs, .. } => {
-                self.gen_lrhs(lhs.as_ref().unwrap(), rhs.as_ref().unwrap());
-                // a0=a0^a1，异或指令
-                self.write_file(format!("  # 判断是否a0=a1"));
-                self.write_file(format!("  xor a0, a0, a1"));
-                // a0==a1
-                // a0=a0^a1, sltiu a0, a0, 1
-                // 等于0则置1
-                self.write_file(format!("  seqz a0, a0"));
+            // 变量
+            NodeKind::Var => {
+                // 计算出变量的地址，然后存入a0
+                self.gen_addr(node);
+                self.load(node.type_.as_ref().unwrap().clone());
+                return;
             }
-            Node::Ne { lhs, rhs, .. } => {
-                self.gen_lrhs(lhs.as_ref().unwrap(), rhs.as_ref().unwrap());
-                // a0=a0^a1，异或指令
-                self.write_file(format!("  # 判断是否a0≠a1"));
-                self.write_file(format!("  xor a0, a0, a1"));
-                // a0!=a1
-                // a0=a0^a1, sltu a0, x0, a0
-                // 不等于0则置1
-                self.write_file(format!("  snez a0, a0"));
+            // 解引用
+            NodeKind::DeRef => {
+                self.gen_expr(node.lhs.as_ref().unwrap());
+                self.load(node.type_.as_ref().unwrap().clone());
+                return;
             }
-            Node::Lt { lhs, rhs, .. } => {
-                self.gen_lrhs(lhs.as_ref().unwrap(), rhs.as_ref().unwrap());
-                self.write_file(format!("  # 判断a0<a1"));
-                self.write_file(format!("  slt a0, a0, a1"));
+            // 取地址
+            NodeKind::Addr => {
+                self.gen_addr(node.lhs.as_ref().unwrap());
+                return;
             }
-            Node::Le { lhs, rhs, .. } => {
-                self.gen_lrhs(lhs.as_ref().unwrap(), rhs.as_ref().unwrap());
-                // a0<=a1等价于
-                // a0=a1<a0, a0=a0^1
-                self.write_file(format!("  # 判断是否a0≤a1"));
-                self.write_file(format!("  slt a0, a1, a0"));
-                self.write_file(format!("  xori a0, a0, 1"));
-            }
-            Node::Assign { lhs, rhs, type_, .. } => {
+            // 赋值
+            NodeKind::Assign => {
                 // 左部是左值，保存值到的地址
-                self.gen_addr(lhs.as_ref().unwrap());
+                self.gen_addr(node.lhs.as_ref().unwrap());
                 self.push();
                 // 右部是右值，为表达式的值
-                self.gen_expr(rhs.as_ref().unwrap());
-                self.store(type_.as_ref().unwrap().clone());
+                self.gen_expr(node.rhs.as_ref().unwrap());
+                self.store(node.type_.as_ref().unwrap().clone());
+                return;
             }
-            Node::StmtExpr { body, .. } => {
-                for node in body {
+            // 语句表达式
+            NodeKind::StmtExpr => {
+                for node in &node.body {
                     self.gen_stmt(&Box::new(node.clone()));
                 }
+                return;
             }
-            Node::FuncCall { func_name, args, .. } => {
+            // 逗号
+            NodeKind::Comma => {
+                self.gen_expr(node.lhs.as_ref().unwrap());
+                self.gen_expr(node.rhs.as_ref().unwrap());
+                return;
+            }
+            NodeKind::FuncCall => {
                 let mut argc = 0;
-                for arg in args.to_vec() {
+                for arg in node.args.to_vec() {
                     self.gen_expr(&Box::new(arg));
                     self.push();
                     argc += 1;
@@ -369,30 +351,77 @@ impl<'a> Generator<'a> {
                     self.pop(ARG_NAMES[i]);
                 }
 
-                self.write_file(format!("  # 调用{}函数", func_name));
-                self.write_file(format!("  call {}", func_name));
+                self.write_file(format!("  # 调用{}函数", node.func_name));
+                self.write_file(format!("  call {}", node.func_name));
+                return;
             }
-            Node::Addr { unary, .. } => {
-                self.gen_addr(unary.as_ref().unwrap());
-            }
-            Node::DeRef { unary, type_, .. } => {
-                self.gen_expr(unary.as_ref().unwrap());
-                self.load(type_.as_ref().unwrap().clone());
-            }
-            Node::Var { var: _var, type_, .. } => {
-                // 计算出变量的地址，然后存入a0
-                self.gen_addr(node);
-                self.load(type_.as_ref().unwrap().clone());
-            }
-            // 加载数字到a0
-            Node::Num { val, .. } => {
-                self.write_file(format!("  # 将{}加载到a0中", *val));
-                self.write_file(format!("  li a0, {}", *val));
-            }
-            _ => {
-                error_token!(node.as_ref().get_token(), "invalid expression")
-            }
+            _ => {}
         }
+
+        self.gen_lrhs(node.lhs.as_ref().unwrap(), node.rhs.as_ref().unwrap());
+
+        match node.kind {
+            NodeKind::Add => {
+                // + a0=a0+a1
+                self.write_file(format!("  # a0+a1，结果写入a0"));
+                self.write_file(format!("  add a0, a0, a1"));
+                return;
+            }
+            NodeKind::Sub => {
+                // - a0=a0-a1
+                self.write_file(format!("  # a0-a1，结果写入a0"));
+                self.write_file(format!("  sub a0, a0, a1"));
+                return;
+            }
+            NodeKind::Mul => {
+                // * a0=a0*a1
+                self.write_file(format!("  # a0×a1，结果写入a0"));
+                self.write_file(format!("  mul a0, a0, a1"));
+                return;
+            }
+            NodeKind::Div => {
+                // / a0=a0/a1
+                self.write_file(format!("  # a0÷a1，结果写入a0"));
+                self.write_file(format!("  div a0, a0, a1"));
+                return;
+            }
+            NodeKind::Eq => {
+                // a0=a0^a1，异或指令
+                self.write_file(format!("  # 判断是否a0=a1"));
+                self.write_file(format!("  xor a0, a0, a1"));
+                // a0==a1
+                // a0=a0^a1, sltiu a0, a0, 1
+                // 等于0则置1
+                self.write_file(format!("  seqz a0, a0"));
+                return;
+            }
+            NodeKind::Ne => {
+                // a0=a0^a1，异或指令
+                self.write_file(format!("  # 判断是否a0≠a1"));
+                self.write_file(format!("  xor a0, a0, a1"));
+                // a0!=a1
+                // a0=a0^a1, sltu a0, x0, a0
+                // 不等于0则置1
+                self.write_file(format!("  snez a0, a0"));
+                return;
+            }
+            NodeKind::Lt => {
+                self.write_file(format!("  # 判断a0<a1"));
+                self.write_file(format!("  slt a0, a0, a1"));
+                return;
+            }
+            NodeKind::Le => {
+                // a0<=a1等价于
+                // a0=a1<a0, a0=a0^1
+                self.write_file(format!("  # 判断是否a0≤a1"));
+                self.write_file(format!("  slt a0, a1, a0"));
+                self.write_file(format!("  xori a0, a0, 1"));
+                return;
+            }
+            _ => {}
+        }
+
+        error_token!(node.as_ref().get_token(), "invalid expression")
     }
 
 
@@ -409,32 +438,33 @@ impl<'a> Generator<'a> {
     /// 计算给定节点的绝对地址
     /// 如果报错，说明节点不在内存中
     fn gen_addr(&mut self, node: &Box<Node>) {
-        match node.as_ref() {
+        if node.kind == NodeKind::Var {
             // 变量
-            Node::Var { var, .. } => {
-                let var = &*var.as_ref().unwrap().borrow();
-                match var {
-                    Obj::Var { is_local, offset, name, .. } => {
-                        if *is_local {
-                            // 偏移量是相对于fp的
-                            self.write_file(format!("  # 获取局部变量{}的栈内地址为{}(fp)", name,
-                                                    offset));
-                            self.write_file(format!("  addi a0, fp, {}", offset));
-                        } else {
-                            self.write_file(format!("  # 获取全局变量{}的地址", name));
-                            self.write_file(format!("  la a0, {}", name));
-                        }
+            let var = &node.var;
+            let var = &*var.as_ref().unwrap().borrow();
+            match var {
+                Obj::Var { is_local, offset, name, .. } => {
+                    if *is_local {
+                        // 偏移量是相对于fp的
+                        self.write_file(format!("  # 获取局部变量{}的栈内地址为{}(fp)", name,
+                                                offset));
+                        self.write_file(format!("  addi a0, fp, {}", offset));
+                    } else {
+                        self.write_file(format!("  # 获取全局变量{}的地址", name));
+                        self.write_file(format!("  la a0, {}", name));
                     }
-                    _ => {}
                 }
+                _ => {}
             }
+        } else if node.kind == NodeKind::DeRef {
             // 解引用*
-            Node::DeRef { unary, .. } => {
-                self.gen_expr(unary.as_ref().unwrap());
-            }
-            _ => {
-                error_token!(node.as_ref().get_token(), "not an lvalue")
-            }
+            self.gen_expr(node.lhs.as_ref().unwrap());
+        } else if node.kind == NodeKind::Comma {
+            // 逗号
+            self.gen_expr(node.lhs.as_ref().unwrap());
+            self.gen_addr(node.rhs.as_ref().unwrap());
+        } else {
+            error_token!(node.as_ref().get_token(), "not an lvalue")
         }
     }
 
@@ -458,11 +488,8 @@ impl<'a> Generator<'a> {
     }
 
     fn load(&mut self, type_: Box<Type>) {
-        match *type_ {
-            Type::Array { .. } => {
-                return;
-            }
-            _ => {}
+        if type_.kind == TypeKind::Array {
+            return;
         }
 
         self.write_file(format!("  # 读取a0中存放的地址，得到的值存入a0"));
