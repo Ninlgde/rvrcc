@@ -40,7 +40,7 @@ use crate::keywords::{
 };
 use crate::node::NodeKind;
 use crate::obj::{Member, Scope};
-use crate::{error_at, error_token, Node, Obj, Token, Type};
+use crate::{align_to, error_at, error_token, Node, Obj, Token, Type};
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -876,15 +876,22 @@ impl<'a> Parser<'a> {
 
         let mut type_ = Type::new_struct();
         self.struct_members(&mut type_);
+        type_.align = 1;
 
-        let mut offset = 0;
+        let mut offset: usize = 0;
 
         for member in &mut type_.members {
+            let align = member.type_.as_ref().unwrap().align;
+            offset = align_to(offset as isize, align as isize) as usize;
             member.set_offset(offset);
             offset += member.type_.as_ref().unwrap().size;
+
+            if type_.align < align {
+                type_.align = align;
+            }
         }
 
-        type_.size = offset;
+        type_.size = align_to(offset as isize, type_.align as isize) as usize;
 
         type_
     }

@@ -19,6 +19,8 @@ pub struct Type {
     pub name: String,
     // 大小, sizeof返回的值
     pub size: usize,
+    // 对齐
+    pub align: usize,
     // 指向的类型
     base: Option<Box<Type>>,
     // 返回的类型
@@ -32,11 +34,12 @@ pub struct Type {
 }
 
 impl Type {
-    pub fn new(kind: TypeKind, size: usize) -> Self {
+    pub fn new(kind: TypeKind, size: usize, align: usize) -> Self {
         Self {
             kind,
             name: String::new(),
             size,
+            align,
             base: None,
             return_type: None,
             params: vec![],
@@ -46,23 +49,23 @@ impl Type {
     }
 
     pub fn new_int() -> Box<Self> {
-        let type_ = Self::new(TypeKind::Int, 8);
+        let type_ = Self::new(TypeKind::Int, 8, 8);
         Box::new(type_)
     }
 
     pub fn new_char() -> Box<Self> {
-        let type_ = Self::new(TypeKind::Char, 1);
+        let type_ = Self::new(TypeKind::Char, 1, 1);
         Box::new(type_)
     }
 
     pub fn pointer_to(base: Box<Type>) -> Box<Self> {
-        let mut type_ = Self::new(TypeKind::Ptr, 8);
+        let mut type_ = Self::new(TypeKind::Ptr, 8, 8);
         type_.base = Some(base);
         Box::new(type_)
     }
 
     pub fn func_type(return_type: Box<Type>, params: Vec<Type>) -> Box<Self> {
-        let mut type_ = Self::new(TypeKind::Func, 8);
+        let mut type_ = Self::new(TypeKind::Func, 8, 8);
         type_.return_type = Some(return_type);
         type_.params = params;
         Box::new(type_)
@@ -70,14 +73,14 @@ impl Type {
 
     pub fn array_of(base: Box<Type>, len: usize) -> Box<Self> {
         let size = base.get_size() * len;
-        let mut type_ = Self::new(TypeKind::Array, size);
+        let mut type_ = Self::new(TypeKind::Array, size, base.align);
         type_.base = Some(base);
         type_.len = len;
         Box::new(type_)
     }
 
     pub fn new_struct() -> Box<Self> {
-        let type_ = Self::new(TypeKind::Struct, 0);
+        let type_ = Self::new(TypeKind::Struct, 0, 0);
         Box::new(type_)
     }
 
