@@ -1,5 +1,5 @@
-use crate::{error_at, INPUT, FILE_NAME, Token, Type, slice_to_string, read_file};
 use crate::keywords::KEYWORDS;
+use crate::{error_at, read_file, slice_to_string, Token, Type, FILE_NAME, INPUT};
 
 /// 对文件的终结符解析
 pub fn tokenize_file(path: String) -> Vec<Token> {
@@ -78,7 +78,12 @@ pub fn tokenize(path: String, input: String) -> Vec<Token> {
             // 否则下述操作将使第一个Token的地址不在Head中。
             let val = strtol(&chars, &mut pos, 10) as i32;
             let t_str = slice_to_string(&chars, old_pos, pos);
-            let t = Token::Num { val, t_str, offset: old_pos, line_no };
+            let t = Token::Num {
+                val,
+                t_str,
+                offset: old_pos,
+                line_no,
+            };
             tokens.push(t);
             continue;
         }
@@ -89,7 +94,12 @@ pub fn tokenize(path: String, input: String) -> Vec<Token> {
             val.push('\0' as u8);
             let len = val.len();
             let type_ = Type::array_of(Type::new_char(), len);
-            let t = Token::Str { val, type_, offset: old_pos, line_no };
+            let t = Token::Str {
+                val,
+                type_,
+                offset: old_pos,
+                line_no,
+            };
             tokens.push(t);
             pos += 1; // 跳过"
             continue;
@@ -99,9 +109,17 @@ pub fn tokenize(path: String, input: String) -> Vec<Token> {
         if old_pos != pos {
             let t_str = slice_to_string(&chars, old_pos, pos);
             if KEYWORDS.contains(&&*t_str) {
-                tokens.push(Token::Keyword { t_str, offset: old_pos, line_no })
+                tokens.push(Token::Keyword {
+                    t_str,
+                    offset: old_pos,
+                    line_no,
+                })
             } else {
-                tokens.push(Token::Ident { t_str, offset: old_pos, line_no });
+                tokens.push(Token::Ident {
+                    t_str,
+                    offset: old_pos,
+                    line_no,
+                });
             }
             continue;
         }
@@ -110,7 +128,11 @@ pub fn tokenize(path: String, input: String) -> Vec<Token> {
         read_punct(&chars, &mut pos);
         if pos != old_pos {
             let t_str = slice_to_string(&chars, old_pos, pos);
-            tokens.push(Token::Punct { t_str, offset: old_pos, line_no });
+            tokens.push(Token::Punct {
+                t_str,
+                offset: old_pos,
+                line_no,
+            });
             continue;
         }
 
@@ -119,7 +141,10 @@ pub fn tokenize(path: String, input: String) -> Vec<Token> {
     }
 
     // 解析结束，增加一个EOF，表示终止符。
-    tokens.push(Token::Eof { offset: pos, line_no });
+    tokens.push(Token::Eof {
+        offset: pos,
+        line_no,
+    });
 
     // Head无内容，所以直接返回Next
     tokens
@@ -156,7 +181,8 @@ fn read_punct(chars: &Vec<u8>, pos: &mut usize) {
     if starts_with(chars, *pos, "==")
         || starts_with(chars, *pos, "!=")
         || starts_with(chars, *pos, ">=")
-        || starts_with(chars, *pos, "<=") {
+        || starts_with(chars, *pos, "<=")
+    {
         *pos += 2;
     }
 
@@ -241,16 +267,16 @@ fn read_escaped_char(chars: &Vec<u8>, pos: &mut usize) -> char {
 
     *pos += 1;
     match c {
-        'a' => 7 as char,       // 响铃（警报）
-        'b' => 8 as char,       // 退格
-        't' => 9 as char,       // 水平制表符，tab
-        'n' => 10 as char,      // 换行
-        'v' => 11 as char,      // 垂直制表符
-        'f' => 12 as char,      // 换页
-        'r' => 13 as char,      // 回车
+        'a' => 7 as char,  // 响铃（警报）
+        'b' => 8 as char,  // 退格
+        't' => 9 as char,  // 水平制表符，tab
+        'n' => 10 as char, // 换行
+        'v' => 11 as char, // 垂直制表符
+        'f' => 12 as char, // 换页
+        'r' => 13 as char, // 回车
         // 属于GNU C拓展
-        'e' => 27 as char,      // 转义符
-        _ => c                  // 默认将原字符返回
+        'e' => 27 as char, // 转义符
+        _ => c,            // 默认将原字符返回
     }
 }
 
@@ -266,7 +292,8 @@ fn string_literal_end(chars: &Vec<u8>, pos: &mut usize) {
             error_at!(0, *pos, "unclosed string literal");
             return;
         }
-        if c == '\\' { // 遇到\\
+        if c == '\\' {
+            // 遇到\\
             *pos += 1;
         }
         *pos += 1;

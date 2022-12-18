@@ -1,9 +1,9 @@
+use crate::ctype::TypeKind;
+use crate::node::NodeKind;
+use crate::{align_to, error_token, Node, Obj, Type};
 use std::cell::RefCell;
 use std::io::Write;
 use std::rc::Rc;
-use crate::{error_token, Node, Type, Obj, align_to};
-use crate::ctype::TypeKind;
-use crate::node::NodeKind;
 
 /// 形参name
 const ARG_NAMES: [&str; 6] = ["a0", "a1", "a2", "a3", "a4", "a5"];
@@ -40,14 +40,18 @@ impl<'a> Generator<'a> {
 
     fn write_file(&mut self, mut args: String) {
         args.push('\n');
-        self.write_file.write(args.as_ref()).expect("write file got error");
+        self.write_file
+            .write(args.as_ref())
+            .expect("write file got error");
     }
 
     fn assign_lvar_offsets(&mut self) {
         for func in self.program.into_iter() {
             let f = &mut *func.borrow_mut();
             match f {
-                Obj::Func { locals, stack_size, .. } => {
+                Obj::Func {
+                    locals, stack_size, ..
+                } => {
                     let mut offset = 0;
                     for var in locals.iter().rev() {
                         let mut v = var.borrow_mut();
@@ -66,7 +70,12 @@ impl<'a> Generator<'a> {
         for var in self.program.to_vec().iter() {
             let var = &*var.borrow();
             match var {
-                Obj::Var { name, type_, init_data, .. } => {
+                Obj::Var {
+                    name,
+                    type_,
+                    init_data,
+                    ..
+                } => {
                     self.write_file(format!("  # 数据段标签"));
                     self.write_file(format!("  .data"));
                     // 判断是否有初始值
@@ -100,7 +109,13 @@ impl<'a> Generator<'a> {
         for function in self.program.to_vec().iter().rev() {
             let function = &*function.borrow_mut();
             match function {
-                Obj::Func { name, body, params, stack_size, .. } => {
+                Obj::Func {
+                    name,
+                    body,
+                    params,
+                    stack_size,
+                    ..
+                } => {
                     // 声明一个全局main段，同时也是程序入口段
                     self.write_file(format!("\n  # 定义全局{}段", name));
                     self.write_file(format!("  .globl {}", name));
@@ -129,7 +144,9 @@ impl<'a> Generator<'a> {
                     self.write_file(format!("  addi sp, sp, -16"));
                     self.write_file(format!("  sd ra, 8(sp)"));
                     // 将fp压入栈中，保存fp的值
-                    self.write_file(format!("  # 将fp压栈，fp属于“被调用者保存”的寄存器，需要恢复原值"));
+                    self.write_file(format!(
+                        "  # 将fp压栈，fp属于“被调用者保存”的寄存器，需要恢复原值"
+                    ));
                     self.write_file(format!("  sd fp, 0(sp)"));
                     // 将sp写入fp
                     self.write_file(format!("  # 将sp的值写入fp"));
@@ -143,11 +160,23 @@ impl<'a> Generator<'a> {
                     for p in params.iter().rev() {
                         let p = p.borrow();
                         let size = p.get_type().get_size();
-                        self.write_file(format!("  # 将{}寄存器的值存入{}的栈地址", ARG_NAMES[i], p.get_name()));
+                        self.write_file(format!(
+                            "  # 将{}寄存器的值存入{}的栈地址",
+                            ARG_NAMES[i],
+                            p.get_name()
+                        ));
                         if size == 1 {
-                            self.write_file(format!("  sb {}, {}(fp)", ARG_NAMES[i], p.get_offset()));
+                            self.write_file(format!(
+                                "  sb {}, {}(fp)",
+                                ARG_NAMES[i],
+                                p.get_offset()
+                            ));
                         } else {
-                            self.write_file(format!("  sd {}, {}(fp)", ARG_NAMES[i], p.get_offset()));
+                            self.write_file(format!(
+                                "  sd {}, {}(fp)",
+                                ARG_NAMES[i],
+                                p.get_offset()
+                            ));
                         }
                         i += 1;
                     }
@@ -269,7 +298,10 @@ impl<'a> Generator<'a> {
                 self.gen_expr(node.lhs.as_ref().unwrap());
                 // 无条件跳转语句，跳转到.L.return段
                 // j offset是 jal x0, offset的别名指令
-                self.write_file(format!("  # 跳转到.L.return.{}段", self.current_function_name));
+                self.write_file(format!(
+                    "  # 跳转到.L.return.{}段",
+                    self.current_function_name
+                ));
                 self.write_file(format!("  j .L.return.{}", self.current_function_name));
             }
             _ => {
@@ -279,7 +311,8 @@ impl<'a> Generator<'a> {
     }
 
     /// 生成表达式
-    fn gen_expr(&mut self, node: &Box<Node>) {// .loc 文件编号 行号
+    fn gen_expr(&mut self, node: &Box<Node>) {
+        // .loc 文件编号 行号
         self.write_file(format!("  .loc 1 {}", node.get_token().get_line_no()));
 
         match node.kind {
@@ -298,7 +331,7 @@ impl<'a> Generator<'a> {
                 return;
             }
             // 变量
-            NodeKind::Var => {
+            NodeKind::Var | NodeKind::Member => {
                 // 计算出变量的地址，然后存入a0
                 self.gen_addr(node);
                 self.load(node.type_.as_ref().unwrap().clone());
@@ -424,7 +457,6 @@ impl<'a> Generator<'a> {
         error_token!(node.as_ref().get_token(), "invalid expression")
     }
 
-
     fn gen_lrhs(&mut self, lhs: &Box<Node>, rhs: &Box<Node>) {
         // 递归到最右节点
         self.gen_expr(rhs);
@@ -443,11 +475,18 @@ impl<'a> Generator<'a> {
             let var = &node.var;
             let var = &*var.as_ref().unwrap().borrow();
             match var {
-                Obj::Var { is_local, offset, name, .. } => {
+                Obj::Var {
+                    is_local,
+                    offset,
+                    name,
+                    ..
+                } => {
                     if *is_local {
                         // 偏移量是相对于fp的
-                        self.write_file(format!("  # 获取局部变量{}的栈内地址为{}(fp)", name,
-                                                offset));
+                        self.write_file(format!(
+                            "  # 获取局部变量{}的栈内地址为{}(fp)",
+                            name, offset
+                        ));
                         self.write_file(format!("  addi a0, fp, {}", offset));
                     } else {
                         self.write_file(format!("  # 获取全局变量{}的地址", name));
@@ -463,6 +502,13 @@ impl<'a> Generator<'a> {
             // 逗号
             self.gen_expr(node.lhs.as_ref().unwrap());
             self.gen_addr(node.rhs.as_ref().unwrap());
+        } else if node.kind == NodeKind::Member {
+            // 逗号
+            self.gen_addr(node.lhs.as_ref().unwrap());
+            self.write_file(format!("  # 计算成员变量的地址偏移量"));
+            let offset = node.member.as_ref().unwrap().offset;
+            self.write_file(format!("  li t0, {}", offset));
+            self.write_file(format!("  add a0, a0, t0"));
         } else {
             error_token!(node.as_ref().get_token(), "not an lvalue")
         }

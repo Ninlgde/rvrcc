@@ -1,6 +1,6 @@
+use crate::{Node, Type};
 use std::cell::RefCell;
 use std::rc::Rc;
-use crate::{Node, Type};
 
 #[derive(Clone)]
 pub enum Obj {
@@ -36,14 +36,14 @@ impl Obj {
     pub fn get_offset(&self) -> isize {
         match self {
             Self::Var { offset, .. } => *offset,
-            _ => 0
+            _ => 0,
         }
     }
 
     pub fn set_offset(&mut self, of: isize) {
         match self {
             Self::Var { offset, .. } => *offset = of,
-            _ => ()
+            _ => (),
         }
     }
 
@@ -61,11 +61,22 @@ impl Obj {
     }
 
     pub fn is_func(&self) -> bool {
-        matches!(self, Self::Func {..})
+        matches!(self, Self::Func { .. })
     }
 
-    pub fn new_var(name: String, type_: Box<Type>, is_local: bool, init_data: Option<Vec<u8>>) -> Self {
-        Self::Var { name, type_, is_local, init_data, offset: 0 }
+    pub fn new_var(
+        name: String,
+        type_: Box<Type>,
+        is_local: bool,
+        init_data: Option<Vec<u8>>,
+    ) -> Self {
+        Self::Var {
+            name,
+            type_,
+            is_local,
+            init_data,
+            offset: 0,
+        }
     }
 
     pub fn new_lvar(name: String, type_: Box<Type>) -> Self {
@@ -76,8 +87,21 @@ impl Obj {
         Self::new_var(name, type_, false, init_data)
     }
 
-    pub fn new_func(name: String, params: Vec<Rc<RefCell<Obj>>>, locals: Vec<Rc<RefCell<Obj>>>, body: Option<Node>, type_: Box<Type>) -> Self {
-        Self::Func { name, params, locals, body, type_, stack_size: 0 }
+    pub fn new_func(
+        name: String,
+        params: Vec<Rc<RefCell<Obj>>>,
+        locals: Vec<Rc<RefCell<Obj>>>,
+        body: Option<Node>,
+        type_: Box<Type>,
+    ) -> Self {
+        Self::Func {
+            name,
+            params,
+            locals,
+            body,
+            type_,
+            stack_size: 0,
+        }
     }
 }
 
@@ -109,5 +133,29 @@ impl Scope {
             }
         }
         return None;
+    }
+}
+
+#[derive(Clone)]
+pub struct Member {
+    // 名称
+    pub(crate) name: String,
+    // 类型
+    pub(crate) type_: Option<Box<Type>>,
+    // 偏移量
+    pub(crate) offset: usize,
+}
+
+impl Member {
+    pub fn new(name: String, type_: Option<Box<Type>>) -> Self {
+        Self {
+            name,
+            type_,
+            offset: 0,
+        }
+    }
+
+    pub fn set_offset(&mut self, offset: usize) {
+        self.offset = offset
     }
 }
