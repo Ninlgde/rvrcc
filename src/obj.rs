@@ -105,6 +105,7 @@ impl Obj {
     }
 }
 
+/// 局部和全局变量的域
 #[derive(Clone)]
 pub struct VarScope {
     // 变量域名称
@@ -113,21 +114,54 @@ pub struct VarScope {
     var: Rc<RefCell<Obj>>,
 }
 
+/// 结构体标签的域
+#[derive(Clone)]
+pub struct TagScope {
+    // 域名称
+    name: String,
+    // 域类型
+    var: Box<Type>,
+}
+
+// C有两个域：变量域，结构体标签域
 pub struct Scope {
+    /// 指向当前域内的变量
     vars: Vec<VarScope>,
+    /// 指向当前域内的结构体标签
+    tags: Vec<TagScope>,
 }
 
 impl Scope {
     pub fn new() -> Self {
-        Self { vars: vec![] }
+        Self {
+            vars: vec![],
+            tags: vec![],
+        }
     }
 
+    /// 添加一个var
     pub fn add_var(&mut self, name: String, var: Rc<RefCell<Obj>>) {
         self.vars.insert(0, VarScope { name, var })
     }
 
+    /// 找到对应的var
     pub fn get_var(&self, name: &str) -> Option<Rc<RefCell<Obj>>> {
         for scope in self.vars.to_vec() {
+            if name.eq(scope.name.as_str()) {
+                return Some(scope.var);
+            }
+        }
+        return None;
+    }
+
+    /// 添加一个tag
+    pub fn add_tag(&mut self, name: String, type_: Box<Type>) {
+        self.tags.push(TagScope { name, var: type_ })
+    }
+
+    /// 找到对应的tag
+    pub fn get_tag(&self, name: &str) -> Option<Box<Type>> {
+        for scope in self.tags.to_vec() {
             if name.eq(scope.name.as_str()) {
                 return Some(scope.var);
             }
