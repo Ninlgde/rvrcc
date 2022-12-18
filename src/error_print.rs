@@ -1,5 +1,5 @@
+use crate::{slice_to_string, Token, FILE_NAME, INPUT};
 use core::fmt;
-use crate::{FILE_NAME, INPUT, slice_to_string, Token};
 
 /// 根据偏移位置计算出行号和行的起始与结束
 fn find_line_info(chars: &Vec<u8>, s_line_no: usize, offset: usize) -> (usize, usize, usize) {
@@ -63,7 +63,6 @@ pub fn print_with_token_error(token: &Token, args: fmt::Arguments) {
     print_with_error(token.get_line_no(), token.get_offset(), args);
 }
 
-
 /// error at offset
 #[macro_export]
 macro_rules! error_at {
@@ -71,7 +70,6 @@ macro_rules! error_at {
         $crate::error_print::print_with_error($line_no, $offset, format_args!(concat!($fmt, "") $(, $($arg)+)?))
     }
 }
-
 
 /// error token
 #[macro_export]

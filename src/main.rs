@@ -1,25 +1,10 @@
+use rvrcc::{codegen, open_file_for_write, parse, tokenize_file};
 use std::env;
 use std::io::Write;
 use std::process::exit;
-use rvrcc::{codegen, open_file_for_write, parse, tokenize_file};
 
 fn main() {
-    // debug use
-//     let path = "main.c";
-//     let input = "int main() {
-//     return sub_char(7, 3, 3);
-// }
-//
-// int sub_char(char a, char b, char c)
-// {
-//     return a-b-d;
-// }
-// ";
-//     use rvrcc::tokenize;
-//     let tokens = tokenize(path.to_string(), input.to_string());
     let args: Vec<String> = env::args().collect();
-
-    // let args = vec!["-o".to_string(), "test.c".to_string(), "-".to_string(), "aaaa".to_string()];
 
     let (input_path, output_path) = parse_args(args);
 
@@ -29,7 +14,10 @@ fn main() {
 
     let mut program = parse(&tokens);
 
-    write_file(&mut file, format!(".file 1 \"{}\"\n", input_path.to_string()).as_str());
+    write_file(
+        &mut file,
+        format!(".file 1 \"{}\"\n", input_path.to_string()).as_str(),
+    );
     codegen(&mut program, file);
 }
 

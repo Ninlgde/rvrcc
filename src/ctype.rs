@@ -1,16 +1,18 @@
-use crate::{error_token, Node};
 use crate::node::NodeKind;
+use crate::obj::Member;
+use crate::{error_token, Node};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub enum TypeKind {
     Int,
     Char,
     Ptr,
     Func,
     Array,
+    Struct,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone)]
 pub struct Type {
     pub kind: TypeKind,
     // 名称
@@ -25,6 +27,8 @@ pub struct Type {
     params: Vec<Type>,
     // 数组长度, 元素总个数
     len: usize,
+    // 结构体
+    pub members: Vec<Member>,
 }
 
 impl Type {
@@ -37,6 +41,7 @@ impl Type {
             return_type: None,
             params: vec![],
             len: 0,
+            members: vec![],
         }
     }
 
@@ -68,6 +73,11 @@ impl Type {
         let mut type_ = Self::new(TypeKind::Array, size);
         type_.base = Some(base);
         type_.len = len;
+        Box::new(type_)
+    }
+
+    pub fn new_struct() -> Box<Self> {
+        let type_ = Self::new(TypeKind::Struct, 0);
         Box::new(type_)
     }
 
@@ -112,146 +122,6 @@ impl Type {
     }
 }
 
-// #[derive(Debug, Clone, PartialEq, Eq)]
-// pub enum Type {
-//     // int 整型
-//     Int {
-//         // 名称
-//         name: String,
-//         // 大小, sizeof返回的值
-//         size: usize,
-//     },
-//     // char 字符
-//     Char {
-//         // 名称
-//         name: String,
-//         // 大小, sizeof返回的值
-//         size: usize,
-//     },
-//     // 指针类型
-//     Ptr {
-//         // 名称
-//         name: String,
-//         // 大小, sizeof返回的值
-//         size: usize,
-//         // 指向的类型
-//         base: Option<Box<Type>>,
-//     },
-//     Func {
-//         // 名称
-//         name: String,
-//         // 大小, sizeof返回的值
-//         size: usize,
-//         // 返回的类型
-//         return_type: Option<Box<Type>>,
-//         // 形参
-//         params: Vec<Type>,
-//     },
-//     Array {
-//         // 名称
-//         name: String,
-//         // 大小, sizeof返回的值
-//         size: usize,
-//         // 指向的类型
-//         base: Option<Box<Type>>,
-//         // 数组长度, 元素总个数
-//         len: usize,
-//     },
-// }
-//
-// impl Type {
-//     pub fn is_int(&self) -> bool {
-//         matches!(self, Type::Int {..}) || matches!(self, Type::Char {..})
-//     }
-//
-//     pub fn has_base(&self) -> bool {
-//         matches!(self, Type::Ptr {..}) || matches!(self, Type::Array {..})
-//     }
-//
-//     pub fn is_func(&self) -> bool {
-//         matches!(self, Type::Func {..})
-//     }
-//
-//     pub fn get_name(&self) -> &str {
-//         match self {
-//             Type::Int { name, .. } => name,
-//             Type::Char { name, .. } => name,
-//             Type::Ptr { name, .. } => name,
-//             Type::Func { name, .. } => name,
-//             Type::Array { name, .. } => name,
-//         }
-//     }
-//
-//     pub fn set_name(&mut self, s: String) {
-//         match self {
-//             Type::Int { name, .. } => *name = s,
-//             Type::Char { name, .. } => *name = s,
-//             Type::Ptr { name, .. } => *name = s,
-//             Type::Func { name, .. } => *name = s,
-//             Type::Array { name, .. } => *name = s,
-//         }
-//     }
-//
-//     pub fn get_size(&self) -> usize {
-//         match self {
-//             Type::Int { size, .. } => *size,
-//             Type::Char { size, .. } => *size,
-//             Type::Ptr { size, .. } => *size,
-//             Type::Func { size, .. } => *size,
-//             Type::Array { size, .. } => *size,
-//         }
-//     }
-//
-//     pub fn get_base_size(&self) -> usize {
-//         match self {
-//             Type::Ptr { base, .. }
-//             | Type::Array { base, .. } => {
-//                 base.as_ref().unwrap().get_size()
-//             }
-//             _ => {
-//                 0
-//             }
-//         }
-//     }
-//
-//     pub fn add_param(&mut self, param: Type) {
-//         match self {
-//             Type::Func { params, .. } => {
-//                 params.insert(0, param);
-//             }
-//             _ => ()
-//         }
-//     }
-//
-//     pub fn get_params(&self) -> Vec<Type> {
-//         match self {
-//             Type::Func { params, .. } => params.to_vec(),
-//             _ => panic!("get params for error type")
-//         }
-//     }
-//
-//     pub fn new_int() -> Box<Self> {
-//         Box::new(Type::Int { name: "".to_string(), size: 8 })
-//     }
-//
-//     pub fn new_char() -> Box<Self> {
-//         Box::new(Type::Char { name: "".to_string(), size: 1 })
-//     }
-//
-//     pub fn pointer_to(base: Box<Type>) -> Box<Self> {
-//         Box::new(Type::Ptr { name: String::new(), size: 8, base: Some(base) })
-//     }
-//
-//     pub fn func_type(return_type: Box<Type>, params: Vec<Type>) -> Box<Self> {
-//         Box::new(Type::Func { name: String::new(), size: 8, return_type: Some(return_type), params })
-//     }
-//
-//     pub fn array_of(base: Box<Type>, len: usize) -> Box<Self> {
-//         let size = base.get_size() * len;
-//         Box::new(Type::Array { name: String::new(), size, base: Some(base), len })
-//     }
-// }
-
 pub fn add_type(node: &mut Node) {
     // 判断 节点类型已经有值，那么就直接返回
     if node.get_type().is_some() {
@@ -288,11 +158,7 @@ pub fn add_type(node: &mut Node) {
     }
 
     match node.kind {
-        NodeKind::Add
-        | NodeKind::Sub
-        | NodeKind::Mul
-        | NodeKind::Div
-        | NodeKind::Neg => {
+        NodeKind::Add | NodeKind::Sub | NodeKind::Mul | NodeKind::Div | NodeKind::Neg => {
             node.type_ = node.lhs.as_ref().unwrap().type_.clone();
         }
         NodeKind::Assign => {
@@ -319,8 +185,18 @@ pub fn add_type(node: &mut Node) {
         NodeKind::Comma => {
             node.type_ = node.rhs.as_ref().unwrap().type_.clone();
         }
+        NodeKind::Member => {
+            node.type_ = node.member.as_ref().unwrap().type_.clone();
+        }
         NodeKind::Addr => {
-            let t = node.lhs.as_ref().unwrap().get_type().as_ref().unwrap().clone();
+            let t = node
+                .lhs
+                .as_ref()
+                .unwrap()
+                .get_type()
+                .as_ref()
+                .unwrap()
+                .clone();
             if t.kind == TypeKind::Array {
                 node.type_ = Some(Type::pointer_to(t.base.unwrap()));
             } else {
@@ -328,7 +204,14 @@ pub fn add_type(node: &mut Node) {
             }
         }
         NodeKind::DeRef => {
-            let t = node.lhs.as_ref().unwrap().get_type().as_ref().unwrap().clone();
+            let t = node
+                .lhs
+                .as_ref()
+                .unwrap()
+                .get_type()
+                .as_ref()
+                .unwrap()
+                .clone();
             if t.has_base() {
                 node.type_ = Some(t.base.unwrap());
             } else {
@@ -341,7 +224,10 @@ pub fn add_type(node: &mut Node) {
             if last.kind == NodeKind::ExprStmt {
                 node.type_ = last.lhs.as_ref().unwrap().type_.clone();
             } else {
-                error_token!(&node.token, "statement expression returning void is not supported");
+                error_token!(
+                    &node.token,
+                    "statement expression returning void is not supported"
+                );
             }
         }
         _ => {}

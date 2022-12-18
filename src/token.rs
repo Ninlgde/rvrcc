@@ -1,7 +1,7 @@
 use crate::Type;
 
 /// token
-#[derive(Debug, Eq, PartialEq, Clone)]
+#[derive(Clone)]
 pub enum Token {
     Ident {
         // token 名
@@ -83,8 +83,10 @@ impl Token {
 
     pub fn at_eof(&self) -> bool {
         match self {
-            Self::Eof { offset: _offset, .. } => true,
-            _ => false
+            Self::Eof {
+                offset: _offset, ..
+            } => true,
+            _ => false,
         }
     }
 
@@ -92,8 +94,9 @@ impl Token {
         match self {
             Token::Punct { t_str, .. } => t_str.eq(s),
             Token::Keyword { t_str, .. } => t_str.eq(s),
-            Token::Num { val: _val, t_str, .. } => t_str.eq(s),
-            _ => false
+            Token::Ident { t_str, .. } => t_str.eq(s),
+            Token::Num { t_str, .. } => t_str.eq(s),
+            _ => false,
         }
     }
 }
