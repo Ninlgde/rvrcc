@@ -165,6 +165,10 @@ impl<'a> Parser<'a> {
         self.scopes[0].add_var(name, var);
     }
 
+    fn push_tag_scope(&mut self, name: String, type_: Box<Type>) {
+        self.scopes[0].add_tag(name, type_);
+    }
+
     /// 将形参添加到locals
     fn create_param_lvars(&mut self, params: Vec<Type>) {
         for param in params.iter() {
@@ -872,9 +876,25 @@ impl<'a> Parser<'a> {
 
     /// struct_declare = "{" struct_members
     fn struct_declare(&mut self) -> Box<Type> {
-        self.skip("{");
+        let mut tag = None;
+        let (_, tag_token) = self.current();
+        if tag_token.is_ident() {
+            tag = Some(tag_token.clone());
+            self.next();
+        }
+
+        let (_, token) = self.current();
+        if tag.is_some() && !token.equal("{") {
+            let type_ = self.find_tag(&tag.as_ref().unwrap().get_name().to_string());
+            if type_.is_none() {
+                error_token!(&tag.unwrap(), "unknown struct type");
+                unreachable!()
+            }
+            return type_.unwrap();
+        }
 
         let mut type_ = Type::new_struct();
+        self.next();
         self.struct_members(&mut type_);
         type_.align = 1;
 
@@ -892,6 +912,11 @@ impl<'a> Parser<'a> {
         }
 
         type_.size = align_to(offset as isize, type_.align as isize) as usize;
+
+        // 如果有名称就注册结构体类型
+        if tag.is_some() {
+            self.push_tag_scope(tag.unwrap().get_name(), type_.clone());
+        }
 
         type_
     }
@@ -1090,6 +1115,16 @@ impl<'a> Parser<'a> {
         for scope in self.scopes.iter() {
             if let Some(var) = scope.get_var(name) {
                 return Some(var.clone());
+            }
+        }
+        return None;
+    }
+
+    /// 通过名称，查找tag
+    fn find_tag(&self, name: &String) -> Option<Box<Type>> {
+        for scope in self.scopes.iter() {
+            if let Some(tag) = scope.get_tag(name) {
+                return Some(tag.clone());
             }
         }
         return None;

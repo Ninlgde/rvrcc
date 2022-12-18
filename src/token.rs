@@ -83,10 +83,25 @@ impl Token {
 
     pub fn at_eof(&self) -> bool {
         match self {
-            Self::Eof {
-                offset: _offset, ..
-            } => true,
+            Self::Eof { .. } => true,
             _ => false,
+        }
+    }
+
+    pub fn is_ident(&self) -> bool {
+        match self {
+            Self::Ident { .. } => true,
+            _ => false,
+        }
+    }
+
+    pub fn get_name(&self) -> String {
+        match self {
+            Self::Ident { t_str, .. } => t_str.to_string(),
+            Self::Punct { t_str, .. } => t_str.to_string(),
+            Self::Keyword { t_str, .. } => t_str.to_string(),
+            Self::Num { t_str, .. } => t_str.to_string(),
+            _ => "".to_string(),
         }
     }
 
