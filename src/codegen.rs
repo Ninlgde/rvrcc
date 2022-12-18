@@ -56,6 +56,7 @@ impl<'a> Generator<'a> {
                     for var in locals.iter().rev() {
                         let mut v = var.borrow_mut();
                         offset += v.get_type().get_size() as isize;
+                        offset = align_to(offset, v.get_type().align as isize);
                         v.set_offset(-offset);
                     }
 
