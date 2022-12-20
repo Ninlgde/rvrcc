@@ -4,8 +4,9 @@ use crate::{error_token, Node};
 
 #[derive(Clone, PartialEq, Eq)]
 pub enum TypeKind {
-    Int,
     Char,
+    Int,
+    Long,
     Ptr,
     Func,
     Array,
@@ -49,13 +50,18 @@ impl Type {
         }
     }
 
+    pub fn new_char() -> Box<Self> {
+        let type_ = Self::new(TypeKind::Char, 1, 1);
+        Box::new(type_)
+    }
+
     pub fn new_int() -> Box<Self> {
         let type_ = Self::new(TypeKind::Int, 4, 4);
         Box::new(type_)
     }
 
-    pub fn new_char() -> Box<Self> {
-        let type_ = Self::new(TypeKind::Char, 1, 1);
+    pub fn new_long() -> Box<Self> {
+        let type_ = Self::new(TypeKind::Long, 8, 8);
         Box::new(type_)
     }
 
@@ -86,7 +92,7 @@ impl Type {
     }
 
     pub fn is_int(&self) -> bool {
-        self.kind == TypeKind::Int || self.kind == TypeKind::Char
+        self.kind == TypeKind::Int || self.kind == TypeKind::Char || self.kind == TypeKind::Long
     }
 
     pub fn has_base(&self) -> bool {
@@ -180,7 +186,7 @@ pub fn add_type(node: &mut Node) {
         | NodeKind::Le
         | NodeKind::Num
         | NodeKind::FuncCall => {
-            node.type_ = Some(Type::new_int());
+            node.type_ = Some(Type::new_long());
         }
         NodeKind::Var => {
             let var = &*node.var.as_ref().unwrap().clone();

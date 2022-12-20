@@ -31,7 +31,7 @@ pub enum Token {
     // 数字
     Num {
         // 值
-        val: i32,
+        val: i64,
         // token 名
         t_str: String,
         // 在解析的字符串内的位置

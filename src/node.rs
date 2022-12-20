@@ -91,7 +91,7 @@ pub struct Node {
     // 存储ND_VAR的字符串
     pub(crate) var: Option<Rc<RefCell<Obj>>>,
     // 存储ND_NUM种类的值
-    pub(crate) val: i32,
+    pub(crate) val: i64,
     // 结构体成员访问
     pub(crate) member: Option<Box<Member>>,
 }
@@ -131,7 +131,7 @@ impl Node {
         node
     }
 
-    pub fn new_num(val: i32, token: Token) -> Self {
+    pub fn new_num(val: i64, token: Token) -> Self {
         let mut node = Self::new(NodeKind::Num, token);
         node.val = val;
         node
