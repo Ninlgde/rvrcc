@@ -29,6 +29,8 @@ pub enum Obj {
         locals: Vec<Rc<RefCell<Obj>>>,
         // 栈大小
         stack_size: isize,
+        // 是否为函数定义
+        is_definition: bool,
     },
 }
 
@@ -87,20 +89,39 @@ impl Obj {
         Self::new_var(name, type_, false, init_data)
     }
 
-    pub fn new_func(
-        name: String,
-        params: Vec<Rc<RefCell<Obj>>>,
-        locals: Vec<Rc<RefCell<Obj>>>,
-        body: Option<Node>,
-        type_: Box<Type>,
-    ) -> Self {
+    pub fn set_function(
+        &mut self,
+        definition: bool,
+        params_: Vec<Rc<RefCell<Obj>>>,
+        locals_: Vec<Rc<RefCell<Obj>>>,
+        body_: Option<Node>,
+    ) {
+        match self {
+            Self::Func {
+                is_definition,
+                params,
+                locals,
+                body,
+                ..
+            } => {
+                *params = params_;
+                *locals = locals_;
+                *body = body_;
+                *is_definition = definition
+            }
+            _ => panic!("error object!"),
+        }
+    }
+
+    pub fn new_func(name: String, type_: Box<Type>) -> Self {
         Self::Func {
             name,
-            params,
-            locals,
-            body,
+            params: vec![],
+            locals: vec![],
+            body: None,
             type_,
             stack_size: 0,
+            is_definition: false,
         }
     }
 }

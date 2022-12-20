@@ -136,28 +136,28 @@ impl<'a> Parser<'a> {
         let type_ = self.declarator(base_type);
         let name = type_.get_name().to_string();
 
-        // 本地变量清空
-        self.locals.clear();
-        // 进入新的域
-        self.enter_scope();
-        self.create_param_lvars(type_.get_params());
-        let params = self.locals.to_vec();
+        let mut function = Obj::new_func(name, type_.clone());
 
-        self.skip("{");
+        if self.consume(";") {
+            function.set_function(false, vec![], vec![], None);
+        } else {
+            // 本地变量清空
+            self.locals.clear();
+            // 进入新的域
+            self.enter_scope();
+            self.create_param_lvars(type_.get_params());
+            let params = self.locals.to_vec();
 
-        // compound_stmt
-        let body = self.compound_stmt();
+            self.skip("{");
 
-        let function = Rc::new(RefCell::new(Obj::new_func(
-            name,
-            params,
-            self.locals.to_vec(),
-            body,
-            type_,
-        )));
-        // 结束当前域
-        self.leave_scope();
-        self.globals.push(function);
+            // compound_stmt
+            let body = self.compound_stmt();
+            function.set_function(true, params, self.locals.to_vec(), body);
+            // 结束当前域
+            self.leave_scope();
+        }
+
+        self.globals.push(Rc::new(RefCell::new(function)));
     }
 
     fn push_scope(&mut self, name: String, var: Rc<RefCell<Obj>>) {
