@@ -1,10 +1,7 @@
 int main() {
-    struct t {
-        int a, b;
-    };
-    struct t x;
-    x.a = 7;
-    struct t y, *p = &x, *q = &y;
-    *q = *p;
-    y.a;
+    int x[3];
+    *x = 3;
+    x[1] = 4;
+    2[x] = 5;
+    *(x + 2);
 }

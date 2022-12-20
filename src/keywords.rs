@@ -1,8 +1,9 @@
 pub const KEYWORDS: [&str; KW_COUNT] = [
     KW_RETURN, KW_IF, KW_ELSE, KW_FOR, KW_WHILE, KW_INT, KW_SIZEOF, KW_CHAR, KW_STRUCT, KW_UNION,
+    KW_LONG,
 ];
 
-const KW_COUNT: usize = 10;
+const KW_COUNT: usize = 11;
 
 /// 关键字: 返回
 pub const KW_RETURN: &str = "return";
@@ -24,3 +25,5 @@ pub const KW_CHAR: &str = "char";
 pub const KW_STRUCT: &str = "struct";
 /// 关键字: union联合
 pub const KW_UNION: &str = "union";
+/// 关键字: long长整型
+pub const KW_LONG: &str = "long";

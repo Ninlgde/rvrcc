@@ -1,7 +1,7 @@
 //! AST parser
 //! program = (function_definition* | global-variable)*
 //! function_definition = declspec declarator "(" ")" "{" compound_stmt*
-//! declspec = "char" | "int" | struct_declare | union_declare
+//! declspec = "char" | "int" | "long" | struct_declare | union_declare
 //! declarator = "*"* ident type_suffix
 //! type_suffix = "(" func_params | "[" num "]" type_suffix | ε
 //! func_params = (param ("," param)*)? ")"
@@ -38,7 +38,8 @@
 
 use crate::ctype::{add_type, TypeKind};
 use crate::keywords::{
-    KW_CHAR, KW_ELSE, KW_FOR, KW_IF, KW_INT, KW_RETURN, KW_SIZEOF, KW_STRUCT, KW_UNION, KW_WHILE,
+    KW_CHAR, KW_ELSE, KW_FOR, KW_IF, KW_INT, KW_LONG, KW_RETURN, KW_SIZEOF, KW_STRUCT, KW_UNION,
+    KW_WHILE,
 };
 use crate::node::NodeKind;
 use crate::obj::{Member, Scope};
@@ -196,6 +197,11 @@ impl<'a> Parser<'a> {
         if token.equal(KW_INT) {
             self.next();
             return Type::new_int();
+        }
+        // "long"
+        if token.equal(KW_LONG) {
+            self.next();
+            return Type::new_long();
         }
         // struct_declare
         if token.equal(KW_STRUCT) {
@@ -678,11 +684,11 @@ impl<'a> Parser<'a> {
         if !lhs_t.has_base() && rhs_t.has_base() {
             n_lhs = rhs;
             n_rhs = lhs;
-            size = lhs_t.get_size() as i32;
+            size = rhs_t.get_base_size() as i64;
         } else {
             n_lhs = lhs;
             n_rhs = rhs;
-            size = lhs_t.get_base_size() as i32;
+            size = lhs_t.get_base_size() as i64;
         }
 
         // ptr + num
@@ -707,7 +713,7 @@ impl<'a> Parser<'a> {
 
         // ptr - num
         if lhs_t.has_base() && rhs_t.is_int() {
-            let size: i32 = lhs_t.get_base_size() as i32;
+            let size: i64 = lhs_t.get_base_size() as i64;
             let size = Box::new(Node::new_num(size, nt.clone()));
             let mut f_rhs = Box::new(Node::new_binary(NodeKind::Mul, rhs, size, nt.clone()));
             add_type(f_rhs.as_mut());
@@ -719,8 +725,8 @@ impl<'a> Parser<'a> {
         // ptr - ptr，返回两指针间有多少元素
         if lhs_t.has_base() && rhs_t.has_base() {
             let mut node = Box::new(Node::new_binary(NodeKind::Sub, lhs, rhs, nt.clone()));
-            node.set_type(Type::new_int());
-            let size: i32 = lhs_t.get_base_size() as i32;
+            node.set_type(Type::new_long());
+            let size: i64 = lhs_t.get_base_size() as i64;
             let size = Box::new(Node::new_num(size, nt.clone()));
             // size.set_type(Type::new_int());
             return Some(Node::new_binary(NodeKind::Div, node, size, nt));
@@ -1057,7 +1063,7 @@ impl<'a> Parser<'a> {
             add_type(node.as_mut().unwrap());
             let (pos, _) = self.current();
             let nt = self.tokens[pos].clone();
-            let size = node.unwrap().get_type().as_ref().unwrap().get_size() as i32;
+            let size = node.unwrap().get_type().as_ref().unwrap().get_size() as i64;
             return Some(Node::new_num(size, nt));
         }
 
@@ -1186,7 +1192,7 @@ impl<'a> Parser<'a> {
         return false;
     }
 
-    fn get_number(&mut self) -> i32 {
+    fn get_number(&mut self) -> i64 {
         let (_, token) = self.current();
         return match token {
             Token::Num { val, .. } => *val,
@@ -1211,10 +1217,11 @@ impl<'a> Parser<'a> {
 
     fn is_type_name(&self) -> bool {
         let (_, token) = self.current();
-        return token.equal(KW_INT)
+        token.equal(KW_INT)
             || token.equal(KW_CHAR)
             || token.equal(KW_STRUCT)
-            || token.equal(KW_UNION);
+            || token.equal(KW_UNION)
+            || token.equal(KW_LONG)
     }
 
     fn new_string_literal(&mut self, str_data: Vec<u8>, base_type: Box<Type>) -> Rc<RefCell<Obj>> {
