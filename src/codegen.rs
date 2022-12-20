@@ -527,12 +527,12 @@ impl<'a> Generator<'a> {
 
         self.write_file(format!("  # 读取a0中存放的地址，得到的值存入a0"));
         let size = type_.get_size();
-        if size == 1 {
-            self.write_file(format!("  lb a0, 0(a0)"));
-        } else if size == 4 {
-            self.write_file(format!("  lw a0, 0(a0)"));
-        } else {
-            self.write_file(format!("  ld a0, 0(a0)"));
+        match size {
+            1 => self.write_file(format!("  lb a0, 0(a0)")),
+            2 => self.write_file(format!("  lh a0, 0(a0)")),
+            4 => self.write_file(format!("  lw a0, 0(a0)")),
+            8 => self.write_file(format!("  ld a0, 0(a0)")),
+            _ => {}
         }
     }
 
@@ -560,12 +560,12 @@ impl<'a> Generator<'a> {
 
         self.write_file(format!("  # 将a0的值，写入到a1中存放的地址"));
         let size = type_.get_size();
-        if size == 1 {
-            self.write_file(format!("  sb a0, 0(a1)"));
-        } else if size == 4 {
-            self.write_file(format!("  sw a0, 0(a1)"));
-        } else {
-            self.write_file(format!("  sd a0, 0(a1)"));
+        match size {
+            1 => self.write_file(format!("  sb a0, 0(a1)")),
+            2 => self.write_file(format!("  sh a0, 0(a1)")),
+            4 => self.write_file(format!("  sw a0, 0(a1)")),
+            8 => self.write_file(format!("  sd a0, 0(a1)")),
+            _ => {}
         }
     }
 
@@ -576,6 +576,7 @@ impl<'a> Generator<'a> {
         ));
         match size {
             1 => self.write_file(format!("  sb {}, {}(fp)", ARG_NAMES[register], offset)),
+            2 => self.write_file(format!("  sh {}, {}(fp)", ARG_NAMES[register], offset)),
             4 => self.write_file(format!("  sw {}, {}(fp)", ARG_NAMES[register], offset)),
             8 => self.write_file(format!("  sd {}, {}(fp)", ARG_NAMES[register], offset)),
             _ => {
