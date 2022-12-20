@@ -161,24 +161,7 @@ impl<'a> Generator<'a> {
                     for p in params.iter().rev() {
                         let p = p.borrow();
                         let size = p.get_type().get_size();
-                        self.write_file(format!(
-                            "  # 将{}寄存器的值存入{}的栈地址",
-                            ARG_NAMES[i],
-                            p.get_name()
-                        ));
-                        if size == 1 {
-                            self.write_file(format!(
-                                "  sb {}, {}(fp)",
-                                ARG_NAMES[i],
-                                p.get_offset()
-                            ));
-                        } else {
-                            self.write_file(format!(
-                                "  sd {}, {}(fp)",
-                                ARG_NAMES[i],
-                                p.get_offset()
-                            ));
-                        }
+                        self.store_general(i, p.get_offset(), size);
                         i += 1;
                     }
 
@@ -546,6 +529,8 @@ impl<'a> Generator<'a> {
         let size = type_.get_size();
         if size == 1 {
             self.write_file(format!("  lb a0, 0(a0)"));
+        } else if size == 4 {
+            self.write_file(format!("  lw a0, 0(a0)"));
         } else {
             self.write_file(format!("  ld a0, 0(a0)"));
         }
@@ -577,8 +562,25 @@ impl<'a> Generator<'a> {
         let size = type_.get_size();
         if size == 1 {
             self.write_file(format!("  sb a0, 0(a1)"));
+        } else if size == 4 {
+            self.write_file(format!("  sw a0, 0(a1)"));
         } else {
             self.write_file(format!("  sd a0, 0(a1)"));
+        }
+    }
+
+    fn store_general(&mut self, register: usize, offset: isize, size: usize) {
+        self.write_file(format!(
+            "  # 将{}寄存器的值存入{}(fp)的栈地址",
+            ARG_NAMES[register], offset
+        ));
+        match size {
+            1 => self.write_file(format!("  sb {}, {}(fp)", ARG_NAMES[register], offset)),
+            4 => self.write_file(format!("  sw {}, {}(fp)", ARG_NAMES[register], offset)),
+            8 => self.write_file(format!("  sd {}, {}(fp)", ARG_NAMES[register], offset)),
+            _ => {
+                unreachable!();
+            }
         }
     }
 }
