@@ -50,7 +50,7 @@ impl Type {
     }
 
     pub fn new_int() -> Box<Self> {
-        let type_ = Self::new(TypeKind::Int, 8, 8);
+        let type_ = Self::new(TypeKind::Int, 4, 4);
         Box::new(type_)
     }
 
