@@ -535,7 +535,10 @@ impl<'a> Generator<'a> {
     }
 
     fn load(&mut self, type_: Box<Type>) {
-        if type_.kind == TypeKind::Array {
+        if type_.kind == TypeKind::Array
+            || type_.kind == TypeKind::Struct
+            || type_.kind == TypeKind::Union
+        {
             return;
         }
 
@@ -550,6 +553,26 @@ impl<'a> Generator<'a> {
 
     fn store(&mut self, type_: Box<Type>) {
         self.pop("a1");
+
+        if type_.kind == TypeKind::Struct || type_.kind == TypeKind::Union {
+            let kind = if type_.kind == TypeKind::Struct {
+                "结构体"
+            } else {
+                "联合体"
+            };
+            self.write_file(format!("  # 对{}进行赋值", kind));
+            for i in 0..type_.size {
+                self.write_file(format!("  li t0, {}", i));
+                self.write_file(format!("  add t0, a0, t0"));
+                self.write_file(format!("  lb t1, 0(t0)"));
+
+                self.write_file(format!("  li t0, {}", i));
+                self.write_file(format!("  add t0, a1, t0"));
+                self.write_file(format!("  sb t1, 0(t0)"));
+            }
+            return;
+        }
+
         self.write_file(format!("  # 将a0的值，写入到a1中存放的地址"));
         let size = type_.get_size();
         if size == 1 {

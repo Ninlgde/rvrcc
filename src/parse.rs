@@ -110,7 +110,7 @@ impl<'a> Parser<'a> {
         self.globals.to_vec()
     }
 
-    fn global_variable(&mut self, mut base_type: Box<Type>) {
+    fn global_variable(&mut self, base_type: Box<Type>) {
         let mut first = true;
 
         while !self.consume(";") {
@@ -119,31 +119,27 @@ impl<'a> Parser<'a> {
             }
             first = false;
 
-            base_type = self.declarator(base_type);
-            let name = base_type.get_name().to_string();
-            let gvar = Rc::new(RefCell::new(Obj::new_gvar(
-                name.to_string(),
-                base_type.clone(),
-                None,
-            )));
+            let type_ = self.declarator(base_type.clone());
+            let name = type_.get_name().to_string();
+            let gvar = Rc::new(RefCell::new(Obj::new_gvar(name.to_string(), type_, None)));
 
             self.globals.push(gvar.clone());
-            self.push_scope(name.to_string(), gvar.clone());
+            self.push_scope(name.to_string(), gvar);
         }
     }
 
     /// function_definition = declspec declarator "(" ")" "{" compound_stmt*
-    fn function_definition(&mut self, mut base_type: Box<Type>) {
+    fn function_definition(&mut self, base_type: Box<Type>) {
         // declarator
         // 声明获取到变量类型，包括变量名
-        base_type = self.declarator(base_type);
-        let name = base_type.get_name().to_string();
+        let type_ = self.declarator(base_type);
+        let name = type_.get_name().to_string();
 
         // 本地变量清空
         self.locals.clear();
         // 进入新的域
         self.enter_scope();
-        self.create_param_lvars(base_type.get_params());
+        self.create_param_lvars(type_.get_params());
         let params = self.locals.to_vec();
 
         self.skip("{");
@@ -156,7 +152,7 @@ impl<'a> Parser<'a> {
             params,
             self.locals.to_vec(),
             body,
-            base_type,
+            type_,
         )));
         // 结束当前域
         self.leave_scope();
@@ -335,7 +331,7 @@ impl<'a> Parser<'a> {
     fn declaration(&mut self) -> Option<Node> {
         // declspec
         // 声明的 基础类型
-        let mut base_type = self.declspec();
+        let base_type = self.declspec();
 
         let mut nodes = vec![];
         let mut i = 0;
@@ -354,8 +350,8 @@ impl<'a> Parser<'a> {
 
             // declarator
             // 声明获取到变量类型，包括变量名
-            base_type = self.declarator(base_type);
-            let nvar = self.new_lvar(base_type.clone()).unwrap();
+            let type_ = self.declarator(base_type.clone());
+            let nvar = self.new_lvar(type_).unwrap();
 
             let (pos, token) = self.current();
             let nt = self.tokens[pos].clone();
@@ -365,8 +361,7 @@ impl<'a> Parser<'a> {
             }
 
             // 解析“=”后面的Token
-            let mut node = Node::new_var(nvar.clone(), nt);
-            node.set_type(base_type.clone());
+            let node = Node::new_var(nvar, nt);
             let lhs = Box::new(node);
             // 解析递归赋值语句
             self.next();
@@ -726,8 +721,8 @@ impl<'a> Parser<'a> {
             let mut node = Box::new(Node::new_binary(NodeKind::Sub, lhs, rhs, nt.clone()));
             node.set_type(Type::new_int());
             let size: i32 = lhs_t.get_base_size() as i32;
-            let mut size = Box::new(Node::new_num(size, nt.clone()));
-            size.set_type(Type::new_int());
+            let size = Box::new(Node::new_num(size, nt.clone()));
+            // size.set_type(Type::new_int());
             return Some(Node::new_binary(NodeKind::Div, node, size, nt));
         }
 
@@ -861,7 +856,7 @@ impl<'a> Parser<'a> {
                 break;
             }
 
-            let mut base_type = self.declspec();
+            let base_type = self.declspec();
             let mut is_first = true;
 
             while !self.consume(";") {
@@ -870,9 +865,9 @@ impl<'a> Parser<'a> {
                 }
                 is_first = false;
 
-                base_type = self.declarator(base_type);
-                let name = base_type.get_name().to_string();
-                let member = Member::new(name.to_string(), Some(base_type.clone()));
+                let type_ = self.declarator(base_type.clone());
+                let name = type_.get_name().to_string();
+                let member = Member::new(name.to_string(), Some(type_));
                 members.push(member);
             }
         }
@@ -970,7 +965,7 @@ impl<'a> Parser<'a> {
     fn struct_ref(&mut self, mut lhs: Box<Node>) -> Option<Node> {
         add_type(lhs.as_mut());
 
-        let lhs_t = lhs.get_type().as_ref().unwrap().clone();
+        let lhs_t = lhs.type_.as_ref().unwrap().clone();
         if lhs_t.kind != TypeKind::Struct && lhs_t.kind != TypeKind::Union {
             error_token!(&lhs.as_ref().token, "not a struct nor a union");
         }
