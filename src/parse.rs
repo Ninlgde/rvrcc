@@ -2,7 +2,7 @@
 //! program = (function_definition* | global-variable)*
 //! function_definition = declspec declarator "(" ")" "{" compound_stmt*
 //! declspec = "char" | "short" | "int" | "long" | struct_declare | union_declare
-//! declarator = "*"* ident type_suffix
+//! declarator = "*"* ("(" ident ")" | "(" declarator ")" | ident) type_suffix
 //! type_suffix = "(" func_params | "[" num "]" type_suffix | ε
 //! func_params = (param ("," param)*)? ")"
 //! param = declspec declarator
@@ -223,7 +223,7 @@ impl<'a> Parser<'a> {
         unreachable!()
     }
 
-    /// declarator = "*"* ident type_suffix
+    /// declarator = "*"* ("(" ident ")" | "(" declarator ")" | ident) type_suffix
     fn declarator(&mut self, mut type_: Box<Type>) -> Box<Type> {
         // "*"*
         // 构建所有的（多重）指针
@@ -231,8 +231,28 @@ impl<'a> Parser<'a> {
             type_ = Type::pointer_to(type_);
         }
 
-        let (_, token) = self.current();
+        let (start_pos, token) = self.current();
         let mut name = "".to_string();
+        // "(" declarator ")"
+        if token.equal("(") {
+            self.next();
+            // 使Tok前进到")"后面的位置
+            self.declarator(Type::new_int());
+            self.skip(")");
+            // 获取到括号后面的类型后缀，type_为解析完的类型，pos为分号
+            type_ = self.type_suffix(type_);
+            // 记录分号位置
+            let (end_pos, _) = self.current();
+            // 返回最开始
+            self.cursor = start_pos;
+            self.next();
+            // 解析Ty整体作为Base去构造，返回Type的值
+            let type_ = self.declarator(type_);
+            // 等整体标记完,返回分号位置
+            self.cursor = end_pos;
+            return type_;
+        }
+
         match token {
             Token::Ident { t_str, .. } => {
                 name = t_str.to_string();
