@@ -1,7 +1,8 @@
 //! AST parser
 //! program = (function_definition* | global-variable)*
 //! function_definition = declspec declarator "(" ")" "{" compound_stmt*
-//! declspec = "char" | "short" | "int" | "long" | struct_declare | union_declare
+//! declspec = "void" | "char" | "short" | "int" | "long"
+//!            | struct_declare | union_declare
 //! declarator = "*"* ("(" ident ")" | "(" declarator ")" | ident) type_suffix
 //! type_suffix = "(" func_params | "[" num "]" type_suffix | ε
 //! func_params = (param ("," param)*)? ")"
@@ -39,7 +40,7 @@
 use crate::ctype::{add_type, TypeKind};
 use crate::keywords::{
     KW_CHAR, KW_ELSE, KW_FOR, KW_IF, KW_INT, KW_LONG, KW_RETURN, KW_SHORT, KW_SIZEOF, KW_STRUCT,
-    KW_UNION, KW_WHILE,
+    KW_UNION, KW_VOID, KW_WHILE,
 };
 use crate::node::NodeKind;
 use crate::obj::{Member, Scope};
@@ -184,10 +185,15 @@ impl<'a> Parser<'a> {
         Some(nvar)
     }
 
-    /// declspec = "char" | "short" | "int" | "long" | struct_declare | union_declare
+    /// declspec = "void" | "char" | "short" | "int" | "long"
+    ///            | struct_declare | union_declare
     /// declarator specifier
     fn declspec(&mut self) -> Box<Type> {
         let (_, token) = self.current();
+        if token.equal(KW_VOID) {
+            self.next();
+            return Type::new_void();
+        }
         // "char"
         if token.equal(KW_CHAR) {
             self.next();
@@ -382,6 +388,11 @@ impl<'a> Parser<'a> {
             // declarator
             // 声明获取到变量类型，包括变量名
             let type_ = self.declarator(base_type.clone());
+            if type_.kind == TypeKind::Void {
+                let (_, token) = self.current();
+                error_token!(token, "variable declared void")
+            }
+
             let nvar = self.new_lvar(type_).unwrap();
 
             let (pos, token) = self.current();

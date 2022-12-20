@@ -4,6 +4,7 @@ use crate::{error_token, Node};
 
 #[derive(Clone, PartialEq, Eq)]
 pub enum TypeKind {
+    Void,
     Char,
     Short,
     Int,
@@ -49,6 +50,11 @@ impl Type {
             len: 0,
             members: vec![],
         }
+    }
+
+    pub fn new_void() -> Box<Self> {
+        let type_ = Self::new(TypeKind::Void, 1, 1);
+        Box::new(type_)
     }
 
     pub fn new_char() -> Box<Self> {
@@ -220,6 +226,11 @@ pub fn add_type(node: &mut Node) {
             let lhs = node.lhs.as_ref().unwrap();
             let t = lhs.type_.as_ref().unwrap().clone();
             if t.has_base() {
+                if t.kind == TypeKind::Void {
+                    let token = node.lhs.as_ref().unwrap().get_token();
+                    error_token!(token, "dereferencing a void pointer");
+                    return;
+                }
                 node.type_ = Some(t.base.unwrap());
             } else {
                 let token = node.lhs.as_ref().unwrap().get_token();

@@ -1,4 +1,4 @@
-use crate::keywords::{KW_CHAR, KW_INT, KW_LONG, KW_SHORT, KW_STRUCT, KW_UNION};
+use crate::keywords::{KW_CHAR, KW_INT, KW_LONG, KW_SHORT, KW_STRUCT, KW_UNION, KW_VOID};
 use crate::Type;
 
 /// token
@@ -117,7 +117,9 @@ impl Token {
     }
 
     pub fn is_type_name(&self) -> bool {
-        let type_name = vec![KW_CHAR, KW_SHORT, KW_INT, KW_LONG, KW_STRUCT, KW_UNION];
+        let type_name = vec![
+            KW_CHAR, KW_SHORT, KW_INT, KW_LONG, KW_STRUCT, KW_UNION, KW_VOID,
+        ];
         for name in type_name {
             if self.equal(name) {
                 return true;
