@@ -1,9 +1,10 @@
 int main() {
-    struct {
-        char a;
-        char b;
-    } x[3];
-    char *p = x;
-    p[1] = 1;
-    x[0].b;
+    struct t {
+        int a, b;
+    };
+    struct t x;
+    x.a = 7;
+    struct t y, *p = &x, *q = &y;
+    *q = *p;
+    y.a;
 }

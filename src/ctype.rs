@@ -170,8 +170,9 @@ pub fn add_type(node: &mut Node) {
             if t.kind == TypeKind::Array {
                 let token = &node.token;
                 error_token!(token, "not an lvalue");
+                unreachable!()
             }
-            node.type_ = node.lhs.as_ref().unwrap().type_.clone();
+            node.type_ = Some(t);
         }
         NodeKind::Eq
         | NodeKind::Ne
@@ -193,14 +194,7 @@ pub fn add_type(node: &mut Node) {
             node.type_ = node.member.as_ref().unwrap().type_.clone();
         }
         NodeKind::Addr => {
-            let t = node
-                .lhs
-                .as_ref()
-                .unwrap()
-                .get_type()
-                .as_ref()
-                .unwrap()
-                .clone();
+            let t = node.lhs.as_ref().unwrap().type_.as_ref().unwrap().clone();
             if t.kind == TypeKind::Array {
                 node.type_ = Some(Type::pointer_to(t.base.unwrap()));
             } else {
@@ -208,14 +202,8 @@ pub fn add_type(node: &mut Node) {
             }
         }
         NodeKind::DeRef => {
-            let t = node
-                .lhs
-                .as_ref()
-                .unwrap()
-                .get_type()
-                .as_ref()
-                .unwrap()
-                .clone();
+            let lhs = node.lhs.as_ref().unwrap();
+            let t = lhs.type_.as_ref().unwrap().clone();
             if t.has_base() {
                 node.type_ = Some(t.base.unwrap());
             } else {
@@ -224,15 +212,17 @@ pub fn add_type(node: &mut Node) {
             }
         }
         NodeKind::StmtExpr => {
-            let last = node.body.last().unwrap().clone();
-            if last.kind == NodeKind::ExprStmt {
-                node.type_ = last.lhs.as_ref().unwrap().type_.clone();
-            } else {
-                error_token!(
-                    &node.token,
-                    "statement expression returning void is not supported"
-                );
+            if node.body.len() > 0 {
+                let last = node.body.last().unwrap().clone();
+                if last.kind == NodeKind::ExprStmt {
+                    node.type_ = last.lhs.as_ref().unwrap().type_.clone();
+                    return;
+                }
             }
+            error_token!(
+                &node.token,
+                "statement expression returning void is not supported"
+            );
         }
         _ => {}
     }
