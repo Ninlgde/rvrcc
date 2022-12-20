@@ -115,8 +115,12 @@ impl<'a> Generator<'a> {
                     body,
                     params,
                     stack_size,
+                    is_definition,
                     ..
                 } => {
+                    if !is_definition {
+                        continue;
+                    }
                     // 声明一个全局main段，同时也是程序入口段
                     self.write_file(format!("\n  # 定义全局{}段", name));
                     self.write_file(format!("  .globl {}", name));
