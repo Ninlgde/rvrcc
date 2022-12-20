@@ -1,7 +1,7 @@
 //! AST parser
 //! program = (function_definition* | global-variable)*
 //! function_definition = declspec declarator "(" ")" "{" compound_stmt*
-//! declspec = "char" | "int" | "long" | struct_declare | union_declare
+//! declspec = "char" | "short" | "int" | "long" | struct_declare | union_declare
 //! declarator = "*"* ident type_suffix
 //! type_suffix = "(" func_params | "[" num "]" type_suffix | ε
 //! func_params = (param ("," param)*)? ")"
@@ -38,8 +38,8 @@
 
 use crate::ctype::{add_type, TypeKind};
 use crate::keywords::{
-    KW_CHAR, KW_ELSE, KW_FOR, KW_IF, KW_INT, KW_LONG, KW_RETURN, KW_SIZEOF, KW_STRUCT, KW_UNION,
-    KW_WHILE,
+    KW_CHAR, KW_ELSE, KW_FOR, KW_IF, KW_INT, KW_LONG, KW_RETURN, KW_SHORT, KW_SIZEOF, KW_STRUCT,
+    KW_UNION, KW_WHILE,
 };
 use crate::node::NodeKind;
 use crate::obj::{Member, Scope};
@@ -184,7 +184,7 @@ impl<'a> Parser<'a> {
         Some(nvar)
     }
 
-    /// declspec = "char" | "int" | struct_declare | union_declare
+    /// declspec = "char" | "short" | "int" | "long" | struct_declare | union_declare
     /// declarator specifier
     fn declspec(&mut self) -> Box<Type> {
         let (_, token) = self.current();
@@ -192,6 +192,11 @@ impl<'a> Parser<'a> {
         if token.equal(KW_CHAR) {
             self.next();
             return Type::new_char();
+        }
+        // short
+        if token.equal(KW_SHORT) {
+            self.next();
+            return Type::new_short();
         }
         // "int"
         if token.equal(KW_INT) {
@@ -312,7 +317,7 @@ impl<'a> Parser<'a> {
                 break;
             }
             let mut node;
-            if self.is_type_name() {
+            if token.is_type_name() {
                 // declaration
                 node = self.declaration().unwrap();
             } else {
@@ -1213,15 +1218,6 @@ impl<'a> Parser<'a> {
         // 游标回档
         self.cursor = start;
         return type_.is_func();
-    }
-
-    fn is_type_name(&self) -> bool {
-        let (_, token) = self.current();
-        token.equal(KW_INT)
-            || token.equal(KW_CHAR)
-            || token.equal(KW_STRUCT)
-            || token.equal(KW_UNION)
-            || token.equal(KW_LONG)
     }
 
     fn new_string_literal(&mut self, str_data: Vec<u8>, base_type: Box<Type>) -> Rc<RefCell<Obj>> {
