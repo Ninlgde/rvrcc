@@ -189,44 +189,68 @@ impl<'a> Parser<'a> {
     ///            | struct_declare | union_declare
     /// declarator specifier
     fn declspec(&mut self) -> Box<Type> {
-        let (_, token) = self.current();
-        if token.equal(KW_VOID) {
+        // 类型的组合，被表示为例如：LONG+LONG=1<<9
+        // 可知long int和int long是等价的。
+        const VOID: i32 = 1 << 0;
+        const CHAR: i32 = 1 << 2;
+        const SHORT: i32 = 1 << 4;
+        const INT: i32 = 1 << 6;
+        const LONG: i32 = 1 << 8;
+        const OTHER: i32 = 1 << 10;
+        const SHORT_INT: i32 = SHORT + INT;
+        const LONG_INT: i32 = LONG + INT;
+
+        let mut type_ = Type::new_int();
+        let mut count = 0; // 记录类型相加的数值
+
+        // 遍历所有类型名的Tok
+        loop {
+            let (_, token) = self.current();
+            if !token.is_type_name() {
+                break;
+            }
+
+            if token.equal(KW_STRUCT) || token.equal(KW_UNION) {
+                if token.equal(KW_STRUCT) {
+                    self.next();
+                    type_ = self.struct_declare();
+                } else {
+                    self.next();
+                    type_ = self.union_declare();
+                }
+                count = OTHER;
+                continue;
+            }
+
+            // 对于出现的类型名加入Counter
+            // 每一步的Counter都需要有合法值
+            if token.equal(KW_VOID) {
+                count += VOID;
+            } else if token.equal(KW_CHAR) {
+                count += CHAR;
+            } else if token.equal(KW_SHORT) {
+                count += SHORT;
+            } else if token.equal(KW_INT) {
+                count += INT;
+            } else if token.equal(KW_LONG) {
+                count += LONG;
+            } else {
+                unreachable!()
+            }
+
+            match count {
+                VOID => type_ = Type::new_void(),
+                CHAR => type_ = Type::new_char(),
+                SHORT | SHORT_INT => type_ = Type::new_short(),
+                INT => type_ = Type::new_int(),
+                LONG | LONG_INT => type_ = Type::new_long(),
+                _ => error_token!(token, "invalid type"),
+            }
+
             self.next();
-            return Type::new_void();
-        }
-        // "char"
-        if token.equal(KW_CHAR) {
-            self.next();
-            return Type::new_char();
-        }
-        // short
-        if token.equal(KW_SHORT) {
-            self.next();
-            return Type::new_short();
-        }
-        // "int"
-        if token.equal(KW_INT) {
-            self.next();
-            return Type::new_int();
-        }
-        // "long"
-        if token.equal(KW_LONG) {
-            self.next();
-            return Type::new_long();
-        }
-        // struct_declare
-        if token.equal(KW_STRUCT) {
-            self.next();
-            return self.struct_declare();
         }
 
-        if token.equal(KW_UNION) {
-            self.next();
-            return self.union_declare();
-        }
-
-        error_token!(token, "typename expected");
-        unreachable!()
+        return type_;
     }
 
     /// declarator = "*"* ("(" ident ")" | "(" declarator ")" | ident) type_suffix
