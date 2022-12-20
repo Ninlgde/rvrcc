@@ -199,6 +199,8 @@ impl<'a> Parser<'a> {
         const OTHER: i32 = 1 << 10;
         const SHORT_INT: i32 = SHORT + INT;
         const LONG_INT: i32 = LONG + INT;
+        const LONG_LONG: i32 = LONG + LONG;
+        const LONG_LONG_INT: i32 = LONG + LONG + INT;
 
         let mut type_ = Type::new_int();
         let mut count = 0; // 记录类型相加的数值
@@ -243,7 +245,7 @@ impl<'a> Parser<'a> {
                 CHAR => type_ = Type::new_char(),
                 SHORT | SHORT_INT => type_ = Type::new_short(),
                 INT => type_ = Type::new_int(),
-                LONG | LONG_INT => type_ = Type::new_long(),
+                LONG | LONG_INT | LONG_LONG | LONG_LONG_INT => type_ = Type::new_long(),
                 _ => error_token!(token, "invalid type"),
             }
 

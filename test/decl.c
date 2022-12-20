@@ -9,6 +9,10 @@ int main() {
     ASSERT(8, ({ long int x; sizeof(x); }));
     ASSERT(8, ({ int long x; sizeof(x); }));
 
+    // [63] 支持long long
+    ASSERT(8, ({ long long x; sizeof(x); }));
+    ASSERT(8, ({ long long int x; sizeof(x); }));
+
     printf("OK\n");
     return 0;
 }
