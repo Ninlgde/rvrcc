@@ -62,6 +62,13 @@ impl Obj {
         }
     }
 
+    pub fn get_func_return_type(&self) -> &Option<Box<Type>> {
+        match self {
+            Self::Func { type_, .. } => &type_.return_type,
+            _ => &None,
+        }
+    }
+
     pub fn is_func(&self) -> bool {
         matches!(self, Self::Func { .. })
     }

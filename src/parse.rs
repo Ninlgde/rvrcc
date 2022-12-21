@@ -69,6 +69,8 @@ struct Parser<'a> {
     unique_idx: usize,
     // 变量域
     scopes: Vec<Scope>,
+    // 当前正在解析的function
+    cur_func: Option<Rc<RefCell<Obj>>>,
 }
 
 impl<'a> Parser<'a> {
@@ -80,6 +82,7 @@ impl<'a> Parser<'a> {
             globals: Vec::new(),
             unique_idx: 0,
             scopes: vec![Scope::new()],
+            cur_func: None,
         }
     }
 
@@ -155,6 +158,7 @@ impl<'a> Parser<'a> {
         let mut body = None;
 
         if !self.consume(";") {
+            self.cur_func = gvar.clone(); // 指向当前正值解析的方法
             definition = true;
             // 本地变量清空
             self.locals.clear();
@@ -536,8 +540,20 @@ impl<'a> Parser<'a> {
         // "return" expr ";"
         if token.equal(KW_RETURN) {
             self.next();
-            let node = Node::new_unary(NodeKind::Return, Box::new(self.expr().unwrap()), nt);
+            let mut expr = self.expr().unwrap();
             self.skip(";");
+            add_type(&mut expr);
+            let cur_func = self.cur_func.as_ref().unwrap().clone();
+            let cast = Node::new_cast(
+                Box::new(expr),
+                cur_func
+                    .borrow_mut()
+                    .get_func_return_type()
+                    .as_ref()
+                    .unwrap()
+                    .clone(),
+            );
+            let node = Node::new_unary(NodeKind::Return, Box::new(cast), nt);
             return Some(node);
         }
 
