@@ -1,1 +1,1 @@
-int main() { char (*x)[3]; sizeof(x); }
+int main() { typedef int t; t x=1; x; }
