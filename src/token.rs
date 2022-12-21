@@ -118,11 +118,11 @@ impl Token {
         }
     }
 
-    pub fn is_type_name(&self) -> bool {
-        let type_name = vec![
+    pub fn is_typename(&self) -> bool {
+        let typename = vec![
             KW_CHAR, KW_SHORT, KW_INT, KW_LONG, KW_STRUCT, KW_UNION, KW_VOID, KW_TYPEDEF,
         ];
-        for name in type_name {
+        for name in typename {
             if self.equal(name) {
                 return true;
             }
