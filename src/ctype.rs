@@ -5,6 +5,7 @@ use crate::{error_token, Node};
 #[derive(Clone, PartialEq, Eq)]
 pub enum TypeKind {
     Void,
+    Bool,
     Char,
     Short,
     Int,
@@ -54,6 +55,11 @@ impl Type {
 
     pub fn new_void() -> Box<Self> {
         let type_ = Self::new(TypeKind::Void, 1, 1);
+        Box::new(type_)
+    }
+
+    pub fn new_bool() -> Box<Self> {
+        let type_ = Self::new(TypeKind::Bool, 1, 1);
         Box::new(type_)
     }
 
@@ -108,6 +114,7 @@ impl Type {
             || self.kind == TypeKind::Short
             || self.kind == TypeKind::Int
             || self.kind == TypeKind::Long
+            || self.kind == TypeKind::Bool
     }
 
     pub fn has_base(&self) -> bool {
