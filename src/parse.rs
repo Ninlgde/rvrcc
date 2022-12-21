@@ -133,12 +133,8 @@ impl<'a> Parser<'a> {
 
             let type_ = self.declarator(base_type.clone());
             let name = type_.get_name().to_string();
-            let gvar = Rc::new(RefCell::new(Obj::new_gvar(name.to_string(), type_, None)));
-
-            self.globals.push(gvar.clone());
-            let vs = self.push_scope(name.to_string());
-            let mut vsm = vs.as_ref().borrow_mut();
-            vsm.set_var(gvar.clone());
+            let obj = Obj::new_gvar(name.to_string(), type_, None);
+            self.new_gvar(name.to_string(), obj);
         }
     }
 
@@ -147,30 +143,39 @@ impl<'a> Parser<'a> {
         // declarator
         // 声明获取到变量类型，包括变量名
         let type_ = self.declarator(base_type);
-        let name = type_.get_name().to_string();
+        let name = type_.get_name();
 
-        let mut function = Obj::new_func(name, type_.clone());
+        let obj = Obj::new_func(name.to_string(), type_.clone());
 
-        if self.consume(";") {
-            function.set_function(false, vec![], vec![], None);
-        } else {
+        let gvar = self.new_gvar(name.to_string(), obj);
+
+        let mut definition = false;
+        let mut params = vec![];
+        let mut locals = vec![];
+        let mut body = None;
+
+        if !self.consume(";") {
+            definition = true;
             // 本地变量清空
             self.locals.clear();
             // 进入新的域
             self.enter_scope();
             self.create_param_lvars(type_.get_params());
-            let params = self.locals.to_vec();
+            params = self.locals.to_vec();
 
             self.skip("{");
 
             // compound_stmt
-            let body = self.compound_stmt();
-            function.set_function(true, params, self.locals.to_vec(), body);
+            body = self.compound_stmt();
+            locals = self.locals.to_vec();
+            // function.set_function(true, params, self.locals.to_vec(), body);
             // 结束当前域
             self.leave_scope();
         }
 
-        self.globals.push(Rc::new(RefCell::new(function)));
+        // 把初始化移到这个地方,因为在构建方法的时候里面需要borrow_mut这个obj,如果放前面,会导致rust的RefCell报already mutably borrowed
+        let mut function = gvar.as_ref().unwrap().borrow_mut();
+        function.set_function(definition, params, locals, body);
     }
 
     fn push_scope(&mut self, name: String) -> Rc<RefCell<VarScope>> {
@@ -212,9 +217,22 @@ impl<'a> Parser<'a> {
         let nvar = Rc::new(RefCell::new(Obj::new_lvar(name.to_string(), base_type)));
         self.locals.push(nvar.clone());
         let vs = self.push_scope(name.to_string());
-        let mut vsm = vs.as_ref().borrow_mut();
-        vsm.set_var(nvar.clone());
+        {
+            let mut vsm = vs.as_ref().borrow_mut();
+            vsm.set_var(nvar.clone());
+        }
         Some(nvar)
+    }
+
+    fn new_gvar(&mut self, name: String, obj: Obj) -> Option<Rc<RefCell<Obj>>> {
+        let gvar = Rc::new(RefCell::new(obj));
+        self.globals.push(gvar.clone());
+        let vs = self.push_scope(name);
+        {
+            let mut vsm = vs.as_ref().borrow_mut();
+            vsm.set_var(gvar.clone());
+        }
+        Some(gvar)
     }
 
     /// declspec = "void" | "char" | "short" | "int" | "long"
@@ -1316,6 +1334,32 @@ impl<'a> Parser<'a> {
         let nt = self.tokens[pos].clone();
         self.next().next(); // 1. 跳到(  2.调到参数或者)
 
+        // 查找函数名
+        let vso = self.find_var(&func_name);
+        if vso.is_none() {
+            error_token!(&nt, "implicit declaration of a function");
+            unreachable!()
+        }
+        let vs = vso.unwrap().clone();
+        let var = &vs.borrow().var;
+        if var.is_none() {
+            error_token!(&nt, "not a function");
+            unreachable!()
+        }
+
+        let t;
+        // 傻屌rust的编译器一定要我把这下面拆成三行才可以,否则就报错..咱也不懂..也不敢问..回头再研究,能用就行
+        let binding = var.as_ref().unwrap().clone();
+        let bt = binding.borrow();
+        let typ = bt.get_type();
+        match typ.kind {
+            TypeKind::Func => t = typ.return_type.clone().unwrap(),
+            _ => {
+                error_token!(&nt, "not a function");
+                unreachable!()
+            }
+        }
+
         let mut nodes = vec![];
 
         loop {
@@ -1326,7 +1370,8 @@ impl<'a> Parser<'a> {
             if nodes.len() != 0 {
                 self.skip(",");
             }
-            let node = self.assign().unwrap();
+            let mut node = self.assign().unwrap();
+            add_type(&mut node);
             nodes.push(node);
         }
 
@@ -1334,6 +1379,7 @@ impl<'a> Parser<'a> {
 
         let mut node = Node::new(NodeKind::FuncCall, nt);
         node.func_name = func_name;
+        node.type_ = Some(t);
         node.args = nodes;
         Some(node)
     }
@@ -1438,16 +1484,8 @@ impl<'a> Parser<'a> {
     fn new_string_literal(&mut self, str_data: Vec<u8>, base_type: Box<Type>) -> Rc<RefCell<Obj>> {
         let name = format!(".L..{}", self.unique_idx);
         self.unique_idx += 1;
-        let gvar = Rc::new(RefCell::new(Obj::new_gvar(
-            name.to_string(),
-            base_type,
-            Some(str_data),
-        )));
+        let obj = Obj::new_gvar(name.to_string(), base_type, Some(str_data));
         // 加入globals
-        self.globals.push(gvar.clone());
-        let vs = self.push_scope(name.to_string());
-        let mut vsm = vs.as_ref().borrow_mut();
-        vsm.set_var(gvar.clone());
-        return gvar;
+        self.new_gvar(name.to_string(), obj).unwrap()
     }
 }
