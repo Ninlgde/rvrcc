@@ -2,6 +2,7 @@
 // 生成AST（抽象语法树），语法解析
 //
 
+use crate::ctype::add_type;
 use crate::obj::Member;
 use crate::{Obj, Token, Type};
 use std::cell::RefCell;
@@ -55,6 +56,8 @@ pub enum NodeKind {
     Var,
     // 数字
     Num,
+    // 类型转换
+    Cast,
 }
 
 // AST的节点种类
@@ -146,6 +149,14 @@ impl Node {
     pub fn new_block(kind: NodeKind, body: Vec<Node>, token: Token) -> Self {
         let mut node = Self::new(kind, token);
         node.body = body;
+        node
+    }
+
+    pub fn new_cast(mut expr: Box<Node>, token: Token, typ: Box<Type>) -> Self {
+        add_type(&mut expr);
+        let mut node = Self::new(NodeKind::Cast, token);
+        node.lhs = Some(expr);
+        node.type_ = Some(typ);
         node
     }
 

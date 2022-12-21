@@ -23,8 +23,9 @@
 //! equality = relational ("==" relational | "!=" relational)*
 //! relational = add ("<" add | "<=" add | ">" add | ">=" add)*
 //! add = mul ("+" mul | "-" mul)*
-//! mul = unary ("*" unary | "/" unary)*
-//! unary = ("+" | "-" | "*" | "&") unary | postfix
+//! mul = cast ("*" cast | "/" cast)*
+//! cast = "(" typename ")" cast | unary
+//! unary = ("+" | "-" | "*" | "&") cast | postfix
 //! struct_members = (declspec declarator (","  declarator)* ";")*
 //! struct_declare = struct_union_declare
 //! union_declare = struct_union_declare
@@ -884,10 +885,10 @@ impl<'a> Parser<'a> {
     }
 
     /// 解析乘除
-    /// mul = unary ("*" unary | "/" unary)*
+    /// mul = cast ("*" cast | "/" cast)*
     fn mul(&mut self) -> Option<Node> {
         // unary
-        let mut node = self.unary();
+        let mut node = self.cast();
 
         // ("*" unary | "/" unary)*
         loop {
@@ -896,7 +897,7 @@ impl<'a> Parser<'a> {
             // "*" unary
             if token.equal("*") {
                 self.next();
-                let rhs = Box::new(self.unary().unwrap());
+                let rhs = Box::new(self.cast().unwrap());
                 node = Some(Node::new_binary(
                     NodeKind::Mul,
                     Box::new(node.unwrap()),
@@ -909,7 +910,7 @@ impl<'a> Parser<'a> {
             // "/" unary
             if token.equal("/") {
                 self.next();
-                let rhs = Box::new(self.unary().unwrap());
+                let rhs = Box::new(self.cast().unwrap());
                 node = Some(Node::new_binary(
                     NodeKind::Div,
                     Box::new(node.unwrap()),
@@ -923,44 +924,61 @@ impl<'a> Parser<'a> {
         }
     }
 
+    /// cast = "(" typeName ")" cast | unary
+    fn cast(&mut self) -> Option<Node> {
+        let (pos, token) = self.current();
+        let nt = self.tokens[pos].clone();
+        let next = &self.tokens[pos + 1];
+        if token.equal("(") && self.is_typename(next) {
+            self.next();
+            let typ = self.typename();
+            self.skip(")");
+            let cast = self.cast().unwrap();
+            let node = Node::new_cast(Box::new(cast), nt, typ);
+            return Some(node);
+        }
+
+        self.unary()
+    }
+
     /// 解析一元运算
-    /// unary = ("+" | "-" | "*" | "&") unary | postfix
+    /// unary = ("+" | "-" | "*" | "&") cast | postfix
     fn unary(&mut self) -> Option<Node> {
         let (pos, token) = self.current();
         let nt = self.tokens[pos].clone();
 
-        // "+" unary
+        // "+" cast
         if token.equal("+") {
             self.next();
-            return self.unary();
+            return self.cast();
         }
 
-        // "-" unary
+        // "-" cast
         if token.equal("-") {
             self.next();
             return Some(Node::new_unary(
                 NodeKind::Neg,
-                Box::new(self.unary().unwrap()),
+                Box::new(self.cast().unwrap()),
                 nt,
             ));
         }
 
-        // "&" unary
+        // "&" cast
         if token.equal("&") {
             self.next();
             return Some(Node::new_unary(
                 NodeKind::Addr,
-                Box::new(self.unary().unwrap()),
+                Box::new(self.cast().unwrap()),
                 nt,
             ));
         }
 
-        // "*" unary
+        // "*" cast
         if token.equal("*") {
             self.next();
             return Some(Node::new_unary(
                 NodeKind::DeRef,
-                Box::new(self.unary().unwrap()),
+                Box::new(self.cast().unwrap()),
                 nt,
             ));
         }

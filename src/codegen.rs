@@ -359,6 +359,13 @@ impl<'a> Generator<'a> {
                 self.gen_expr(node.rhs.as_ref().unwrap());
                 return;
             }
+            NodeKind::Cast => {
+                self.gen_expr(node.lhs.as_ref().unwrap());
+                let f_typ = node.lhs.as_ref().unwrap().clone().type_.unwrap();
+                let t_typ = node.type_.clone().unwrap();
+                self.cast(f_typ, t_typ);
+                return;
+            }
             NodeKind::FuncCall => {
                 let mut argc = 0;
                 for arg in node.args.to_vec() {
@@ -392,25 +399,21 @@ impl<'a> Generator<'a> {
                 // + a0=a0+a1
                 self.write_file(format!("  # a0+a1，结果写入a0"));
                 self.write_file(format!("  add{} a0, a0, a1", suffix));
-                return;
             }
             NodeKind::Sub => {
                 // - a0=a0-a1
                 self.write_file(format!("  # a0-a1，结果写入a0"));
                 self.write_file(format!("  sub{} a0, a0, a1", suffix));
-                return;
             }
             NodeKind::Mul => {
                 // * a0=a0*a1
                 self.write_file(format!("  # a0×a1，结果写入a0"));
                 self.write_file(format!("  mul{} a0, a0, a1", suffix));
-                return;
             }
             NodeKind::Div => {
                 // / a0=a0/a1
                 self.write_file(format!("  # a0÷a1，结果写入a0"));
                 self.write_file(format!("  div{} a0, a0, a1", suffix));
-                return;
             }
             NodeKind::Eq => {
                 // a0=a0^a1，异或指令
@@ -420,7 +423,6 @@ impl<'a> Generator<'a> {
                 // a0=a0^a1, sltiu a0, a0, 1
                 // 等于0则置1
                 self.write_file(format!("  seqz a0, a0"));
-                return;
             }
             NodeKind::Ne => {
                 // a0=a0^a1，异或指令
@@ -430,12 +432,10 @@ impl<'a> Generator<'a> {
                 // a0=a0^a1, sltu a0, x0, a0
                 // 不等于0则置1
                 self.write_file(format!("  snez a0, a0"));
-                return;
             }
             NodeKind::Lt => {
                 self.write_file(format!("  # 判断a0<a1"));
                 self.write_file(format!("  slt a0, a0, a1"));
-                return;
             }
             NodeKind::Le => {
                 // a0<=a1等价于
@@ -443,12 +443,9 @@ impl<'a> Generator<'a> {
                 self.write_file(format!("  # 判断是否a0≤a1"));
                 self.write_file(format!("  slt a0, a1, a0"));
                 self.write_file(format!("  xori a0, a0, 1"));
-                return;
             }
-            _ => {}
+            _ => error_token!(node.as_ref().get_token(), "invalid expression"),
         }
-
-        error_token!(node.as_ref().get_token(), "invalid expression")
     }
 
     fn gen_lrhs(&mut self, lhs: &Box<Node>, rhs: &Box<Node>) {
@@ -594,4 +591,44 @@ impl<'a> Generator<'a> {
             }
         }
     }
+
+    fn cast(&mut self, from: Box<Type>, to: Box<Type>) {
+        if to.kind == TypeKind::Void {
+            return;
+        }
+
+        let from_idx = get_type_id(from);
+        let to_idx = get_type_id(to);
+        let cast = CAST_TABLE[from_idx][to_idx];
+        if cast.is_some() {
+            self.write_file(format!("  # 转换函数"));
+            self.write_file(format!("{}", cast.unwrap()));
+        }
+    }
 }
+
+const LI08: Option<&str> = Some("  # 转换为i8类型\n  slli a0, a0, 56\n  srai a0, a0, 56");
+const LI16: Option<&str> = Some("  # 转换为i16类型\n  slli a0, a0, 48\n  srai a0, a0, 48");
+const LI32: Option<&str> = Some("  # 转换为i32类型\n  slli a0, a0, 32\n  srai a0, a0, 32");
+
+fn get_type_id(typ: Box<Type>) -> usize {
+    match typ.kind {
+        TypeKind::Char => 0,
+        TypeKind::Short => 1,
+        TypeKind::Int => 2,
+        _ => 3,
+    }
+}
+
+const CAST_TABLE: [[Option<&str>; 10]; 10] = [
+    [None, None, None, None, None, None, None, None, None, None],
+    [LI08, None, None, None, None, None, None, None, None, None],
+    [LI08, LI16, None, None, None, None, None, None, None, None],
+    [LI08, LI16, LI32, None, None, None, None, None, None, None],
+    [None, None, None, None, None, None, None, None, None, None],
+    [None, None, None, None, None, None, None, None, None, None],
+    [None, None, None, None, None, None, None, None, None, None],
+    [None, None, None, None, None, None, None, None, None, None],
+    [None, None, None, None, None, None, None, None, None, None],
+    [None, None, None, None, None, None, None, None, None, None],
+];
