@@ -30,7 +30,7 @@ pub struct Type {
     // 返回的类型
     pub return_type: Option<Box<Type>>,
     // 形参
-    params: Vec<Type>,
+    pub params: Vec<Type>,
     // 数组长度, 元素总个数
     len: usize,
     // 结构体

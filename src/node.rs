@@ -89,6 +89,8 @@ pub struct Node {
     pub(crate) body: Vec<Node>,
     // 变量名
     pub(crate) func_name: String,
+    // 函数类型
+    pub(crate) func_type: Option<Box<Type>>,
     // 入参
     pub(crate) args: Vec<Node>,
     // 存储ND_VAR的字符串
@@ -114,6 +116,7 @@ impl Node {
             inc: None,
             body: Vec::new(),
             func_name: String::new(),
+            func_type: None,
             args: Vec::new(),
             var: None,
             val: 0,
