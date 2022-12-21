@@ -1364,12 +1364,16 @@ impl<'a> Parser<'a> {
         }
 
         let t;
+        let params;
         // 傻屌rust的编译器一定要我把这下面拆成三行才可以,否则就报错..咱也不懂..也不敢问..回头再研究,能用就行
         let binding = var.as_ref().unwrap().clone();
         let bt = binding.borrow();
         let typ = bt.get_type();
         match typ.kind {
-            TypeKind::Func => t = typ.return_type.clone().unwrap(),
+            TypeKind::Func => {
+                t = typ;
+                params = t.params.to_vec();
+            }
             _ => {
                 error_token!(&nt, "not a function");
                 unreachable!()
@@ -1378,6 +1382,7 @@ impl<'a> Parser<'a> {
 
         let mut nodes = vec![];
 
+        let mut i = 0;
         loop {
             let (_, token) = self.current();
             if token.equal(")") {
@@ -1386,16 +1391,31 @@ impl<'a> Parser<'a> {
             if nodes.len() != 0 {
                 self.skip(",");
             }
-            let mut node = self.assign().unwrap();
-            add_type(&mut node);
-            nodes.push(node);
+            let mut arg = self.assign().unwrap();
+            add_type(&mut arg);
+
+            if i < params.len() {
+                let param = &params[i];
+                if param.kind == TypeKind::Struct || param.kind == TypeKind::Union {
+                    error_token!(&arg.token, "passing struct or union is not supported yet");
+                    unreachable!()
+                }
+
+                arg = Node::new_cast(Box::new(arg), Box::new(param.clone()));
+                i += 1;
+            }
+
+            add_type(&mut arg);
+            nodes.push(arg);
         }
 
         self.skip(")");
 
         let mut node = Node::new(NodeKind::FuncCall, nt);
         node.func_name = func_name;
-        node.type_ = Some(t);
+        node.func_type = Some(t.clone());
+        // let t = t.return_type;
+        node.type_ = t.clone().return_type;
         node.args = nodes;
         Some(node)
     }
