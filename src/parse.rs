@@ -1,13 +1,14 @@
 //! AST parser
-//! program = (function_definition* | global-variable)*
+//! program = (typedef | function_definition* | global-variable)*
 //! function_definition = declspec declarator "(" ")" "{" compound_stmt*
-//! declspec = "void" | "char" | "short" | "int" | "long"
-//!            | struct_declare | union_declare
+//! declspec = ("void" | "char" | "short" | "int" | "long"
+//!            | "typedef"
+//!            | struct_declare | union_declare | typedef_name)+
 //! declarator = "*"* ("(" ident ")" | "(" declarator ")" | ident) type_suffix
 //! type_suffix = "(" func_params | "[" num "]" type_suffix | ε
 //! func_params = (param ("," param)*)? ")"
 //! param = declspec declarator
-//! compound_stmt = (declaration | stmt)* "}"
+//! compound_stmt = (typedef | declaration | stmt)* "}"
 //! declaration =
 //!    declspec (declarator ("=" expr)? ("," declarator ("=" expr)?)*)? ";"
 //! stmt = "return" expr ";"
@@ -40,10 +41,10 @@
 use crate::ctype::{add_type, TypeKind};
 use crate::keywords::{
     KW_CHAR, KW_ELSE, KW_FOR, KW_IF, KW_INT, KW_LONG, KW_RETURN, KW_SHORT, KW_SIZEOF, KW_STRUCT,
-    KW_UNION, KW_VOID, KW_WHILE,
+    KW_TYPEDEF, KW_UNION, KW_VOID, KW_WHILE,
 };
 use crate::node::NodeKind;
-use crate::obj::{Member, Scope};
+use crate::obj::{Member, Scope, VarAttr, VarScope};
 use crate::{align_to, error_at, error_token, Node, Obj, Token, Type};
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -98,9 +99,14 @@ impl<'a> Parser<'a> {
             if token.at_eof() {
                 break;
             }
+            let mut va = Some(VarAttr { is_typedef: false });
             // declspec
-            let base_type = self.declspec();
+            let base_type = self.declspec(&mut va);
 
+            if va.unwrap().is_typedef {
+                self.parse_typedef(base_type);
+                continue;
+            }
             if self.is_function() {
                 self.function_definition(base_type);
                 continue;
@@ -126,7 +132,9 @@ impl<'a> Parser<'a> {
             let gvar = Rc::new(RefCell::new(Obj::new_gvar(name.to_string(), type_, None)));
 
             self.globals.push(gvar.clone());
-            self.push_scope(name.to_string(), gvar);
+            let vs = self.push_scope(name.to_string());
+            let mut vsm = vs.as_ref().borrow_mut();
+            vsm.set_var(gvar.clone());
         }
     }
 
@@ -161,8 +169,9 @@ impl<'a> Parser<'a> {
         self.globals.push(Rc::new(RefCell::new(function)));
     }
 
-    fn push_scope(&mut self, name: String, var: Rc<RefCell<Obj>>) {
-        self.scopes[0].add_var(name, var);
+    fn push_scope(&mut self, name: String) -> Rc<RefCell<VarScope>> {
+        let vs = self.scopes[0].add_var(name);
+        return vs.clone();
     }
 
     fn push_tag_scope(&mut self, name: String, type_: Box<Type>) {
@@ -176,19 +185,38 @@ impl<'a> Parser<'a> {
         }
     }
 
+    fn find_typedef(&self, token: &Token) -> Option<Box<Type>> {
+        match token {
+            Token::Ident { t_str, .. } => {
+                let vs = self.find_var(t_str);
+                if vs.is_some() {
+                    let typedef = vs.as_ref().unwrap().borrow().typedef.clone();
+                    if typedef.is_some() {
+                        let var = typedef.as_ref().unwrap().clone();
+                        return Some(var);
+                    }
+                }
+            }
+            _ => {}
+        }
+        return None;
+    }
+
     /// 创建新的左值
     fn new_lvar(&mut self, base_type: Box<Type>) -> Option<Rc<RefCell<Obj>>> {
         let name = base_type.get_name().to_string();
         let nvar = Rc::new(RefCell::new(Obj::new_lvar(name.to_string(), base_type)));
         self.locals.push(nvar.clone());
-        self.push_scope(name.to_string(), nvar.clone());
+        let vs = self.push_scope(name.to_string());
+        let mut vsm = vs.as_ref().borrow_mut();
+        vsm.set_var(nvar.clone());
         Some(nvar)
     }
 
     /// declspec = "void" | "char" | "short" | "int" | "long"
     ///            | struct_declare | union_declare
     /// declarator specifier
-    fn declspec(&mut self) -> Box<Type> {
+    fn declspec(&mut self, attr: &mut Option<VarAttr>) -> Box<Type> {
         // 类型的组合，被表示为例如：LONG+LONG=1<<9
         // 可知long int和int long是等价的。
         const VOID: i32 = 1 << 0;
@@ -203,44 +231,64 @@ impl<'a> Parser<'a> {
         const LONG_LONG_INT: i32 = LONG + LONG + INT;
 
         let mut type_ = Type::new_int();
-        let mut count = 0; // 记录类型相加的数值
+        let mut counter = 0; // 记录类型相加的数值
 
         // 遍历所有类型名的Tok
         loop {
             let (_, token) = self.current();
-            if !token.is_type_name() {
+            if !self.is_type_name(token) {
                 break;
             }
 
-            if token.equal(KW_STRUCT) || token.equal(KW_UNION) {
+            if token.equal(KW_TYPEDEF) {
+                if attr.is_none() {
+                    error_token!(
+                        token,
+                        "storage class specifier is not allowed in this context"
+                    );
+                }
+                attr.as_mut().unwrap().is_typedef = true;
+                self.next();
+                continue;
+            }
+
+            // 处理用户定义的类型
+            let typ2 = self.find_typedef(token);
+            if token.equal(KW_STRUCT) || token.equal(KW_UNION) || typ2.is_some() {
+                if counter > 0 {
+                    break;
+                }
                 if token.equal(KW_STRUCT) {
                     self.next();
                     type_ = self.struct_declare();
-                } else {
+                } else if token.equal(KW_UNION) {
                     self.next();
                     type_ = self.union_declare();
+                } else {
+                    type_ = typ2.unwrap();
+                    self.next();
                 }
-                count = OTHER;
+                counter += OTHER;
                 continue;
             }
 
             // 对于出现的类型名加入Counter
             // 每一步的Counter都需要有合法值
             if token.equal(KW_VOID) {
-                count += VOID;
+                counter += VOID;
             } else if token.equal(KW_CHAR) {
-                count += CHAR;
+                counter += CHAR;
             } else if token.equal(KW_SHORT) {
-                count += SHORT;
+                counter += SHORT;
             } else if token.equal(KW_INT) {
-                count += INT;
+                counter += INT;
             } else if token.equal(KW_LONG) {
-                count += LONG;
+                counter += LONG;
             } else {
                 unreachable!()
             }
 
-            match count {
+            match counter {
                 VOID => type_ = Type::new_void(),
                 CHAR => type_ = Type::new_char(),
                 SHORT | SHORT_INT => type_ = Type::new_short(),
@@ -340,7 +388,7 @@ impl<'a> Parser<'a> {
                 self.skip(",");
             }
 
-            let mut t = self.declspec();
+            let mut t = self.declspec(&mut None);
             t = self.declarator(t);
 
             // 倒序插入
@@ -352,7 +400,7 @@ impl<'a> Parser<'a> {
     }
 
     /// 解析复合语句
-    /// compound_stmt =  (declaration | stmt)* "}"
+    /// compound_stmt =  (typedef | declaration | stmt)* "}"
     fn compound_stmt(&mut self) -> Option<Node> {
         let mut nodes = vec![];
         let (pos, _) = self.current();
@@ -369,9 +417,17 @@ impl<'a> Parser<'a> {
                 break;
             }
             let mut node;
-            if token.is_type_name() {
+            if self.is_type_name(token) {
+                let mut va = Some(VarAttr { is_typedef: false });
+                let base_type = self.declspec(&mut va);
+
+                // 解析typedef的语句
+                if va.unwrap().is_typedef {
+                    self.parse_typedef(base_type);
+                    continue;
+                }
                 // declaration
-                node = self.declaration().unwrap();
+                node = self.declaration(base_type).unwrap();
             } else {
                 // stmt
                 node = self.stmt().unwrap();
@@ -391,11 +447,7 @@ impl<'a> Parser<'a> {
 
     /// declaration =
     ///    declspec (declarator ("=" expr)? ("," declarator ("=" expr)?)*)? ";"
-    fn declaration(&mut self) -> Option<Node> {
-        // declspec
-        // 声明的 基础类型
-        let base_type = self.declspec();
-
+    fn declaration(&mut self, base_type: Box<Type>) -> Option<Node> {
         let mut nodes = vec![];
         let mut i = 0;
 
@@ -924,7 +976,7 @@ impl<'a> Parser<'a> {
                 break;
             }
 
-            let base_type = self.declspec();
+            let base_type = self.declspec(&mut None);
             let mut is_first = true;
 
             while !self.consume(";") {
@@ -1144,16 +1196,19 @@ impl<'a> Parser<'a> {
 
                 // ident
                 // 查找变量
-                let obj = self.find_var(&t_str);
+                let vso = self.find_var(&t_str);
                 let node;
-                if let Some(var) = obj {
-                    node = Node::new_var(var.clone(), nt);
-                } else {
-                    error_at!(*line_no, *offset, "undefined variable");
-                    return None;
+                if vso.is_some() {
+                    let vs = vso.unwrap().clone();
+                    let var = &vs.borrow().var;
+                    if var.is_some() {
+                        node = Node::new_var(var.as_ref().unwrap().clone(), nt);
+                        self.next();
+                        return Some(node);
+                    }
                 }
-                self.next();
-                return Some(node);
+                error_at!(*line_no, *offset, "undefined variable");
+                return None;
             }
             Token::Str { val, type_, .. } => {
                 let var = self.new_string_literal(val.to_vec(), type_.clone());
@@ -1218,7 +1273,7 @@ impl<'a> Parser<'a> {
     }
 
     /// 通过名称，查找一个变量
-    fn find_var(&self, name: &String) -> Option<Rc<RefCell<Obj>>> {
+    fn find_var(&self, name: &String) -> Option<Rc<RefCell<VarScope>>> {
         for scope in self.scopes.iter() {
             if let Some(var) = scope.get_var(name) {
                 return Some(var.clone());
@@ -1235,6 +1290,34 @@ impl<'a> Parser<'a> {
             }
         }
         return None;
+    }
+
+    /// 判断是否为类型名
+    fn is_type_name(&self, token: &Token) -> bool {
+        let is = token.is_type_name();
+        if is {
+            return true;
+        }
+
+        // 查找是否为类型别名
+        self.find_typedef(token).is_some()
+    }
+
+    fn parse_typedef(&mut self, base_type: Box<Type>) {
+        let mut first = true;
+
+        while !self.consume(";") {
+            if !first {
+                self.skip(",");
+            }
+            first = false;
+            let typ = self.declarator(base_type.clone());
+            let name = typ.get_name().to_string();
+
+            let vs = self.push_scope(name);
+            let mut vsm = vs.as_ref().borrow_mut();
+            vsm.set_typedef(typ);
+        }
     }
 
     fn skip(&mut self, s: &str) {
@@ -1287,7 +1370,9 @@ impl<'a> Parser<'a> {
         )));
         // 加入globals
         self.globals.push(gvar.clone());
-        self.push_scope(name.to_string(), gvar.clone());
-        gvar
+        let vs = self.push_scope(name.to_string());
+        let mut vsm = vs.as_ref().borrow_mut();
+        vsm.set_var(gvar.clone());
+        return gvar;
     }
 }

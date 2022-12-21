@@ -126,13 +126,33 @@ impl Obj {
     }
 }
 
-/// 局部和全局变量的域
+/// 局部和全局变量或是typedef的域
 #[derive(Clone)]
 pub struct VarScope {
     // 变量域名称
-    name: String,
+    pub(crate) name: String,
     // 对应的变量
-    var: Rc<RefCell<Obj>>,
+    pub(crate) var: Option<Rc<RefCell<Obj>>>,
+    // 别名
+    pub(crate) typedef: Option<Box<Type>>,
+}
+
+impl VarScope {
+    pub fn new(name: String) -> Self {
+        Self {
+            name,
+            var: None,
+            typedef: None,
+        }
+    }
+
+    pub fn set_var(&mut self, var: Rc<RefCell<Obj>>) {
+        self.var = Some(var);
+    }
+
+    pub fn set_typedef(&mut self, typedef: Box<Type>) {
+        self.typedef = Some(typedef);
+    }
 }
 
 /// 结构体标签和联合体标签的域
@@ -141,13 +161,20 @@ pub struct TagScope {
     // 域名称
     name: String,
     // 域类型
-    var: Box<Type>,
+    typ: Box<Type>,
+}
+
+// 变量属性
+#[derive(Clone)]
+pub struct VarAttr {
+    // 是否为类型别名
+    pub is_typedef: bool,
 }
 
 // C有两个域：变量域，结构体标签域
 pub struct Scope {
     /// 指向当前域内的变量
-    vars: Vec<VarScope>,
+    vars: Vec<Rc<RefCell<VarScope>>>,
     /// 指向当前域内的结构体标签
     tags: Vec<TagScope>,
 }
@@ -161,30 +188,32 @@ impl Scope {
     }
 
     /// 添加一个var
-    pub fn add_var(&mut self, name: String, var: Rc<RefCell<Obj>>) {
-        self.vars.insert(0, VarScope { name, var })
+    pub fn add_var(&mut self, name: String) -> Rc<RefCell<VarScope>> {
+        let vs = Rc::new(RefCell::new(VarScope::new(name)));
+        self.vars.insert(0, vs.clone());
+        vs
     }
 
     /// 找到对应的var
-    pub fn get_var(&self, name: &str) -> Option<Rc<RefCell<Obj>>> {
+    pub fn get_var(&self, name: &str) -> Option<Rc<RefCell<VarScope>>> {
         for scope in self.vars.to_vec() {
-            if name.eq(scope.name.as_str()) {
-                return Some(scope.var);
+            if name.eq(scope.borrow().name.as_str()) {
+                return Some(scope);
             }
         }
         return None;
     }
 
     /// 添加一个tag
-    pub fn add_tag(&mut self, name: String, type_: Box<Type>) {
-        self.tags.push(TagScope { name, var: type_ })
+    pub fn add_tag(&mut self, name: String, typ: Box<Type>) {
+        self.tags.push(TagScope { name, typ })
     }
 
     /// 找到对应的tag
     pub fn get_tag(&self, name: &str) -> Option<Box<Type>> {
         for scope in self.tags.to_vec() {
             if name.eq(scope.name.as_str()) {
-                return Some(scope.var);
+                return Some(scope.typ);
             }
         }
         return None;
