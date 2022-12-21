@@ -32,10 +32,13 @@
 //! postfix = primary ("[" expr "]" | "." ident)* | "->" ident)*
 //! primary =  "(" "{" stmt+ "}" ")"
 //!         | "(" expr ")"
+//!         | "sizeof" "(" typename ")"
 //!         | "sizeof" unary
 //!         | ident funcArgs?
 //!         | str
 //!         | num
+//! typename = declspec abstract_declarator
+//! abstract_declarator = "*"* ("(" abstract_declarator ")")? type_suffix
 //! func_call = ident "(" (assign ("," assign)*)? ")"
 
 use crate::ctype::{add_type, TypeKind};
@@ -236,7 +239,7 @@ impl<'a> Parser<'a> {
         // 遍历所有类型名的Tok
         loop {
             let (_, token) = self.current();
-            if !self.is_type_name(token) {
+            if !self.is_typename(token) {
                 break;
             }
 
@@ -417,7 +420,7 @@ impl<'a> Parser<'a> {
                 break;
             }
             let mut node;
-            if self.is_type_name(token) {
+            if self.is_typename(token) {
                 let mut va = Some(VarAttr { is_typedef: false });
                 let base_type = self.declspec(&mut va);
 
@@ -1145,6 +1148,7 @@ impl<'a> Parser<'a> {
     /// 解析括号、数字、变量
     /// primary = "(" "{" stmt+ "}" ")"
     ///         | "(" expr ")"
+    ///         | "sizeof" "(" typename ")"
     ///         | "sizeof" unary
     ///         | ident funcArgs?
     ///         | str
@@ -1171,6 +1175,17 @@ impl<'a> Parser<'a> {
             return node;
         }
 
+        // "sizeof" "(" typename ")"
+        let next_next = &self.tokens[pos + 2];
+        if token.equal(KW_SIZEOF) && next.equal("(") && self.is_typename(next_next) {
+            self.next().next();
+            let typ = self.typename();
+            self.skip(")");
+            // self.cursor = pos;
+            return Some(Node::new_num(typ.size as i64, nt));
+        }
+
+        // "sizeof" unary
         if token.equal(KW_SIZEOF) {
             self.next();
             let mut node = self.unary();
@@ -1235,6 +1250,49 @@ impl<'a> Parser<'a> {
         None
     }
 
+    /// typename = declspec abstract_declarator
+    fn typename(&mut self) -> Box<Type> {
+        let typ = self.declspec(&mut None);
+
+        return self.abstract_declarator(typ);
+    }
+
+    /// abstract_declarator = "*"* ("(" abstract_declarator ")")? type_suffix
+    fn abstract_declarator(&mut self, mut base_type: Box<Type>) -> Box<Type> {
+        // "*"*
+        loop {
+            let (_, token) = self.current();
+            if !token.equal("*") {
+                break;
+            }
+            base_type = Type::pointer_to(base_type);
+            self.next();
+        }
+
+        // ("(" abstract_declarator ")")?
+        let (start_pos, token) = self.current();
+        if token.equal("(") {
+            self.next();
+            self.abstract_declarator(Type::new_int());
+            self.skip(")");
+            // 获取到括号后面的类型后缀，type_为解析完的类型，pos为分号
+            base_type = self.type_suffix(base_type);
+            // 记录分号位置
+            let (end_pos, _) = self.current();
+            // 返回最开始
+            self.cursor = start_pos;
+            self.next();
+            // 解析Ty整体作为Base去构造，返回Type的值
+            base_type = self.abstract_declarator(base_type);
+            // 等整体标记完,返回分号位置
+            self.cursor = end_pos;
+            return base_type;
+        }
+
+        // type_suffix
+        self.type_suffix(base_type)
+    }
+
     // func_call = ident "(" (assign ("," assign)*)? ")"
     fn func_call(&mut self, func_name: String) -> Option<Node> {
         let (pos, _) = self.current();
@@ -1293,8 +1351,8 @@ impl<'a> Parser<'a> {
     }
 
     /// 判断是否为类型名
-    fn is_type_name(&self, token: &Token) -> bool {
-        let is = token.is_type_name();
+    fn is_typename(&self, token: &Token) -> bool {
+        let is = token.is_typename();
         if is {
             return true;
         }

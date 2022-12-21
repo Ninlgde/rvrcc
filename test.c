@@ -1,1 +1,1 @@
-int main() { typedef int t; t x=1; x; }
+int main() { sizeof(char); }
