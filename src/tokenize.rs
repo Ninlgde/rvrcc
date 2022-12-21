@@ -105,6 +105,17 @@ pub fn tokenize(path: String, input: String) -> Vec<Token> {
             continue;
         }
 
+        if c == '\'' {
+            let c = read_char_literal(&chars, &mut pos);
+            tokens.push(Token::Num {
+                val: c as i64,
+                t_str: "".to_string(),
+                offset: old_pos,
+                line_no,
+            });
+            continue;
+        }
+
         read_ident(&chars, &mut pos);
         if old_pos != pos {
             let t_str = slice_to_string(&chars, old_pos, pos);
@@ -315,4 +326,30 @@ fn from_hex(c: char) -> u8 {
     }
 
     return c as u8 - 'A' as u8 + 10;
+}
+
+fn read_char_literal(chars: &Vec<u8>, pos: &mut usize) -> char {
+    *pos += 1; // 忽略'
+    let mut c = chars[*pos] as char;
+
+    if c == '\0' {
+        error_at!(0, *pos - 1, "unclosed char literal");
+    }
+
+    let r;
+    if c == '\\' {
+        *pos += 1;
+        r = read_escaped_char(chars, pos);
+    } else {
+        r = chars[*pos] as char;
+        *pos += 1;
+    }
+
+    c = chars[*pos] as char;
+    if c != '\'' {
+        error_at!(0, *pos, "unclosed char literal");
+    }
+
+    *pos += 1; // 忽略尾部'
+    return r;
 }
