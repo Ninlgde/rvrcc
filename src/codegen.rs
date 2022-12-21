@@ -597,6 +597,12 @@ impl<'a> Generator<'a> {
             return;
         }
 
+        if to.kind == TypeKind::Bool {
+            self.write_file(format!("  # 转为bool类型：为0置0，非0置1"));
+            self.write_file(format!("  snez a0, a0"));
+            return;
+        }
+
         let from_idx = get_type_id(from);
         let to_idx = get_type_id(to);
         let cast = CAST_TABLE[from_idx][to_idx];

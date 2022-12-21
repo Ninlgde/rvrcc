@@ -1,7 +1,7 @@
 //! AST parser
 //! program = (typedef | function_definition* | global-variable)*
 //! function_definition = declspec declarator "(" ")" "{" compound_stmt*
-//! declspec = ("void" | "char" | "short" | "int" | "long"
+//! declspec = ("void" | "_Bool" | "char" | "short" | "int" | "long"
 //!            | "typedef"
 //!            | struct_declare | union_declare | typedef_name)+
 //! declarator = "*"* ("(" ident ")" | "(" declarator ")" | ident) type_suffix
@@ -44,8 +44,8 @@
 
 use crate::ctype::{add_type, TypeKind};
 use crate::keywords::{
-    KW_CHAR, KW_ELSE, KW_FOR, KW_IF, KW_INT, KW_LONG, KW_RETURN, KW_SHORT, KW_SIZEOF, KW_STRUCT,
-    KW_TYPEDEF, KW_UNION, KW_VOID, KW_WHILE,
+    KW_BOOL, KW_CHAR, KW_ELSE, KW_FOR, KW_IF, KW_INT, KW_LONG, KW_RETURN, KW_SHORT, KW_SIZEOF,
+    KW_STRUCT, KW_TYPEDEF, KW_UNION, KW_VOID, KW_WHILE,
 };
 use crate::node::NodeKind;
 use crate::obj::{Member, Scope, VarAttr, VarScope};
@@ -239,18 +239,20 @@ impl<'a> Parser<'a> {
         Some(gvar)
     }
 
-    /// declspec = "void" | "char" | "short" | "int" | "long"
-    ///            | struct_declare | union_declare
+    /// declspec = ("void" | "_Bool" | "char" | "short" | "int" | "long"
+    ///            | "typedef"
+    ///            | struct_declare | union_declare)+
     /// declarator specifier
     fn declspec(&mut self, attr: &mut Option<VarAttr>) -> Box<Type> {
         // 类型的组合，被表示为例如：LONG+LONG=1<<9
         // 可知long int和int long是等价的。
         const VOID: i32 = 1 << 0;
-        const CHAR: i32 = 1 << 2;
-        const SHORT: i32 = 1 << 4;
-        const INT: i32 = 1 << 6;
-        const LONG: i32 = 1 << 8;
-        const OTHER: i32 = 1 << 10;
+        const BOOL: i32 = 1 << 2;
+        const CHAR: i32 = 1 << 4;
+        const SHORT: i32 = 1 << 6;
+        const INT: i32 = 1 << 8;
+        const LONG: i32 = 1 << 10;
+        const OTHER: i32 = 1 << 12;
         const SHORT_INT: i32 = SHORT + INT;
         const LONG_INT: i32 = LONG + INT;
         const LONG_LONG: i32 = LONG + LONG;
@@ -302,6 +304,8 @@ impl<'a> Parser<'a> {
             // 每一步的Counter都需要有合法值
             if token.equal(KW_VOID) {
                 counter += VOID;
+            } else if token.equal(KW_BOOL) {
+                counter += BOOL;
             } else if token.equal(KW_CHAR) {
                 counter += CHAR;
             } else if token.equal(KW_SHORT) {
@@ -316,6 +320,7 @@ impl<'a> Parser<'a> {
 
             match counter {
                 VOID => type_ = Type::new_void(),
+                BOOL => type_ = Type::new_bool(),
                 CHAR => type_ = Type::new_char(),
                 SHORT | SHORT_INT => type_ = Type::new_short(),
                 INT => type_ = Type::new_int(),
