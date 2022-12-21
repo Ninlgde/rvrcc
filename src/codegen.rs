@@ -381,29 +381,35 @@ impl<'a> Generator<'a> {
 
         self.gen_lrhs(node.lhs.as_ref().unwrap(), node.rhs.as_ref().unwrap());
 
+        let typ = node.lhs.as_ref().unwrap().clone().type_.unwrap();
+        let suffix = if typ.kind == TypeKind::Long || typ.has_base() {
+            ""
+        } else {
+            "w"
+        };
         match node.kind {
             NodeKind::Add => {
                 // + a0=a0+a1
                 self.write_file(format!("  # a0+a1，结果写入a0"));
-                self.write_file(format!("  add a0, a0, a1"));
+                self.write_file(format!("  add{} a0, a0, a1", suffix));
                 return;
             }
             NodeKind::Sub => {
                 // - a0=a0-a1
                 self.write_file(format!("  # a0-a1，结果写入a0"));
-                self.write_file(format!("  sub a0, a0, a1"));
+                self.write_file(format!("  sub{} a0, a0, a1", suffix));
                 return;
             }
             NodeKind::Mul => {
                 // * a0=a0*a1
                 self.write_file(format!("  # a0×a1，结果写入a0"));
-                self.write_file(format!("  mul a0, a0, a1"));
+                self.write_file(format!("  mul{} a0, a0, a1", suffix));
                 return;
             }
             NodeKind::Div => {
                 // / a0=a0/a1
                 self.write_file(format!("  # a0÷a1，结果写入a0"));
-                self.write_file(format!("  div a0, a0, a1"));
+                self.write_file(format!("  div{} a0, a0, a1", suffix));
                 return;
             }
             NodeKind::Eq => {
