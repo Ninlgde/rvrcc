@@ -28,7 +28,7 @@ pub struct Type {
     // 指向的类型
     base: Option<Box<Type>>,
     // 返回的类型
-    return_type: Option<Box<Type>>,
+    pub return_type: Option<Box<Type>>,
     // 形参
     params: Vec<Type>,
     // 数组长度, 元素总个数
