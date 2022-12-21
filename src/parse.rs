@@ -811,7 +811,7 @@ impl<'a> Parser<'a> {
 
         // ptr + num
         // 指针加法，ptr+1，这里的1不是1个字节，而是1个元素的空间，所以需要 ×size 操作
-        let size = Box::new(Node::new_num(size, nt.clone()));
+        let size = Box::new(Node::new_long(size, nt.clone()));
         let f_rhs = Box::new(Node::new_binary(NodeKind::Mul, n_rhs, size, nt.clone()));
         Some(Node::new_binary(NodeKind::Add, n_lhs, f_rhs, nt))
     }
@@ -832,7 +832,7 @@ impl<'a> Parser<'a> {
         // ptr - num
         if lhs_t.has_base() && rhs_t.is_int() {
             let size: i64 = lhs_t.get_base_size() as i64;
-            let size = Box::new(Node::new_num(size, nt.clone()));
+            let size = Box::new(Node::new_long(size, nt.clone()));
             let mut f_rhs = Box::new(Node::new_binary(NodeKind::Mul, rhs, size, nt.clone()));
             add_type(f_rhs.as_mut());
             let mut node = Node::new_binary(NodeKind::Sub, lhs, f_rhs, nt);
@@ -927,14 +927,13 @@ impl<'a> Parser<'a> {
     /// cast = "(" typeName ")" cast | unary
     fn cast(&mut self) -> Option<Node> {
         let (pos, token) = self.current();
-        let nt = self.tokens[pos].clone();
         let next = &self.tokens[pos + 1];
         if token.equal("(") && self.is_typename(next) {
             self.next();
             let typ = self.typename();
             self.skip(")");
             let cast = self.cast().unwrap();
-            let node = Node::new_cast(Box::new(cast), nt, typ);
+            let node = Node::new_cast(Box::new(cast), typ);
             return Some(node);
         }
 

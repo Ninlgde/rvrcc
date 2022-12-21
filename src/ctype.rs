@@ -145,6 +145,24 @@ impl Type {
     pub fn get_params(&self) -> Vec<Type> {
         self.params.to_vec()
     }
+
+    pub fn get_common_type(typ1: Box<Self>, typ2: Box<Self>) -> Box<Self> {
+        if typ1.has_base() {
+            return Self::pointer_to(typ1.base.unwrap());
+        }
+        if typ1.size == 8 || typ2.size == 8 {
+            return Self::new_long();
+        }
+
+        Self::new_int()
+    }
+}
+
+pub fn usual_arith_conv(lhs: &mut Box<Node>, rhs: &mut Box<Node>) {
+    let typ = Type::get_common_type(lhs.type_.clone().unwrap(), rhs.type_.clone().unwrap());
+
+    *lhs = Box::new(Node::new_cast(lhs.clone(), typ.clone()));
+    *rhs = Box::new(Node::new_cast(rhs.clone(), typ));
 }
 
 pub fn add_type(node: &mut Node) {
@@ -183,8 +201,30 @@ pub fn add_type(node: &mut Node) {
     }
 
     match node.kind {
-        NodeKind::Add | NodeKind::Sub | NodeKind::Mul | NodeKind::Div | NodeKind::Neg => {
+        NodeKind::Num => {
+            let val = node.val;
+            if val < i32::MIN as i64 || val > i32::MAX as i64 {
+                node.type_ = Some(Type::new_long())
+            } else {
+                node.type_ = Some(Type::new_int())
+            }
+        }
+        NodeKind::Add | NodeKind::Sub | NodeKind::Mul | NodeKind::Div => {
+            // 对左右部转换
+            usual_arith_conv(node.lhs.as_mut().unwrap(), node.rhs.as_mut().unwrap());
             node.type_ = node.lhs.as_ref().unwrap().type_.clone();
+        }
+        NodeKind::Neg => {
+            // 对左部转换
+            let typ = Type::get_common_type(
+                Type::new_int(),
+                node.lhs.as_ref().unwrap().type_.clone().unwrap(),
+            );
+            node.lhs = Some(Box::new(Node::new_cast(
+                node.lhs.as_ref().unwrap().clone(),
+                typ.clone(),
+            )));
+            node.type_ = Some(typ);
         }
         NodeKind::Assign => {
             let t = node.lhs.as_ref().unwrap().type_.as_ref().unwrap().clone();
@@ -193,14 +233,20 @@ pub fn add_type(node: &mut Node) {
                 error_token!(token, "not an lvalue");
                 unreachable!()
             }
+            if t.kind != TypeKind::Struct {
+                node.rhs = Some(Box::new(Node::new_cast(
+                    node.rhs.as_ref().unwrap().clone(),
+                    t.clone(),
+                )))
+            }
             node.type_ = Some(t);
         }
-        NodeKind::Eq
-        | NodeKind::Ne
-        | NodeKind::Lt
-        | NodeKind::Le
-        | NodeKind::Num
-        | NodeKind::FuncCall => {
+        NodeKind::Eq | NodeKind::Ne | NodeKind::Lt | NodeKind::Le => {
+            // 对左右部转换
+            usual_arith_conv(node.lhs.as_mut().unwrap(), node.rhs.as_mut().unwrap());
+            node.type_ = Some(Type::new_int());
+        }
+        NodeKind::FuncCall => {
             node.type_ = Some(Type::new_long());
         }
         NodeKind::Var => {

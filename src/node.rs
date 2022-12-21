@@ -140,6 +140,13 @@ impl Node {
         node
     }
 
+    pub fn new_long(val: i64, token: Token) -> Self {
+        let mut node = Self::new(NodeKind::Num, token);
+        node.val = val;
+        node.type_ = Some(Type::new_long());
+        node
+    }
+
     pub fn new_var(val: Rc<RefCell<Obj>>, token: Token) -> Self {
         let mut node = Self::new(NodeKind::Var, token);
         node.var = Some(val);
@@ -152,9 +159,9 @@ impl Node {
         node
     }
 
-    pub fn new_cast(mut expr: Box<Node>, token: Token, typ: Box<Type>) -> Self {
+    pub fn new_cast(mut expr: Box<Node>, typ: Box<Type>) -> Self {
         add_type(&mut expr);
-        let mut node = Self::new(NodeKind::Cast, token);
+        let mut node = Self::new(NodeKind::Cast, expr.token.clone());
         node.lhs = Some(expr);
         node.type_ = Some(typ);
         node
