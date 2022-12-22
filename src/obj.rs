@@ -142,6 +142,10 @@ pub struct VarScope {
     pub(crate) var: Option<Rc<RefCell<Obj>>>,
     // 别名
     pub(crate) typedef: Option<Box<Type>>,
+    // 枚举的类型
+    pub(crate) enum_type: Option<Box<Type>>,
+    // 枚举的值
+    pub(crate) enum_val: i64,
 }
 
 impl VarScope {
@@ -150,6 +154,8 @@ impl VarScope {
             name,
             var: None,
             typedef: None,
+            enum_type: None,
+            enum_val: 0,
         }
     }
 
@@ -160,9 +166,14 @@ impl VarScope {
     pub fn set_typedef(&mut self, typedef: Box<Type>) {
         self.typedef = Some(typedef);
     }
+
+    pub fn set_enum(&mut self, enum_type: Box<Type>, enum_val: i64) {
+        self.enum_type = Some(enum_type);
+        self.enum_val = enum_val;
+    }
 }
 
-/// 结构体标签和联合体标签的域
+/// 结构体标签，联合体标签，枚举标签的域
 #[derive(Clone)]
 pub struct TagScope {
     // 域名称
@@ -178,7 +189,7 @@ pub struct VarAttr {
     pub is_typedef: bool,
 }
 
-// C有两个域：变量域，结构体标签域
+// C有两个域：变量（或类型别名）域，结构体（或联合体，枚举）标签域
 pub struct Scope {
     /// 指向当前域内的变量
     vars: Vec<Rc<RefCell<VarScope>>>,

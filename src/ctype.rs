@@ -15,6 +15,7 @@ pub enum TypeKind {
     Array,
     Struct,
     Union,
+    Enum,
 }
 
 #[derive(Clone)]
@@ -83,6 +84,11 @@ impl Type {
         Box::new(type_)
     }
 
+    pub fn new_enum() -> Box<Self> {
+        let type_ = Self::new(TypeKind::Enum, 4, 4);
+        Box::new(type_)
+    }
+
     pub fn pointer_to(base: Box<Type>) -> Box<Self> {
         let mut type_ = Self::new(TypeKind::Ptr, 8, 8);
         type_.base = Some(base);
@@ -115,6 +121,7 @@ impl Type {
             || self.kind == TypeKind::Int
             || self.kind == TypeKind::Long
             || self.kind == TypeKind::Bool
+            || self.kind == TypeKind::Enum
     }
 
     pub fn has_base(&self) -> bool {
