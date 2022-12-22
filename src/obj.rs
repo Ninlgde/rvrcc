@@ -1,4 +1,4 @@
-use crate::{Node, Type};
+use crate::{Node, Token, Type};
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -262,7 +262,9 @@ pub struct Member {
     // 类型
     pub(crate) type_: Option<Box<Type>>,
     // 偏移量
-    pub(crate) offset: usize,
+    pub(crate) offset: isize,
+    // 用于报错信息
+    pub(crate) token: Option<Token>,
 }
 
 impl Member {
@@ -271,10 +273,15 @@ impl Member {
             name,
             type_,
             offset: 0,
+            token: None,
         }
     }
 
-    pub fn set_offset(&mut self, offset: usize) {
+    pub fn set_offset(&mut self, offset: isize) {
         self.offset = offset
+    }
+
+    pub fn set_token(&mut self, token: Token) {
+        self.token = Some(token);
     }
 }

@@ -655,7 +655,7 @@ impl<'a> Generator<'a> {
         }
     }
 
-    fn store_general(&mut self, register: usize, offset: isize, size: usize) {
+    fn store_general(&mut self, register: usize, offset: isize, size: isize) {
         self.write_file(format!(
             "  # 将{}寄存器的值存入{}(fp)的栈地址",
             ARG_NAMES[register], offset

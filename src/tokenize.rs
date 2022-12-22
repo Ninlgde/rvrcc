@@ -93,7 +93,7 @@ pub fn tokenize(path: String, input: String) -> Vec<Token> {
             let mut val = read_string_literal(&chars, &mut pos);
             val.push('\0' as u8);
             let len = val.len();
-            let type_ = Type::array_of(Type::new_char(), len);
+            let type_ = Type::array_of(Type::new_char(), len as isize);
             let t = Token::Str {
                 val,
                 type_,
