@@ -40,6 +40,8 @@ pub enum NodeKind {
     DeRef,
     // !, 非
     Not,
+    // ~, 按位取非
+    BitNot,
     // 返回
     Return,
     // "if"，条件判断

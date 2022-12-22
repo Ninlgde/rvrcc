@@ -378,6 +378,13 @@ impl<'a> Generator<'a> {
                 self.write_file(format!("  seqz a0, a0"));
                 return;
             }
+            NodeKind::BitNot => {
+                self.gen_expr(node.lhs.as_ref().unwrap());
+                self.write_file(format!("  # 按位取反"));
+                // 这里的 not a0, a0 为 xori a0, a0, -1 的伪码
+                self.write_file(format!("  not a0, a0"));
+                return;
+            }
             NodeKind::FuncCall => {
                 let mut argc = 0;
                 for arg in node.args.to_vec() {

@@ -30,7 +30,9 @@
 //! add = mul ("+" mul | "-" mul)*
 //! mul = cast ("*" cast | "/" cast)*
 //! cast = "(" typename ")" cast | unary
-//! unary = ("+" | "-" | "*" | "&" | "!") cast | ("++" | "--") unary | postfix
+//! unary = ("+" | "-" | "*" | "&" | "!" | "~") cast
+//!         | ("++" | "--") unary
+//!         | postfix
 //! struct_members = (declspec declarator (","  declarator)* ";")*
 //! struct_declare = struct_union_declare
 //! union_declare = struct_union_declare
@@ -306,14 +308,11 @@ impl<'a> Parser<'a> {
                     break;
                 }
                 if token.equal(KW_STRUCT) {
-                    self.next();
-                    type_ = self.struct_declare();
+                    type_ = self.next().struct_declare();
                 } else if token.equal(KW_UNION) {
-                    self.next();
-                    type_ = self.union_declare();
+                    type_ = self.next().union_declare();
                 } else if token.equal(KW_ENUM) {
-                    self.next();
-                    type_ = self.enum_specifier();
+                    type_ = self.next().enum_specifier();
                 } else {
                     type_ = typ2.unwrap();
                     self.next();
@@ -368,9 +367,8 @@ impl<'a> Parser<'a> {
         let mut name = "".to_string();
         // "(" declarator ")"
         if token.equal("(") {
-            self.next();
             // 使Tok前进到")"后面的位置
-            self.declarator(Type::new_int());
+            self.next().declarator(Type::new_int());
             self.skip(")");
             // 获取到括号后面的类型后缀，type_为解析完的类型，pos为分号
             type_ = self.type_suffix(type_);
@@ -378,9 +376,8 @@ impl<'a> Parser<'a> {
             let (end_pos, _) = self.current();
             // 返回最开始
             self.cursor = start_pos;
-            self.next();
             // 解析Ty整体作为Base去构造，返回Type的值
-            let type_ = self.declarator(type_);
+            let type_ = self.next().declarator(type_);
             // 等整体标记完,返回分号位置
             self.cursor = end_pos;
             return type_;
@@ -396,8 +393,7 @@ impl<'a> Parser<'a> {
         }
 
         // type_suffix
-        self.next();
-        type_ = self.type_suffix(type_);
+        type_ = self.next().type_suffix(type_);
         // ident
         // 变量名 或 函数名
         type_.set_name(name);
@@ -409,14 +405,12 @@ impl<'a> Parser<'a> {
         let (_, token) = self.current();
         // "(" func_params
         if token.equal("(") {
-            self.next();
-            return self.func_params(type_);
+            return self.next().func_params(type_);
         }
 
         // "[" num "]"
         if token.equal("[") {
-            self.next();
-            let size = self.get_number();
+            let size = self.next().get_number();
             self.next(); // 跳过这个数字
             self.skip("]"); // 跳过]
             type_ = self.type_suffix(type_);
@@ -540,8 +534,7 @@ impl<'a> Parser<'a> {
             let node = Node::new_var(nvar, nt);
             let lhs = Box::new(node);
             // 解析递归赋值语句
-            self.next();
-            let rhs = Box::new(self.assign().unwrap());
+            let rhs = Box::new(self.next().assign().unwrap());
             let (pos, _) = self.current();
             let nt = self.tokens[pos].clone();
             let expr = Box::new(Node::new_binary(NodeKind::Assign, lhs, rhs, nt.clone()));
@@ -569,8 +562,7 @@ impl<'a> Parser<'a> {
         let nt = self.tokens[pos].clone();
         // "return" expr ";"
         if token.equal(KW_RETURN) {
-            self.next();
-            let mut expr = self.expr().unwrap();
+            let mut expr = self.next().expr().unwrap();
             self.skip(";");
             add_type(&mut expr);
             let cur_func = self.cur_func.as_ref().unwrap().clone();
@@ -591,8 +583,7 @@ impl<'a> Parser<'a> {
         // "if" "(" expr ")" stmt ("else" stmt)?
         if token.equal(KW_IF) {
             // "(" expr ")"，条件内语句
-            self.next();
-            self.skip("(");
+            self.next().skip("(");
             let cond = Some(Box::new(self.expr().unwrap()));
             self.skip(")");
             // stmt，符合条件后的语句
@@ -601,8 +592,7 @@ impl<'a> Parser<'a> {
             let mut els = None;
             let (_, token) = self.current();
             if token.equal(KW_ELSE) {
-                self.next();
-                els = Some(Box::new(self.stmt().unwrap()));
+                els = Some(Box::new(self.next().stmt().unwrap()));
             }
             let mut node = Node::new(NodeKind::If, nt);
             node.cond = cond;
@@ -614,8 +604,7 @@ impl<'a> Parser<'a> {
         // | "for" "(" expr_stmt expr? ";" expr? ")" stmt
         if token.equal(KW_FOR) {
             // "("
-            self.next();
-            self.skip("(");
+            self.next().skip("(");
 
             // 进入for的域
             self.enter_scope();
@@ -662,8 +651,7 @@ impl<'a> Parser<'a> {
         // | "while" "(" expr ")" stmt
         if token.equal(KW_WHILE) {
             // "("
-            self.next();
-            self.skip("(");
+            self.next().skip("(");
             // expr
             let cond = Some(Box::new(self.expr().unwrap()));
             // ")"
@@ -679,8 +667,7 @@ impl<'a> Parser<'a> {
 
         // "{" compound_stmt
         if token.equal("{") {
-            self.next();
-            return self.compound_stmt();
+            return self.next().compound_stmt();
         }
 
         // expr_stmt
@@ -714,8 +701,7 @@ impl<'a> Parser<'a> {
         let (pos, token) = self.current();
         let nt = self.tokens[pos].clone();
         if token.equal(",") {
-            self.next();
-            let rhs = Box::new(self.expr().unwrap());
+            let rhs = Box::new(self.next().expr().unwrap());
             return Some(Node::new_binary(NodeKind::Comma, Box::new(node), rhs, nt));
         }
 
@@ -733,38 +719,33 @@ impl<'a> Parser<'a> {
         let (pos, token) = self.current();
         let nt = self.tokens[pos].clone();
         if token.equal("=") {
-            self.next();
-            let rhs = Box::new(self.assign().unwrap());
+            let rhs = Box::new(self.next().assign().unwrap());
             return Some(Node::new_binary(NodeKind::Assign, Box::new(node), rhs, nt));
         }
 
         // ("+=" assign)?
         if token.equal("+=") {
-            self.next();
-            let rhs = Box::new(self.assign().unwrap());
+            let rhs = Box::new(self.next().assign().unwrap());
             let node = self.add_with_type(Box::new(node), rhs, nt).unwrap();
             return self.assign_op(node);
         }
 
         // ("-=" assign)?
         if token.equal("-=") {
-            self.next();
-            let rhs = Box::new(self.assign().unwrap());
+            let rhs = Box::new(self.next().assign().unwrap());
             let node = self.sub_with_type(Box::new(node), rhs, nt).unwrap();
             return self.assign_op(node);
         }
 
         // ("*=" assign)?
         if token.equal("*=") {
-            self.next();
-            let rhs = Box::new(self.assign().unwrap());
+            let rhs = Box::new(self.next().assign().unwrap());
             return self.assign_op(Node::new_binary(NodeKind::Mul, Box::new(node), rhs, nt));
         }
 
         // ("/=" assign)?
         if token.equal("/=") {
-            self.next();
-            let rhs = Box::new(self.assign().unwrap());
+            let rhs = Box::new(self.next().assign().unwrap());
             return self.assign_op(Node::new_binary(NodeKind::Div, Box::new(node), rhs, nt));
         }
 
@@ -832,8 +813,7 @@ impl<'a> Parser<'a> {
             let nt = self.tokens[pos].clone();
             // "==" relational
             if token.equal("==") {
-                self.next();
-                let rhs = Box::new(self.relational().unwrap());
+                let rhs = Box::new(self.next().relational().unwrap());
                 node = Some(Node::new_binary(
                     NodeKind::Eq,
                     Box::new(node.unwrap()),
@@ -845,8 +825,7 @@ impl<'a> Parser<'a> {
 
             // "!=" relational
             if token.equal("!=") {
-                self.next();
-                let rhs = Box::new(self.relational().unwrap());
+                let rhs = Box::new(self.next().relational().unwrap());
                 node = Some(Node::new_binary(
                     NodeKind::Ne,
                     Box::new(node.unwrap()),
@@ -872,8 +851,7 @@ impl<'a> Parser<'a> {
             let nt = self.tokens[pos].clone();
             // "<" add
             if token.equal("<") {
-                self.next();
-                let rhs = Box::new(self.add().unwrap());
+                let rhs = Box::new(self.next().add().unwrap());
                 node = Some(Node::new_binary(
                     NodeKind::Lt,
                     Box::new(node.unwrap()),
@@ -885,8 +863,7 @@ impl<'a> Parser<'a> {
 
             // "<=" add
             if token.equal("<=") {
-                self.next();
-                let rhs = Box::new(self.add().unwrap());
+                let rhs = Box::new(self.next().add().unwrap());
                 node = Some(Node::new_binary(
                     NodeKind::Le,
                     Box::new(node.unwrap()),
@@ -899,8 +876,7 @@ impl<'a> Parser<'a> {
             // ">" add
             // X>Y等价于Y<X
             if token.equal(">") {
-                self.next();
-                let lhs = Box::new(self.add().unwrap());
+                let lhs = Box::new(self.next().add().unwrap());
                 node = Some(Node::new_binary(
                     NodeKind::Lt,
                     lhs,
@@ -913,8 +889,7 @@ impl<'a> Parser<'a> {
             // ">=" add
             // X>=Y等价于Y<=X
             if token.equal(">=") {
-                self.next();
-                let lhs = Box::new(self.add().unwrap());
+                let lhs = Box::new(self.next().add().unwrap());
                 node = Some(Node::new_binary(
                     NodeKind::Le,
                     lhs,
@@ -1018,16 +993,14 @@ impl<'a> Parser<'a> {
             let nt = self.tokens[pos].clone();
             // "+" mul
             if token.equal("+") {
-                self.next();
-                let rhs = Box::new(self.mul().unwrap());
+                let rhs = Box::new(self.next().mul().unwrap());
                 node = self.add_with_type(Box::new(node.unwrap()), rhs, nt);
                 continue;
             }
 
             // "-" mul
             if token.equal("-") {
-                self.next();
-                let rhs = Box::new(self.mul().unwrap());
+                let rhs = Box::new(self.next().mul().unwrap());
                 node = self.sub_with_type(Box::new(node.unwrap()), rhs, nt);
                 continue;
             }
@@ -1048,8 +1021,7 @@ impl<'a> Parser<'a> {
             let nt = self.tokens[pos].clone();
             // "*" unary
             if token.equal("*") {
-                self.next();
-                let rhs = Box::new(self.cast().unwrap());
+                let rhs = Box::new(self.next().cast().unwrap());
                 node = Some(Node::new_binary(
                     NodeKind::Mul,
                     Box::new(node.unwrap()),
@@ -1061,8 +1033,7 @@ impl<'a> Parser<'a> {
 
             // "/" unary
             if token.equal("/") {
-                self.next();
-                let rhs = Box::new(self.cast().unwrap());
+                let rhs = Box::new(self.next().cast().unwrap());
                 node = Some(Node::new_binary(
                     NodeKind::Div,
                     Box::new(node.unwrap()),
@@ -1081,8 +1052,7 @@ impl<'a> Parser<'a> {
         let (pos, token) = self.current();
         let next = &self.tokens[pos + 1];
         if token.equal("(") && self.is_typename(next) {
-            self.next();
-            let typ = self.typename();
+            let typ = self.next().typename();
             self.skip(")");
             let cast = self.cast().unwrap();
             let node = Node::new_cast(Box::new(cast), typ);
@@ -1093,53 +1063,59 @@ impl<'a> Parser<'a> {
     }
 
     /// 解析一元运算
-    /// unary = ("+" | "-" | "*" | "&" | "!") cast | ("++" | "--") unary | postfix
+    /// unary = ("+" | "-" | "*" | "&" | "!" | "~") cast
+    ///         | ("++" | "--") unary
+    ///         | postfix
     fn unary(&mut self) -> Option<Node> {
         let (pos, token) = self.current();
         let nt = self.tokens[pos].clone();
 
         // "+" cast
         if token.equal("+") {
-            self.next();
-            return self.cast();
+            return self.next().cast();
         }
 
         // "-" cast
         if token.equal("-") {
-            self.next();
             return Some(Node::new_unary(
                 NodeKind::Neg,
-                Box::new(self.cast().unwrap()),
+                Box::new(self.next().cast().unwrap()),
                 nt,
             ));
         }
 
         // "&" cast
         if token.equal("&") {
-            self.next();
             return Some(Node::new_unary(
                 NodeKind::Addr,
-                Box::new(self.cast().unwrap()),
+                Box::new(self.next().cast().unwrap()),
                 nt,
             ));
         }
 
         // "*" cast
         if token.equal("*") {
-            self.next();
             return Some(Node::new_unary(
                 NodeKind::DeRef,
-                Box::new(self.cast().unwrap()),
+                Box::new(self.next().cast().unwrap()),
                 nt,
             ));
         }
 
         // "!" cast
         if token.equal("!") {
-            self.next();
             return Some(Node::new_unary(
                 NodeKind::Not,
-                Box::new(self.cast().unwrap()),
+                Box::new(self.next().cast().unwrap()),
+                nt,
+            ));
+        }
+
+        // "~" cast
+        if token.equal("~") {
+            return Some(Node::new_unary(
+                NodeKind::BitNot,
+                Box::new(self.next().cast().unwrap()),
                 nt,
             ));
         }
@@ -1147,8 +1123,7 @@ impl<'a> Parser<'a> {
         // 转换 ++i 为 i+=1
         // "++" unary
         if token.equal("++") {
-            self.next();
-            let unary = self.unary().unwrap();
+            let unary = self.next().unary().unwrap();
             let node = self
                 .add_with_type(
                     Box::new(unary),
@@ -1162,8 +1137,7 @@ impl<'a> Parser<'a> {
         // 转换 --i 为 i-=1
         // "--" unary
         if token.equal("--") {
-            self.next();
-            let unary = self.unary().unwrap();
+            let unary = self.next().unary().unwrap();
             let node = self
                 .sub_with_type(
                     Box::new(unary),
@@ -1223,8 +1197,7 @@ impl<'a> Parser<'a> {
             // 判断是否存在赋值
             let (_, token) = self.current(); // 重新取
             if token.equal("=") {
-                self.next(); // 跳过=
-                val = self.get_number();
+                val = self.next().get_number();
                 self.next(); // 跳过数字
             }
 
@@ -1339,8 +1312,7 @@ impl<'a> Parser<'a> {
         }
 
         let mut type_ = Type::new_union_struct();
-        self.next();
-        self.struct_members(&mut type_);
+        self.next().struct_members(&mut type_);
         type_.align = 1;
 
         // 如果有名称就注册结构体类型
@@ -1405,8 +1377,7 @@ impl<'a> Parser<'a> {
             // ("[" expr "]")*
             if token.equal("[") {
                 // x[y] 等价于 *(x+y)
-                self.next();
-                let idx = self.expr().unwrap();
+                let idx = self.next().expr().unwrap();
                 self.skip("]");
                 let unary = self
                     .add_with_type(Box::new(node), Box::new(idx), nt.clone())
@@ -1417,8 +1388,7 @@ impl<'a> Parser<'a> {
 
             // "." ident
             if token.equal(".") {
-                self.next();
-                node = self.struct_ref(Box::new(node)).unwrap();
+                node = self.next().struct_ref(Box::new(node)).unwrap();
                 self.next();
                 continue;
             }
@@ -1426,8 +1396,7 @@ impl<'a> Parser<'a> {
             // "->" ident
             if token.equal("->") {
                 node = Node::new_unary(NodeKind::DeRef, Box::new(node), nt);
-                self.next();
-                node = self.struct_ref(Box::new(node)).unwrap();
+                node = self.next().struct_ref(Box::new(node)).unwrap();
                 self.next();
                 continue;
             }
@@ -1476,8 +1445,7 @@ impl<'a> Parser<'a> {
 
         // "(" expr ")"
         if token.equal("(") {
-            self.next();
-            let node = self.expr();
+            let node = self.next().expr();
             self.skip(")");
             return node;
         }
@@ -1494,8 +1462,7 @@ impl<'a> Parser<'a> {
 
         // "sizeof" unary
         if token.equal(KW_SIZEOF) {
-            self.next();
-            let mut node = self.unary();
+            let mut node = self.next().unary();
             add_type(node.as_mut().unwrap());
             let (pos, _) = self.current();
             let nt = self.tokens[pos].clone();
@@ -1587,8 +1554,7 @@ impl<'a> Parser<'a> {
         // ("(" abstract_declarator ")")?
         let (start_pos, token) = self.current();
         if token.equal("(") {
-            self.next();
-            self.abstract_declarator(Type::new_int());
+            self.next().abstract_declarator(Type::new_int());
             self.skip(")");
             // 获取到括号后面的类型后缀，type_为解析完的类型，pos为分号
             base_type = self.type_suffix(base_type);

@@ -215,6 +215,7 @@ pub fn add_type(node: &mut Node) {
     }
 
     match node.kind {
+        // 判断是否Val强制转换为int后依然完整，完整则用int否则用long
         NodeKind::Num => {
             let val = node.val;
             if val < i32::MIN as i64 || val > i32::MAX as i64 {
@@ -223,6 +224,7 @@ pub fn add_type(node: &mut Node) {
                 node.type_ = Some(Type::new_int())
             }
         }
+        // 将节点类型设为 节点左部的类型
         NodeKind::Add | NodeKind::Sub | NodeKind::Mul | NodeKind::Div => {
             // 对左右部转换
             usual_arith_conv(node.lhs.as_mut().unwrap(), node.rhs.as_mut().unwrap());
@@ -240,6 +242,8 @@ pub fn add_type(node: &mut Node) {
             )));
             node.type_ = Some(typ);
         }
+        // 将节点类型设为 节点左部的类型
+        // 左部不能是数组节点
         NodeKind::Assign => {
             let t = node.lhs.as_ref().unwrap().type_.as_ref().unwrap().clone();
             if t.kind == TypeKind::Array {
@@ -255,6 +259,7 @@ pub fn add_type(node: &mut Node) {
             }
             node.type_ = Some(t);
         }
+        // 将节点类型设为 int
         NodeKind::Eq | NodeKind::Ne | NodeKind::Lt | NodeKind::Le => {
             // 对左右部转换
             usual_arith_conv(node.lhs.as_mut().unwrap(), node.rhs.as_mut().unwrap());
@@ -263,20 +268,29 @@ pub fn add_type(node: &mut Node) {
         NodeKind::FuncCall => {
             node.type_ = Some(Type::new_long());
         }
+        // 将节点类型设为 int
         NodeKind::Not => {
             node.type_ = Some(Type::new_int());
         }
+        // 将节点类型设为 左部的类型
+        NodeKind::BitNot => {
+            node.type_ = node.lhs.as_ref().unwrap().type_.clone();
+        }
+        // 将节点类型设为 变量的类型
         NodeKind::Var => {
             let var = &*node.var.as_ref().unwrap().clone();
             let vt = *var.borrow().get_type().clone();
             node.type_ = Some(Box::new(vt));
         }
+        // 将节点类型设为 右部的类型
         NodeKind::Comma => {
             node.type_ = node.rhs.as_ref().unwrap().type_.clone();
         }
+        // 将节点类型设为 成员的类型
         NodeKind::Member => {
             node.type_ = node.member.as_ref().unwrap().type_.clone();
         }
+        // 将节点类型设为 指针，并指向左部的类型
         NodeKind::Addr => {
             let t = node.lhs.as_ref().unwrap().type_.as_ref().unwrap().clone();
             if t.kind == TypeKind::Array {
@@ -285,6 +299,7 @@ pub fn add_type(node: &mut Node) {
                 node.type_ = Some(Type::pointer_to(t.clone()));
             }
         }
+        // 节点类型：如果解引用指向的是指针，则为指针指向的类型；否则报错
         NodeKind::DeRef => {
             let lhs = node.lhs.as_ref().unwrap();
             let t = lhs.type_.as_ref().unwrap().clone();
@@ -300,6 +315,7 @@ pub fn add_type(node: &mut Node) {
                 error_token!(token, "invalid pointer dereference");
             }
         }
+        // 节点类型为 最后的表达式语句的类型
         NodeKind::StmtExpr => {
             if node.body.len() > 0 {
                 let last = node.body.last().unwrap().clone();
