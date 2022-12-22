@@ -24,11 +24,11 @@
 //! expr_stmt = expr? ";"
 //! expr = assign ("," expr)?
 //! assign = equality (assign_op assign)?
-//! assign_op = "=" | "+=" | "-=" | "*=" | "/="
+//! assign_op = "=" | "+=" | "-=" | "*=" | "/=" | "%="
 //! equality = relational ("==" relational | "!=" relational)*
 //! relational = add ("<" add | "<=" add | ">" add | ">=" add)*
 //! add = mul ("+" mul | "-" mul)*
-//! mul = cast ("*" cast | "/" cast)*
+//! mul = cast ("*" cast | "/" cast | "%" cast)*
 //! cast = "(" typename ")" cast | unary
 //! unary = ("+" | "-" | "*" | "&" | "!" | "~") cast
 //!         | ("++" | "--") unary
@@ -749,6 +749,12 @@ impl<'a> Parser<'a> {
             return self.assign_op(Node::new_binary(NodeKind::Div, Box::new(node), rhs, nt));
         }
 
+        // ("%=" assign)?
+        if token.equal("%=") {
+            let rhs = Box::new(self.next().assign().unwrap());
+            return self.assign_op(Node::new_binary(NodeKind::Mod, Box::new(node), rhs, nt));
+        }
+
         Some(node)
     }
 
@@ -1010,12 +1016,12 @@ impl<'a> Parser<'a> {
     }
 
     /// 解析乘除
-    /// mul = cast ("*" cast | "/" cast)*
+    /// mul = cast ("*" cast | "/" cast | "%" cast)*
     fn mul(&mut self) -> Option<Node> {
         // unary
         let mut node = self.cast();
 
-        // ("*" unary | "/" unary)*
+        // ("*" cast | "/" cast | "%" cast)*
         loop {
             let (pos, token) = self.current();
             let nt = self.tokens[pos].clone();
@@ -1031,11 +1037,23 @@ impl<'a> Parser<'a> {
                 continue;
             }
 
-            // "/" unary
+            // "/" cast
             if token.equal("/") {
                 let rhs = Box::new(self.next().cast().unwrap());
                 node = Some(Node::new_binary(
                     NodeKind::Div,
+                    Box::new(node.unwrap()),
+                    rhs,
+                    nt,
+                ));
+                continue;
+            }
+
+            // "%" cast
+            if token.equal("%") {
+                let rhs = Box::new(self.next().cast().unwrap());
+                node = Some(Node::new_binary(
+                    NodeKind::Mod,
                     Box::new(node.unwrap()),
                     rhs,
                     nt,
