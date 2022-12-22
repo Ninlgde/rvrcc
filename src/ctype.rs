@@ -28,7 +28,7 @@ pub struct Type {
     // 对齐
     pub align: isize,
     // 指向的类型
-    base: Option<Box<Type>>,
+    pub base: Option<Box<Type>>,
     // 返回的类型
     pub return_type: Option<Box<Type>>,
     // 形参
