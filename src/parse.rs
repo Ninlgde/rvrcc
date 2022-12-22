@@ -456,6 +456,13 @@ impl<'a> Parser<'a> {
             let mut t = self.declspec(&mut None);
             t = self.declarator(t);
 
+            // T类型的数组被转换为T*
+            if t.kind == TypeKind::Array {
+                let name = t.name.clone();
+                t = Type::pointer_to(t.base.unwrap());
+                t.set_name(name);
+            }
+
             // 倒序插入
             params.insert(0, *t);
         }

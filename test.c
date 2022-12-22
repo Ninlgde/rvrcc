@@ -1,8 +1,10 @@
+
+int param_decay(int x[]) {
+    return x[0];
+}
+
 int main() {
-    int a[3];
-    a[0] = 0;
-    a[1] = 1;
-    a[2] = 2;
-    int *p = a + 1;
-    ++*p;
+    int x[2];
+    x[0] = 3;
+    param_decay(x);
 }
