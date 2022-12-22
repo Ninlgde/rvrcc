@@ -1,6 +1,8 @@
-
-int g1;
-
-int *g1_ptr() { return &g1; }
-
-int main() { *g1_ptr(); 'a'; }
+int main() {
+    int a[3];
+    a[0] = 0;
+    a[1] = 1;
+    a[2] = 2;
+    int *p = a + 1;
+    ++*p;
+}

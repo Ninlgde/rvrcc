@@ -12,13 +12,15 @@ rvrcc:
 	@cargo build --release
 
 # 测试标签，运行测试
-test/%.exe: rvrcc test/%.c
+test/%.exe: test/%.c
 	$(CC) -o- -E -P -C test/$*.c | ./target/release/rvrcc -o test/$*.s -
 	$(CC) -static -o $@ test/$*.s -xc test/common
 
-test: $(TESTS)
+testall: $(TESTS)
 	for i in $^; do echo "\033[34m"$$i"\033[0m"; $(RUN) ./$$i || exit 1; echo; done
 	test/driver.sh
+
+test: rvrcc testall
 
 # 清理标签，清理所有非源代码文件
 clean:
