@@ -615,8 +615,19 @@ impl<'a> Parser<'a> {
             // "("
             self.next();
             self.skip("(");
+
+            // 进入for的域
+            self.enter_scope();
+
             //expr_stmt
-            let init = Some(Box::new(self.expr_stmt().unwrap()));
+            let (_, token) = self.current();
+            let init;
+            if self.is_typename(token) {
+                let base_type = self.declspec(&mut None);
+                init = Some(Box::new(self.declaration(base_type).unwrap()));
+            } else {
+                init = Some(Box::new(self.expr_stmt().unwrap()));
+            }
             // expr?
             let mut cond = None;
             let (_, token) = self.current();
@@ -641,6 +652,9 @@ impl<'a> Parser<'a> {
             node.inc = inc;
             node.cond = cond;
             node.then = then;
+
+            // 离开for的域
+            self.leave_scope();
             return Some(node);
         }
 
