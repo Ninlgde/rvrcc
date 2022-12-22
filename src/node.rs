@@ -38,6 +38,8 @@ pub enum NodeKind {
     Addr,
     // 解引用 *
     DeRef,
+    // !, 非
+    Not,
     // 返回
     Return,
     // "if"，条件判断

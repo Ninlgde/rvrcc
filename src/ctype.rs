@@ -263,6 +263,9 @@ pub fn add_type(node: &mut Node) {
         NodeKind::FuncCall => {
             node.type_ = Some(Type::new_long());
         }
+        NodeKind::Not => {
+            node.type_ = Some(Type::new_int());
+        }
         NodeKind::Var => {
             let var = &*node.var.as_ref().unwrap().clone();
             let vt = *var.borrow().get_type().clone();
