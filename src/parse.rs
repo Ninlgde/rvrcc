@@ -3,7 +3,11 @@
 //! function_definition = declspec declarator "(" ")" "{" compound_stmt*
 //! declspec = ("void" | "_Bool" | "char" | "short" | "int" | "long"
 //!            | "typedef"
-//!            | struct_declare | union_declare | typedef_name)+
+//!            | struct_declare | union_declare | typedef_name
+//!            | enum_specifier)+
+//! enum_specifier = ident? "{" enum_list? "}"
+//!                 | ident ("{" enum_list? "}")?
+//! enum_list = ident ("=" num)? ("," ident ("=" num)?)*
 //! declarator = "*"* ("(" ident ")" | "(" declarator ")" | ident) type_suffix
 //! type_suffix = "(" func_params | "[" num "]" type_suffix | ε
 //! func_params = (param ("," param)*)? ")"
@@ -44,8 +48,8 @@
 
 use crate::ctype::{add_type, TypeKind};
 use crate::keywords::{
-    KW_BOOL, KW_CHAR, KW_ELSE, KW_FOR, KW_IF, KW_INT, KW_LONG, KW_RETURN, KW_SHORT, KW_SIZEOF,
-    KW_STRUCT, KW_TYPEDEF, KW_UNION, KW_VOID, KW_WHILE,
+    KW_BOOL, KW_CHAR, KW_ELSE, KW_ENUM, KW_FOR, KW_IF, KW_INT, KW_LONG, KW_RETURN, KW_SHORT,
+    KW_SIZEOF, KW_STRUCT, KW_TYPEDEF, KW_UNION, KW_VOID, KW_WHILE,
 };
 use crate::node::NodeKind;
 use crate::obj::{Member, Scope, VarAttr, VarScope};
@@ -241,7 +245,8 @@ impl<'a> Parser<'a> {
 
     /// declspec = ("void" | "_Bool" | "char" | "short" | "int" | "long"
     ///            | "typedef"
-    ///            | struct_declare | union_declare)+
+    ///            | struct_declare | union_declare | typedef_name
+    ///            | enum_specifier)+
     /// declarator specifier
     fn declspec(&mut self, attr: &mut Option<VarAttr>) -> Box<Type> {
         // 类型的组合，被表示为例如：LONG+LONG=1<<9
@@ -282,7 +287,11 @@ impl<'a> Parser<'a> {
 
             // 处理用户定义的类型
             let typ2 = self.find_typedef(token);
-            if token.equal(KW_STRUCT) || token.equal(KW_UNION) || typ2.is_some() {
+            if token.equal(KW_STRUCT)
+                || token.equal(KW_UNION)
+                || token.equal(KW_ENUM)
+                || typ2.is_some()
+            {
                 if counter > 0 {
                     break;
                 }
@@ -292,6 +301,9 @@ impl<'a> Parser<'a> {
                 } else if token.equal(KW_UNION) {
                     self.next();
                     type_ = self.union_declare();
+                } else if token.equal(KW_ENUM) {
+                    self.next();
+                    type_ = self.enum_specifier();
                 } else {
                     type_ = typ2.unwrap();
                     self.next();
@@ -1025,6 +1037,74 @@ impl<'a> Parser<'a> {
         self.postfix()
     }
 
+    fn enum_specifier(&mut self) -> Box<Type> {
+        let typ = Type::new_enum();
+
+        let mut tag = None;
+        let (_, tag_token) = self.current();
+        if tag_token.is_ident() {
+            tag = Some(tag_token.clone());
+            self.next();
+        }
+
+        let (_, token) = self.current();
+        if tag.is_some() && !token.equal("{") {
+            let type_ = self.find_tag(&tag.as_ref().unwrap().get_name().to_string());
+            if type_.is_none() {
+                error_token!(&tag.unwrap(), "unknown enum type");
+                unreachable!()
+            }
+            let type_ = type_.unwrap();
+            if type_.kind != TypeKind::Enum {
+                error_token!(&tag.unwrap(), "not an enum tag");
+                unreachable!()
+            }
+            return type_;
+        }
+
+        self.skip("{");
+
+        let mut i = 0;
+        let mut val = 0;
+        loop {
+            let (_, token) = self.current();
+            if token.equal("}") {
+                break;
+            }
+            if i > 0 {
+                self.skip(",");
+            }
+            i += 1;
+            let (_, token) = self.current(); // 重新取,可能被跳过了,
+            let name = token.get_name();
+            self.next(); // 跳过name
+
+            // 判断是否存在赋值
+            let (_, token) = self.current(); // 重新取
+            if token.equal("=") {
+                self.next(); // 跳过=
+                val = self.get_number();
+                self.next(); // 跳过数字
+            }
+
+            let vs = self.push_scope(name);
+            {
+                let mut vsm = vs.as_ref().borrow_mut();
+                vsm.set_enum(typ.clone(), val)
+            }
+            val += 1;
+        }
+
+        self.next();
+
+        if tag.is_some() {
+            let tag_name = tag.unwrap().get_name();
+            self.push_tag_scope(tag_name, typ.clone())
+        }
+
+        typ
+    }
+
     /// struct_members = (declspec declarator (","  declarator)* ";")*
     fn struct_members(&mut self, type_: &mut Box<Type>) {
         let mut members = vec![];
@@ -1271,9 +1351,17 @@ impl<'a> Parser<'a> {
                 let node;
                 if vso.is_some() {
                     let vs = vso.unwrap().clone();
-                    let var = &vs.borrow().var;
+                    let vsb = vs.borrow();
+                    let var = &vsb.var;
+                    let enum_type = &vsb.enum_type;
+                    let enum_val = &vsb.enum_val;
                     if var.is_some() {
                         node = Node::new_var(var.as_ref().unwrap().clone(), nt);
+                        self.next();
+                        return Some(node);
+                    }
+                    if enum_type.is_some() {
+                        node = Node::new_num(*enum_val, nt);
                         self.next();
                         return Some(node);
                     }
