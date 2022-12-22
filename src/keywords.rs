@@ -1,15 +1,16 @@
 pub const KEYWORDS: [&str; KW_COUNT] = [
     KW_RETURN, KW_IF, KW_ELSE, KW_FOR, KW_WHILE, KW_INT, KW_SIZEOF, KW_CHAR, KW_STRUCT, KW_UNION,
-    KW_LONG, KW_SHORT, KW_VOID, KW_TYPEDEF, KW_BOOL, KW_ENUM,
+    KW_LONG, KW_SHORT, KW_VOID, KW_TYPEDEF, KW_BOOL, KW_ENUM, KW_STATIC,
 ];
 
-const KW_COUNT: usize = 16;
+const KW_COUNT: usize = 17;
 
 pub const KW_TYPENAME: [&str; KW_TYPENAME_COUNT] = [
     KW_CHAR, KW_SHORT, KW_INT, KW_LONG, KW_STRUCT, KW_UNION, KW_VOID, KW_TYPEDEF, KW_BOOL, KW_ENUM,
+    KW_STATIC,
 ];
 
-const KW_TYPENAME_COUNT: usize = 10;
+const KW_TYPENAME_COUNT: usize = 11;
 
 /// 关键字: 返回
 pub const KW_RETURN: &str = "return";
@@ -43,3 +44,5 @@ pub const KW_TYPEDEF: &str = "typedef";
 pub const KW_BOOL: &str = "_Bool";
 /// 关键字: enum
 pub const KW_ENUM: &str = "enum";
+/// 关键字: static
+pub const KW_STATIC: &str = "static";

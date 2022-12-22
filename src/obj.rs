@@ -15,6 +15,8 @@ pub enum Obj {
         is_local: bool,
         // 全局变量
         init_data: Option<Vec<u8>>,
+        // 是否为文件域内的
+        is_static: bool,
     },
     Func {
         // 变量名
@@ -31,6 +33,8 @@ pub enum Obj {
         stack_size: isize,
         // 是否为函数定义
         is_definition: bool,
+        // 是否为文件域内的
+        is_static: bool,
     },
 }
 
@@ -73,6 +77,12 @@ impl Obj {
         matches!(self, Self::Func { .. })
     }
 
+    pub fn is_static(&self) -> bool {
+        match self {
+            Self::Var { is_static, .. } | Self::Func { is_static, .. } => *is_static,
+        }
+    }
+
     pub fn new_var(
         name: String,
         type_: Box<Type>,
@@ -85,6 +95,7 @@ impl Obj {
             is_local,
             init_data,
             offset: 0,
+            is_static: false,
         }
     }
 
@@ -98,23 +109,26 @@ impl Obj {
 
     pub fn set_function(
         &mut self,
-        definition: bool,
         params_: Vec<Rc<RefCell<Obj>>>,
         locals_: Vec<Rc<RefCell<Obj>>>,
         body_: Option<Node>,
+        definition: bool,
+        is_static_: bool,
     ) {
         match self {
             Self::Func {
-                is_definition,
                 params,
                 locals,
                 body,
+                is_definition,
+                is_static,
                 ..
             } => {
                 *params = params_;
                 *locals = locals_;
                 *body = body_;
-                *is_definition = definition
+                *is_definition = definition;
+                *is_static = is_static_;
             }
             _ => panic!("error object!"),
         }
@@ -129,6 +143,7 @@ impl Obj {
             type_,
             stack_size: 0,
             is_definition: false,
+            is_static: false,
         }
     }
 }
@@ -187,6 +202,8 @@ pub struct TagScope {
 pub struct VarAttr {
     // 是否为类型别名
     pub is_typedef: bool,
+    // 是否为文件域内的
+    pub is_static: bool,
 }
 
 // C有两个域：变量（或类型别名）域，结构体（或联合体，枚举）标签域

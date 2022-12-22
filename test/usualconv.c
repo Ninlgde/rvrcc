@@ -24,6 +24,6 @@ int main() {
     ASSERT(0, ({ char x[3]; x[0]=0; x[1]=1; x[2]=2; char *y=x+1; y[-1]; }));
     ASSERT(5, ({ struct t {char a;} x, y; x.a=5; y=x; y.a; }));
 
-    printf("OK\n");
+    printf("\033[32mOK\033[0m\n");
     return 0;
 }

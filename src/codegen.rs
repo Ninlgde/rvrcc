@@ -116,14 +116,19 @@ impl<'a> Generator<'a> {
                     params,
                     stack_size,
                     is_definition,
+                    is_static,
                     ..
                 } => {
                     if !is_definition {
                         continue;
                     }
-                    // 声明一个全局main段，同时也是程序入口段
-                    self.write_file(format!("\n  # 定义全局{}段", name));
-                    self.write_file(format!("  .globl {}", name));
+                    if *is_static {
+                        self.write_file(format!("\n  # 定义局部{}函数", name));
+                        self.write_file(format!("  .local {}", name));
+                    } else {
+                        self.write_file(format!("\n  # 定义全局{}函数", name));
+                        self.write_file(format!("  .globl {}", name));
+                    }
 
                     self.write_file(format!("  # 代码段标签"));
                     self.write_file(format!("  .text"));

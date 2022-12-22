@@ -43,6 +43,6 @@ int main() {
     ASSERT(4, ({ int x[2][3]; int *y=x; y[4]=4; x[1][1]; }));
     ASSERT(5, ({ int x[2][3]; int *y=x; y[5]=5; x[1][2]; }));
 
-    printf("OK\n");
+    printf("\033[32mOK\033[0m\n");
     return 0;
 }

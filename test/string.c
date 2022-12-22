@@ -39,6 +39,6 @@ int main() {
     ASSERT(0, "\x00"[0]);
     ASSERT(119, "\x77"[0]);
 
-    printf("OK\n");
+    printf("\033[32mOK\033[0m\n");
     return 0;
 }

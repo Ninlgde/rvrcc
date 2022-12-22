@@ -6,6 +6,6 @@ int main() {
     ASSERT(10, '\n');
     ASSERT(127, '\x7f');
 
-    printf("OK\n");
+    printf("\033[32mOK\033[0m\n");
     return 0;
 }

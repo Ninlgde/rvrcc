@@ -30,6 +30,6 @@ int main() {
     ASSERT(5, ({ int i=2, j=3; (i=5,j)=6; i; }));
     ASSERT(6, ({ int i=2, j=3; (i=5,j)=6; j; }));
 
-    printf("OK\n");
+    printf("\033[32mOK\033[0m\n");
     return 0;
 }

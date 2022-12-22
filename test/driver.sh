@@ -12,9 +12,9 @@ echo >$tmp/empty.c
 # 判断返回值是否为0来判断程序是否成功执行
 check() {
   if [ $? -eq 0 ]; then
-    echo "testing $1 ... passed"
+    echo -e "testing $1 ... \033[32m passed \033[0m"
   else
-    echo "testing $1 ... failed"
+    echo -e "testing $1 ... \033[31m failed \033[0m"
     exit 1
   fi
 }
