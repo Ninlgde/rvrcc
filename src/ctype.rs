@@ -276,7 +276,7 @@ pub fn add_type(node: &mut Node) {
             node.type_ = Some(Type::new_long());
         }
         // 将节点类型设为 int
-        NodeKind::Not => {
+        NodeKind::Not | NodeKind::LogAnd | NodeKind::LogOr => {
             node.type_ = Some(Type::new_int());
         }
         // 将节点类型设为 左部的类型

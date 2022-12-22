@@ -378,6 +378,42 @@ impl<'a> Generator<'a> {
                 self.write_file(format!("  seqz a0, a0"));
                 return;
             }
+            NodeKind::LogAnd => {
+                let c = self.counter;
+                self.counter += 1;
+                self.write_file(format!("\n# =====逻辑与{}===============", c));
+                self.gen_expr(node.lhs.as_ref().unwrap());
+                // 判断是否为短路操作
+                self.write_file(format!("  # 左部短路操作判断，为0则跳转"));
+                self.write_file(format!("  beqz a0, .L.false.{}", c));
+                self.gen_expr(node.rhs.as_ref().unwrap());
+                self.write_file(format!("  # 右部判断，为0则跳转"));
+                self.write_file(format!("  beqz a0, .L.false.{}", c));
+                self.write_file(format!("  li a0, 1"));
+                self.write_file(format!("  j .L.end.{}", c));
+                self.write_file(format!(".L.false.{}:", c));
+                self.write_file(format!("  li a0, 0"));
+                self.write_file(format!(".L.end.{}:", c));
+                return;
+            }
+            NodeKind::LogOr => {
+                let c = self.counter;
+                self.counter += 1;
+                self.write_file(format!("\n# =====逻辑或{}===============", c));
+                self.gen_expr(node.lhs.as_ref().unwrap());
+                // 判断是否为短路操作
+                self.write_file(format!("  # 左部短路操作判断，不为0则跳转"));
+                self.write_file(format!("  bnez a0, .L.true.{}", c));
+                self.gen_expr(node.rhs.as_ref().unwrap());
+                self.write_file(format!("  # 右部判断，不为0则跳转"));
+                self.write_file(format!("  bnez a0, .L.true.{}", c));
+                self.write_file(format!("  li a0, 0"));
+                self.write_file(format!("  j .L.end.{}", c));
+                self.write_file(format!(".L.true.{}:", c));
+                self.write_file(format!("  li a0, 1"));
+                self.write_file(format!(".L.end.{}:", c));
+                return;
+            }
             NodeKind::BitNot => {
                 self.gen_expr(node.lhs.as_ref().unwrap());
                 self.write_file(format!("  # 按位取反"));
