@@ -121,7 +121,10 @@ pub struct Node {
     pub(crate) member: Option<Box<Member>>,
     // goto和标签语句
     pub(crate) label_info: Option<Rc<RefCell<LabelInfo>>>,
+    // "break" 标签
     pub(crate) break_label: Option<String>,
+    // "continue" 标签
+    pub(crate) continue_label: Option<String>,
 }
 
 impl Node {
@@ -146,6 +149,7 @@ impl Node {
             member: None,
             label_info: None,
             break_label: None,
+            continue_label: None,
         }
     }
 

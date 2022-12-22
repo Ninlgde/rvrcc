@@ -220,6 +220,7 @@ impl<'a> Generator<'a> {
                 let c: u32 = self.counter;
                 self.counter += 1;
                 let brk = node.break_label.as_ref().unwrap();
+                let ctn = node.continue_label.as_ref().unwrap();
                 self.write_file(format!("\n# =====循环语句{}===============", c));
                 // 生成初始化语句
                 if node.init.is_some() {
@@ -241,6 +242,8 @@ impl<'a> Generator<'a> {
                 // 生成循环体语句
                 self.write_file(format!("\n# then语句{}", c));
                 self.gen_stmt(node.then.as_ref().unwrap());
+                // continue标签语句
+                self.write_file(format!("{}:", ctn));
                 // 处理循环递增语句
                 if node.inc.is_some() {
                     // 生成循环递增语句
