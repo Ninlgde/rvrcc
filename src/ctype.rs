@@ -24,9 +24,9 @@ pub struct Type {
     // 名称
     pub name: String,
     // 大小, sizeof返回的值
-    pub size: usize,
+    pub size: isize,
     // 对齐
-    pub align: usize,
+    pub align: isize,
     // 指向的类型
     base: Option<Box<Type>>,
     // 返回的类型
@@ -34,13 +34,13 @@ pub struct Type {
     // 形参
     pub params: Vec<Type>,
     // 数组长度, 元素总个数
-    len: usize,
+    len: isize,
     // 结构体
     pub members: Vec<Member>,
 }
 
 impl Type {
-    pub fn new(kind: TypeKind, size: usize, align: usize) -> Self {
+    pub fn new(kind: TypeKind, size: isize, align: isize) -> Self {
         Self {
             kind,
             name: String::new(),
@@ -102,7 +102,7 @@ impl Type {
         Box::new(type_)
     }
 
-    pub fn array_of(base: Box<Type>, len: usize) -> Box<Self> {
+    pub fn array_of(base: Box<Type>, len: isize) -> Box<Self> {
         let size = base.get_size() * len;
         let mut type_ = Self::new(TypeKind::Array, size, base.align);
         type_.base = Some(base);
@@ -140,11 +140,11 @@ impl Type {
         self.name = s;
     }
 
-    pub fn get_size(&self) -> usize {
+    pub fn get_size(&self) -> isize {
         self.size
     }
 
-    pub fn get_base_size(&self) -> usize {
+    pub fn get_base_size(&self) -> isize {
         if self.has_base() {
             return self.base.as_ref().unwrap().get_size();
         } else {

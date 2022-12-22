@@ -9,7 +9,8 @@
 //!                 | ident ("{" enum_list? "}")?
 //! enum_list = ident ("=" num)? ("," ident ("=" num)?)*
 //! declarator = "*"* ("(" ident ")" | "(" declarator ")" | ident) type_suffix
-//! type_suffix = "(" func_params | "[" num "]" type_suffix | ε
+//! type_suffix = "(" funcParams | "[" array_dimensions | ε
+//! array_dimensions = num? "]" typeSuffix
 //! func_params = (param ("," param)*)? ")"
 //! param = declspec declarator
 //! compound_stmt = (typedef | declaration | stmt)* "}"
@@ -360,7 +361,7 @@ impl<'a> Parser<'a> {
         return type_;
     }
 
-    /// declarator = "*"* ("(" ident ")" | "(" declarator ")" | ident) type_suffix
+    /// type_suffix = "(" funcParams | "[" array_dimensions | ε
     fn declarator(&mut self, mut type_: Box<Type>) -> Box<Type> {
         // "*"*
         // 构建所有的（多重）指针
@@ -406,23 +407,35 @@ impl<'a> Parser<'a> {
     }
 
     /// type_suffix = "(" func_params | "[" num "]" type_suffix | ε
-    fn type_suffix(&mut self, mut type_: Box<Type>) -> Box<Type> {
+    fn type_suffix(&mut self, base_type: Box<Type>) -> Box<Type> {
         let (_, token) = self.current();
         // "(" func_params
         if token.equal("(") {
-            return self.next().func_params(type_);
+            return self.next().func_params(base_type);
         }
 
         // "[" num "]"
         if token.equal("[") {
-            let size = self.next().get_number();
-            self.next(); // 跳过这个数字
-            self.skip("]"); // 跳过]
-            type_ = self.type_suffix(type_);
-            return Type::array_of(type_, size as usize);
+            return self.next().array_dimensions(base_type);
         }
 
-        return type_;
+        return base_type;
+    }
+
+    /// array_dimensions = num? "]" typeSuffix
+    fn array_dimensions(&mut self, mut base_type: Box<Type>) -> Box<Type> {
+        let (_, token) = self.current();
+        // "]" 无数组维数的 "[]"
+        if token.equal("]") {
+            base_type = self.next().type_suffix(base_type);
+            return Type::array_of(base_type, -1);
+        }
+
+        // 有数组维数的情况
+        let size = self.get_number();
+        self.next().skip("]");
+        base_type = self.type_suffix(base_type);
+        Type::array_of(base_type, size as isize)
     }
 
     /// func_params = (param ("," param)*)? ")"
@@ -521,9 +534,15 @@ impl<'a> Parser<'a> {
             // declarator
             // 声明获取到变量类型，包括变量名
             let type_ = self.declarator(base_type.clone());
+            if type_.size < 0 {
+                let (_, token) = self.current();
+                error_token!(token, "variable has incomplete type");
+                unreachable!()
+            }
             if type_.kind == TypeKind::Void {
                 let (_, token) = self.current();
-                error_token!(token, "variable declared void")
+                error_token!(token, "variable declared void");
+                unreachable!()
             }
 
             let nvar = self.new_lvar(type_).unwrap();
@@ -1370,11 +1389,11 @@ impl<'a> Parser<'a> {
         let mut type_ = self.struct_union_declare();
         type_.kind = TypeKind::Struct;
 
-        let mut offset: usize = 0;
+        let mut offset: isize = 0;
 
         for member in &mut type_.members {
             let align = member.type_.as_ref().unwrap().align;
-            offset = align_to(offset as isize, align as isize) as usize;
+            offset = align_to(offset, align);
             member.set_offset(offset);
             offset += member.type_.as_ref().unwrap().size;
 
@@ -1382,7 +1401,7 @@ impl<'a> Parser<'a> {
                 type_.align = align;
             }
         }
-        type_.size = align_to(offset as isize, type_.align as isize) as usize;
+        type_.size = align_to(offset, type_.align);
 
         type_
     }
@@ -1403,7 +1422,7 @@ impl<'a> Parser<'a> {
                 type_.size = size;
             }
         }
-        type_.size = align_to(type_.size as isize, type_.align as isize) as usize;
+        type_.size = align_to(type_.size, type_.align);
 
         type_
     }
