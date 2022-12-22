@@ -76,7 +76,7 @@ pub fn tokenize(path: String, input: String) -> Vec<Token> {
             // 初始化，类似于C++的构造函数
             // 我们不使用Head来存储信息，仅用来表示链表入口，这样每次都是存储在Cur->Next
             // 否则下述操作将使第一个Token的地址不在Head中。
-            let val = strtol(&chars, &mut pos, 10);
+            let val = read_int_literal(&chars, &mut pos);
             let t_str = slice_to_string(&chars, old_pos, pos);
             let t = Token::Num {
                 val,
@@ -182,6 +182,18 @@ fn starts_with(chars: &Vec<u8>, pos: usize, sub: &str) -> bool {
     let sub = sub.as_bytes();
     for i in 0..sub.len() {
         if sub[i] != chars[pos + i] {
+            return false;
+        }
+    }
+    true
+}
+
+fn starts_with_ignore_case(chars: &Vec<u8>, pos: usize, sub: &str) -> bool {
+    let binding = sub.to_ascii_lowercase();
+    let sub = binding.as_bytes();
+    for i in 0..sub.len() {
+        // 'a' - 'A' = 32
+        if sub[i] != chars[pos + i] && sub[i] - 32 != chars[pos + i] {
             return false;
         }
     }
@@ -354,4 +366,28 @@ fn read_char_literal(chars: &Vec<u8>, pos: &mut usize) -> char {
 
     *pos += 1; // 忽略尾部'
     return r;
+}
+
+fn read_int_literal(chars: &Vec<u8>, pos: &mut usize) -> i64 {
+    let c = chars[*pos] as char;
+    let cnn = chars[*pos + 2] as char; //0x() or 0b()
+
+    let mut radix = 10;
+    if starts_with_ignore_case(chars, *pos, "0x") && cnn.is_digit(16) {
+        radix = 16;
+        *pos += 2;
+    } else if starts_with_ignore_case(chars, *pos, "0b") && cnn.is_digit(2) {
+        radix = 2;
+        *pos += 2;
+    } else if c == '0' {
+        radix = 8;
+    }
+
+    let r = strtol(chars, pos, radix);
+    let c = chars[*pos] as char;
+    if c.is_alphabetic() {
+        error_at!(0, *pos, "invalid digit");
+    }
+
+    r
 }
