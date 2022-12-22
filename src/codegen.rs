@@ -434,6 +434,12 @@ impl<'a> Generator<'a> {
                 self.write_file(format!("  # a0÷a1，结果写入a0"));
                 self.write_file(format!("  div{} a0, a0, a1", suffix));
             }
+            NodeKind::Mod => {
+                // % a0=a0%a1
+                self.write_file(format!("  # a0%%a1，结果写入a0"));
+                self.write_file(format!("  rem{} a0, a0, a1", suffix));
+                return;
+            }
             NodeKind::Eq => {
                 // a0=a0^a1，异或指令
                 self.write_file(format!("  # 判断是否a0=a1"));

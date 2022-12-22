@@ -20,6 +20,8 @@ pub enum NodeKind {
     Div,
     // 负号-
     Neg,
+    // % 求余
+    Mod,
     // ==
     Eq,
     // !=
