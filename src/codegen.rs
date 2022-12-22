@@ -440,6 +440,24 @@ impl<'a> Generator<'a> {
                 self.write_file(format!("  rem{} a0, a0, a1", suffix));
                 return;
             }
+            NodeKind::BitAnd => {
+                // & a0=a0&a1
+                self.write_file(format!("  # a0&a1，结果写入a0"));
+                self.write_file(format!("  and a0, a0, a1"));
+                return;
+            }
+            NodeKind::BitOr => {
+                // | a0=a0|a1
+                self.write_file(format!("  # a0|a1，结果写入a0"));
+                self.write_file(format!("  or a0, a0, a1"));
+                return;
+            }
+            NodeKind::BitXor => {
+                // ^ a0=a0^a1
+                self.write_file(format!("  # a0^a1，结果写入a0"));
+                self.write_file(format!("  xor a0, a0, a1"));
+                return;
+            }
             NodeKind::Eq => {
                 // a0=a0^a1，异或指令
                 self.write_file(format!("  # 判断是否a0=a1"));

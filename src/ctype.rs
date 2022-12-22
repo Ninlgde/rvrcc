@@ -225,7 +225,14 @@ pub fn add_type(node: &mut Node) {
             }
         }
         // 将节点类型设为 节点左部的类型
-        NodeKind::Add | NodeKind::Sub | NodeKind::Mul | NodeKind::Div | NodeKind::Mod => {
+        NodeKind::Add
+        | NodeKind::Sub
+        | NodeKind::Mul
+        | NodeKind::Div
+        | NodeKind::Mod
+        | NodeKind::BitAnd
+        | NodeKind::BitOr
+        | NodeKind::BitXor => {
             // 对左右部转换
             usual_arith_conv(node.lhs.as_mut().unwrap(), node.rhs.as_mut().unwrap());
             node.type_ = node.lhs.as_ref().unwrap().type_.clone();
