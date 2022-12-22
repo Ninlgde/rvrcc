@@ -219,6 +219,7 @@ impl<'a> Generator<'a> {
                 // 代码段计数
                 let c: u32 = self.counter;
                 self.counter += 1;
+                let brk = node.break_label.as_ref().unwrap();
                 self.write_file(format!("\n# =====循环语句{}===============", c));
                 // 生成初始化语句
                 if node.init.is_some() {
@@ -234,8 +235,8 @@ impl<'a> Generator<'a> {
                     // 生成条件循环语句
                     self.gen_expr(node.cond.as_ref().unwrap());
                     // 判断结果是否为0，为0则跳转到结束部分
-                    self.write_file(format!("  # 若a0为0，则跳转到循环{}的.L.end.{}段", c, c));
-                    self.write_file(format!("  beqz a0, .L.end.{}", c));
+                    self.write_file(format!("  # 若a0为0，则跳转到循环{}的{}段", c, brk));
+                    self.write_file(format!("  beqz a0, {}", brk));
                 }
                 // 生成循环体语句
                 self.write_file(format!("\n# then语句{}", c));
@@ -250,8 +251,8 @@ impl<'a> Generator<'a> {
                 self.write_file(format!("  # 跳转到循环{}的.L.begin.{}段", c, c));
                 self.write_file(format!("  j .L.begin.{}", c));
                 // 输出循环尾部标签
-                self.write_file(format!("\n# 循环{}的.L.end.{}段标签", c, c));
-                self.write_file(format!(".L.end.{}:", c));
+                self.write_file(format!("\n# 循环{}的{}段标签", c, brk));
+                self.write_file(format!("{}:", brk));
             }
             // 生成if语句
             NodeKind::If => {
