@@ -23,7 +23,8 @@
 //!        | expr_stmt
 //! expr_stmt = expr? ";"
 //! expr = assign ("," expr)?
-//! assign = equality ("=" assign)?
+//! assign = equality (assign_op assign)?
+//! assign_op = "=" | "+=" | "-=" | "*=" | "/="
 //! equality = relational ("==" relational | "!=" relational)*
 //! relational = add ("<" add | "<=" add | ">" add | ">=" add)*
 //! add = mul ("+" mul | "-" mul)*
@@ -722,10 +723,10 @@ impl<'a> Parser<'a> {
     }
 
     /// 解析赋值
-    /// assign = equality ("=" assign)?
+    /// assign =  = equality (assign_op assign)?
     fn assign(&mut self) -> Option<Node> {
         // equality
-        let mut node = self.equality();
+        let node = self.equality().unwrap();
 
         // 可能存在递归赋值，如a=b=1
         // ("=" assign)?
@@ -734,15 +735,89 @@ impl<'a> Parser<'a> {
         if token.equal("=") {
             self.next();
             let rhs = Box::new(self.assign().unwrap());
-            node = Some(Node::new_binary(
-                NodeKind::Assign,
-                Box::new(node.unwrap()),
-                rhs,
-                nt,
-            ));
+            return Some(Node::new_binary(NodeKind::Assign, Box::new(node), rhs, nt));
         }
 
-        node
+        // ("+=" assign)?
+        if token.equal("+=") {
+            self.next();
+            let rhs = Box::new(self.assign().unwrap());
+            let node = self.add_with_type(Box::new(node), rhs, nt).unwrap();
+            return self.assign_op(node);
+        }
+
+        // ("-=" assign)?
+        if token.equal("-=") {
+            self.next();
+            let rhs = Box::new(self.assign().unwrap());
+            let node = self.sub_with_type(Box::new(node), rhs, nt).unwrap();
+            return self.assign_op(node);
+        }
+
+        // ("*=" assign)?
+        if token.equal("*=") {
+            self.next();
+            let rhs = Box::new(self.assign().unwrap());
+            return self.assign_op(Node::new_binary(NodeKind::Mul, Box::new(node), rhs, nt));
+        }
+
+        // ("/=" assign)?
+        if token.equal("/=") {
+            self.next();
+            let rhs = Box::new(self.assign().unwrap());
+            return self.assign_op(Node::new_binary(NodeKind::Div, Box::new(node), rhs, nt));
+        }
+
+        Some(node)
+    }
+
+    /// assign_op = "=" | "+=" | "-=" | "*=" | "/="
+    /// 转换 A op= B为 TMP = &A, *TMP = *TMP op B
+    fn assign_op(&mut self, mut binary: Node) -> Option<Node> {
+        // A
+        add_type(binary.lhs.as_mut().unwrap());
+        // B
+        add_type(binary.rhs.as_mut().unwrap());
+        let token = &binary.token;
+
+        // TMP
+        let var = self
+            .new_lvar(Type::pointer_to(
+                binary.lhs.as_ref().unwrap().clone().type_.unwrap(),
+            ))
+            .unwrap();
+        // TMP = &A
+        let lhs = Node::new_var(var.clone(), token.clone());
+        let rhs = Node::new_unary(NodeKind::Addr, binary.lhs.unwrap(), token.clone());
+        let expr1 = Node::new_binary(
+            NodeKind::Assign,
+            Box::new(lhs.clone()),
+            Box::new(rhs),
+            token.clone(),
+        );
+
+        // *TMP = *TMP op B
+        let lhs = Node::new_unary(NodeKind::DeRef, Box::new(lhs.clone()), token.clone());
+        let rhs = Node::new_binary(
+            binary.kind.clone(),
+            Box::new(lhs.clone()),
+            binary.rhs.unwrap().clone(),
+            token.clone(),
+        );
+        let expr2 = Node::new_binary(
+            NodeKind::Assign,
+            Box::new(lhs),
+            Box::new(rhs),
+            token.clone(),
+        );
+
+        // TMP = &A, *TMP = *TMP op B
+        Some(Node::new_binary(
+            NodeKind::Comma,
+            Box::new(expr1),
+            Box::new(expr2),
+            token.clone(),
+        ))
     }
 
     /// 解析相等性

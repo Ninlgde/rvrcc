@@ -3,9 +3,9 @@
 
 void assert(int expected, int actual, char *code) {
     if (expected == actual) {
-        printf("%s => %d\n", code, actual);
+        printf("%s => %d\033[32m corrected\033[0m\n", code, actual);
     } else {
-        printf("%s => %d \033[31mexpected but got %d\033[0m\n", code, expected, actual);
+        printf("%s => %d\033[31m expected but got %d\033[0m\n", code, expected, actual);
         exit(1);
     }
 }
