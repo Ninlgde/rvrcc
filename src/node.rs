@@ -84,7 +84,7 @@ pub struct Node {
     // 对应的token,增加翻译阶段的报错信息
     pub(crate) token: Token,
     // 类型
-    pub(crate) type_: Option<Box<Type>>,
+    pub(crate) type_: Option<Rc<RefCell<Type>>>,
 
     // 各种孩子
     // 左部，left-hand side(单节点)
@@ -106,7 +106,7 @@ pub struct Node {
     // 变量名
     pub(crate) func_name: String,
     // 函数类型
-    pub(crate) func_type: Option<Box<Type>>,
+    pub(crate) func_type: Option<Rc<RefCell<Type>>>,
     // 入参
     pub(crate) args: Vec<Node>,
     // 存储ND_VAR的字符串
@@ -178,7 +178,7 @@ impl Node {
         node
     }
 
-    pub fn new_cast(mut expr: Box<Node>, typ: Box<Type>) -> Self {
+    pub fn new_cast(mut expr: Box<Node>, typ: Rc<RefCell<Type>>) -> Self {
         add_type(&mut expr);
         let mut node = Self::new(NodeKind::Cast, expr.token.clone());
         node.lhs = Some(expr);
@@ -186,7 +186,7 @@ impl Node {
         node
     }
 
-    pub fn set_type(&mut self, type_: Box<Type>) -> &Self {
+    pub fn set_type(&mut self, type_: Rc<RefCell<Type>>) -> &Self {
         self.type_ = Some(type_);
         self
     }
@@ -195,7 +195,7 @@ impl Node {
         &self.token
     }
 
-    pub fn get_type(&self) -> &Option<Box<Type>> {
+    pub fn get_type(&self) -> &Option<Rc<RefCell<Type>>> {
         &self.type_
     }
 }
