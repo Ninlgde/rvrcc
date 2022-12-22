@@ -22,6 +22,12 @@ pub enum NodeKind {
     Neg,
     // % 求余
     Mod,
+    // &，按位与
+    BitAnd,
+    // |，按位或
+    BitOr,
+    // ^，按位异或
+    BitXor,
     // ==
     Eq,
     // !=

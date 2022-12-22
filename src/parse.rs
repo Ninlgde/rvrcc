@@ -23,8 +23,11 @@
 //!        | expr_stmt
 //! expr_stmt = expr? ";"
 //! expr = assign ("," expr)?
-//! assign = equality (assign_op assign)?
-//! assign_op = "=" | "+=" | "-=" | "*=" | "/=" | "%="
+//! assign = bit_or (assign_op assign)?
+//! bit_or = bit_xor ("|" bit_xor)*
+//! bit_xor = bit_and ("^" bit_and)*
+//! bit_and = equality ("&" equality)*
+//! assign_op = "=" | "+=" | "-=" | "*=" | "/=" | "%=" | "&=" | "|=" | "^="
 //! equality = relational ("==" relational | "!=" relational)*
 //! relational = add ("<" add | "<=" add | ">" add | ">=" add)*
 //! add = mul ("+" mul | "-" mul)*
@@ -709,10 +712,10 @@ impl<'a> Parser<'a> {
     }
 
     /// 解析赋值
-    /// assign =  = equality (assign_op assign)?
+    /// assign = bit_or (assign_op assign)?
     fn assign(&mut self) -> Option<Node> {
         // equality
-        let node = self.equality().unwrap();
+        let node = self.bit_or().unwrap();
 
         // 可能存在递归赋值，如a=b=1
         // ("=" assign)?
@@ -755,10 +758,73 @@ impl<'a> Parser<'a> {
             return self.assign_op(Node::new_binary(NodeKind::Mod, Box::new(node), rhs, nt));
         }
 
+        // ("&=" assign)?
+        if token.equal("&=") {
+            let rhs = Box::new(self.next().assign().unwrap());
+            return self.assign_op(Node::new_binary(NodeKind::BitAnd, Box::new(node), rhs, nt));
+        }
+
+        // ("|=" assign)?
+        if token.equal("|=") {
+            let rhs = Box::new(self.next().assign().unwrap());
+            return self.assign_op(Node::new_binary(NodeKind::BitOr, Box::new(node), rhs, nt));
+        }
+
+        // ("^=" assign)?
+        if token.equal("^=") {
+            let rhs = Box::new(self.next().assign().unwrap());
+            return self.assign_op(Node::new_binary(NodeKind::BitXor, Box::new(node), rhs, nt));
+        }
+
         Some(node)
     }
 
-    /// assign_op = "=" | "+=" | "-=" | "*=" | "/="
+    /// bit_or = bit_xor ("|" bit_xor)*
+    fn bit_or(&mut self) -> Option<Node> {
+        let mut node = self.bit_xor().unwrap();
+        loop {
+            let (pos, token) = self.current();
+            let nt = self.tokens[pos].clone();
+            if !token.equal("|") {
+                break;
+            }
+            let rhs = self.next().bit_xor().unwrap();
+            node = Node::new_binary(NodeKind::BitOr, Box::new(node), Box::new(rhs), nt);
+        }
+        Some(node)
+    }
+
+    /// bit_xor = bit_and ("^" bit_and)*
+    fn bit_xor(&mut self) -> Option<Node> {
+        let mut node = self.bit_and().unwrap();
+        loop {
+            let (pos, token) = self.current();
+            let nt = self.tokens[pos].clone();
+            if !token.equal("^") {
+                break;
+            }
+            let rhs = self.next().bit_and().unwrap();
+            node = Node::new_binary(NodeKind::BitXor, Box::new(node), Box::new(rhs), nt);
+        }
+        Some(node)
+    }
+
+    /// bit_and = equality ("&" equality)*
+    fn bit_and(&mut self) -> Option<Node> {
+        let mut node = self.equality().unwrap();
+        loop {
+            let (pos, token) = self.current();
+            let nt = self.tokens[pos].clone();
+            if !token.equal("&") {
+                break;
+            }
+            let rhs = self.next().equality().unwrap();
+            node = Node::new_binary(NodeKind::BitAnd, Box::new(node), Box::new(rhs), nt);
+        }
+        Some(node)
+    }
+
+    /// assign_op = "=" | "+=" | "-=" | "*=" | "/=" | "%=" | "&=" | "|=" | "^="
     /// 转换 A op= B为 TMP = &A, *TMP = *TMP op B
     fn assign_op(&mut self, mut binary: Node) -> Option<Node> {
         // A
