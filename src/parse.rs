@@ -35,7 +35,7 @@
 //! struct_declare = struct_union_declare
 //! union_declare = struct_union_declare
 //! struct_union_declare = ident? ("{" struct_members)?
-//! postfix = primary ("[" expr "]" | "." ident)* | "->" ident)*
+//! postfix = primary ("[" expr "]" | "." ident)* | "->" ident | "++" | "--")*
 //! primary =  "(" "{" stmt+ "}" ")"
 //!         | "(" expr ")"
 //!         | "sizeof" "(" typename ")"
@@ -1368,7 +1368,23 @@ impl<'a> Parser<'a> {
         Some(node)
     }
 
-    /// postfix = primary ("[" expr "]" | "." ident)* | "->" ident)*
+    fn inc_dec(&mut self, mut node: Node, addend: i64) -> Option<Node> {
+        add_type(&mut node);
+        let token = node.clone().token;
+        let typ = node.clone().type_.unwrap();
+        let num = Box::new(Node::new_num(addend, token.clone()));
+        let num_neg = Box::new(Node::new_num(-addend, token.clone()));
+        let add = self
+            .add_with_type(Box::new(node), num, token.clone())
+            .unwrap();
+        let lhs = self.assign_op(add).unwrap();
+        let add = self
+            .add_with_type(Box::new(lhs), num_neg, token.clone())
+            .unwrap();
+        let cast = Node::new_cast(Box::new(add), typ);
+        Some(cast)
+    }
+    /// postfix = primary ("[" expr "]" | "." ident)* | "->" ident | "++" | "--")*
     fn postfix(&mut self) -> Option<Node> {
         // primary
         let mut node = self.primary().unwrap();
@@ -1402,6 +1418,20 @@ impl<'a> Parser<'a> {
                 node = Node::new_unary(NodeKind::DeRef, Box::new(node), nt);
                 self.next();
                 node = self.struct_ref(Box::new(node)).unwrap();
+                self.next();
+                continue;
+            }
+
+            // "++"
+            if token.equal("++") {
+                node = self.inc_dec(node, 1).unwrap();
+                self.next();
+                continue;
+            }
+
+            // "--"
+            if token.equal("--") {
+                node = self.inc_dec(node, -1).unwrap();
                 self.next();
                 continue;
             }
