@@ -10,7 +10,7 @@ pub enum Obj {
         // fp的偏移量
         offset: isize,
         // 类型
-        type_: Box<Type>,
+        type_: Rc<RefCell<Type>>,
         // 是 局部或全局 变量
         is_local: bool,
         // 全局变量
@@ -22,7 +22,7 @@ pub enum Obj {
         // 变量名
         name: String,
         // 类型
-        type_: Box<Type>,
+        type_: Rc<RefCell<Type>>,
         // 方法参数
         params: Vec<Rc<RefCell<Obj>>>,
         // 函数体
@@ -60,16 +60,19 @@ impl Obj {
         }
     }
 
-    pub fn get_type(&self) -> &Box<Type> {
+    pub fn get_type(&self) -> &Rc<RefCell<Type>> {
         match self {
             Self::Var { type_, .. } | Self::Func { type_, .. } => type_,
         }
     }
 
-    pub fn get_func_return_type(&self) -> &Option<Box<Type>> {
+    pub fn get_func_return_type(&self) -> Option<Rc<RefCell<Type>>> {
         match self {
-            Self::Func { type_, .. } => &type_.return_type,
-            _ => &None,
+            Self::Func { type_, .. } => {
+                let t = type_.borrow();
+                Some(t.return_type.as_ref().unwrap().clone())
+            }
+            _ => None,
         }
     }
 
@@ -85,7 +88,7 @@ impl Obj {
 
     pub fn new_var(
         name: String,
-        type_: Box<Type>,
+        type_: Rc<RefCell<Type>>,
         is_local: bool,
         init_data: Option<Vec<u8>>,
     ) -> Self {
@@ -99,11 +102,11 @@ impl Obj {
         }
     }
 
-    pub fn new_lvar(name: String, type_: Box<Type>) -> Self {
+    pub fn new_lvar(name: String, type_: Rc<RefCell<Type>>) -> Self {
         Self::new_var(name, type_, true, None)
     }
 
-    pub fn new_gvar(name: String, type_: Box<Type>, init_data: Option<Vec<u8>>) -> Self {
+    pub fn new_gvar(name: String, type_: Rc<RefCell<Type>>, init_data: Option<Vec<u8>>) -> Self {
         Self::new_var(name, type_, false, init_data)
     }
 
@@ -134,7 +137,7 @@ impl Obj {
         }
     }
 
-    pub fn new_func(name: String, type_: Box<Type>) -> Self {
+    pub fn new_func(name: String, type_: Rc<RefCell<Type>>) -> Self {
         Self::Func {
             name,
             params: vec![],
@@ -156,9 +159,9 @@ pub struct VarScope {
     // 对应的变量
     pub(crate) var: Option<Rc<RefCell<Obj>>>,
     // 别名
-    pub(crate) typedef: Option<Box<Type>>,
+    pub(crate) typedef: Option<Rc<RefCell<Type>>>,
     // 枚举的类型
-    pub(crate) enum_type: Option<Box<Type>>,
+    pub(crate) enum_type: Option<Rc<RefCell<Type>>>,
     // 枚举的值
     pub(crate) enum_val: i64,
 }
@@ -178,11 +181,11 @@ impl VarScope {
         self.var = Some(var);
     }
 
-    pub fn set_typedef(&mut self, typedef: Box<Type>) {
+    pub fn set_typedef(&mut self, typedef: Rc<RefCell<Type>>) {
         self.typedef = Some(typedef);
     }
 
-    pub fn set_enum(&mut self, enum_type: Box<Type>, enum_val: i64) {
+    pub fn set_enum(&mut self, enum_type: Rc<RefCell<Type>>, enum_val: i64) {
         self.enum_type = Some(enum_type);
         self.enum_val = enum_val;
     }
@@ -194,7 +197,7 @@ pub struct TagScope {
     // 域名称
     name: String,
     // 域类型
-    typ: Box<Type>,
+    typ: Rc<RefCell<Type>>,
 }
 
 // 变量属性
@@ -240,18 +243,29 @@ impl Scope {
     }
 
     /// 添加一个tag
-    pub fn add_tag(&mut self, name: String, typ: Box<Type>) {
+    pub fn add_tag(&mut self, name: String, typ: Rc<RefCell<Type>>) {
         self.tags.push(TagScope { name, typ })
     }
 
     /// 找到对应的tag
-    pub fn get_tag(&self, name: &str) -> Option<Box<Type>> {
+    pub fn get_tag(&self, name: &str) -> Option<Rc<RefCell<Type>>> {
         for scope in self.tags.to_vec() {
             if name.eq(scope.name.as_str()) {
                 return Some(scope.typ);
             }
         }
         return None;
+    }
+
+    pub fn replace_tag(&mut self, name: &str, typ: Type) -> Option<Rc<RefCell<Type>>> {
+        for i in 0..self.tags.len() {
+            let ts = &mut self.tags[i];
+            if name.eq(ts.name.as_str()) {
+                ts.typ.replace(typ);
+                return Some(ts.typ.clone());
+            }
+        }
+        None
     }
 }
 
@@ -260,7 +274,7 @@ pub struct Member {
     // 名称
     pub(crate) name: String,
     // 类型
-    pub(crate) type_: Option<Box<Type>>,
+    pub(crate) type_: Option<Rc<RefCell<Type>>>,
     // 偏移量
     pub(crate) offset: isize,
     // 用于报错信息
@@ -268,7 +282,7 @@ pub struct Member {
 }
 
 impl Member {
-    pub fn new(name: String, type_: Option<Box<Type>>) -> Self {
+    pub fn new(name: String, type_: Option<Rc<RefCell<Type>>>) -> Self {
         Self {
             name,
             type_,

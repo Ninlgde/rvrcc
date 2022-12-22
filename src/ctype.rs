@@ -1,6 +1,8 @@
 use crate::node::NodeKind;
 use crate::obj::Member;
 use crate::{error_token, Node};
+use std::cell::RefCell;
+use std::rc::Rc;
 
 #[derive(Clone, PartialEq, Eq)]
 pub enum TypeKind {
@@ -28,11 +30,11 @@ pub struct Type {
     // 对齐
     pub align: isize,
     // 指向的类型
-    pub base: Option<Box<Type>>,
+    pub base: Option<Rc<RefCell<Type>>>,
     // 返回的类型
-    pub return_type: Option<Box<Type>>,
+    pub return_type: Option<Rc<RefCell<Type>>>,
     // 形参
-    pub params: Vec<Type>,
+    pub params: Vec<Rc<RefCell<Type>>>,
     // 数组长度, 元素总个数
     len: isize,
     // 结构体
@@ -54,65 +56,68 @@ impl Type {
         }
     }
 
-    pub fn new_void() -> Box<Self> {
+    pub fn new_void() -> Rc<RefCell<Type>> {
         let type_ = Self::new(TypeKind::Void, 1, 1);
-        Box::new(type_)
+        Rc::new(RefCell::new(type_))
     }
 
-    pub fn new_bool() -> Box<Self> {
+    pub fn new_bool() -> Rc<RefCell<Type>> {
         let type_ = Self::new(TypeKind::Bool, 1, 1);
-        Box::new(type_)
+        Rc::new(RefCell::new(type_))
     }
 
-    pub fn new_char() -> Box<Self> {
+    pub fn new_char() -> Rc<RefCell<Type>> {
         let type_ = Self::new(TypeKind::Char, 1, 1);
-        Box::new(type_)
+        Rc::new(RefCell::new(type_))
     }
 
-    pub fn new_short() -> Box<Self> {
+    pub fn new_short() -> Rc<RefCell<Type>> {
         let type_ = Self::new(TypeKind::Short, 2, 2);
-        Box::new(type_)
+        Rc::new(RefCell::new(type_))
     }
 
-    pub fn new_int() -> Box<Self> {
+    pub fn new_int() -> Rc<RefCell<Type>> {
         let type_ = Self::new(TypeKind::Int, 4, 4);
-        Box::new(type_)
+        Rc::new(RefCell::new(type_))
     }
 
-    pub fn new_long() -> Box<Self> {
+    pub fn new_long() -> Rc<RefCell<Type>> {
         let type_ = Self::new(TypeKind::Long, 8, 8);
-        Box::new(type_)
+        Rc::new(RefCell::new(type_))
     }
 
-    pub fn new_enum() -> Box<Self> {
+    pub fn new_enum() -> Rc<RefCell<Type>> {
         let type_ = Self::new(TypeKind::Enum, 4, 4);
-        Box::new(type_)
+        Rc::new(RefCell::new(type_))
     }
 
-    pub fn pointer_to(base: Box<Type>) -> Box<Self> {
+    pub fn pointer_to(base: Rc<RefCell<Type>>) -> Rc<RefCell<Type>> {
         let mut type_ = Self::new(TypeKind::Ptr, 8, 8);
         type_.base = Some(base);
-        Box::new(type_)
+        Rc::new(RefCell::new(type_))
     }
 
-    pub fn func_type(return_type: Box<Type>, params: Vec<Type>) -> Box<Self> {
+    pub fn func_type(
+        return_type: Rc<RefCell<Type>>,
+        params: Vec<Rc<RefCell<Type>>>,
+    ) -> Rc<RefCell<Type>> {
         let mut type_ = Self::new(TypeKind::Func, 8, 8);
         type_.return_type = Some(return_type);
         type_.params = params;
-        Box::new(type_)
+        Rc::new(RefCell::new(type_))
     }
 
-    pub fn array_of(base: Box<Type>, len: isize) -> Box<Self> {
-        let size = base.get_size() * len;
-        let mut type_ = Self::new(TypeKind::Array, size, base.align);
+    pub fn array_of(base: Rc<RefCell<Type>>, len: isize) -> Rc<RefCell<Type>> {
+        let size = base.borrow().get_size() * len;
+        let mut type_ = Self::new(TypeKind::Array, size, base.borrow().align);
         type_.base = Some(base);
         type_.len = len;
-        Box::new(type_)
+        Rc::new(RefCell::new(type_))
     }
 
-    pub fn new_union_struct() -> Box<Self> {
-        let type_ = Self::new(TypeKind::Struct, 0, 0);
-        Box::new(type_)
+    pub fn new_union_struct() -> Type {
+        let type_ = Self::new(TypeKind::Struct, 0, 1);
+        type_
     }
 
     pub fn is_int(&self) -> bool {
@@ -146,25 +151,25 @@ impl Type {
 
     pub fn get_base_size(&self) -> isize {
         if self.has_base() {
-            return self.base.as_ref().unwrap().get_size();
+            return self.base.as_ref().unwrap().borrow().get_size();
         } else {
             0
         }
     }
 
-    pub fn add_param(&mut self, param: Type) {
+    pub fn add_param(&mut self, param: Rc<RefCell<Type>>) {
         self.params.insert(0, param);
     }
 
-    pub fn get_params(&self) -> Vec<Type> {
+    pub fn get_params(&self) -> Vec<Rc<RefCell<Type>>> {
         self.params.to_vec()
     }
 
-    pub fn get_common_type(typ1: Box<Self>, typ2: Box<Self>) -> Box<Self> {
-        if typ1.has_base() {
-            return Self::pointer_to(typ1.base.unwrap());
+    pub fn get_common_type(typ1: Rc<RefCell<Type>>, typ2: Rc<RefCell<Type>>) -> Rc<RefCell<Type>> {
+        if typ1.borrow().has_base() {
+            return Self::pointer_to(typ1.borrow().base.as_ref().unwrap().clone());
         }
-        if typ1.size == 8 || typ2.size == 8 {
+        if typ1.borrow().size == 8 || typ2.borrow().size == 8 {
             return Self::new_long();
         }
 
@@ -253,12 +258,12 @@ pub fn add_type(node: &mut Node) {
         // 左部不能是数组节点
         NodeKind::Assign => {
             let t = node.lhs.as_ref().unwrap().type_.as_ref().unwrap().clone();
-            if t.kind == TypeKind::Array {
+            if t.borrow().kind == TypeKind::Array {
                 let token = &node.token;
                 error_token!(token, "not an lvalue");
                 unreachable!()
             }
-            if t.kind != TypeKind::Struct {
+            if t.borrow().kind != TypeKind::Struct {
                 node.rhs = Some(Box::new(Node::new_cast(
                     node.rhs.as_ref().unwrap().clone(),
                     t.clone(),
@@ -286,8 +291,8 @@ pub fn add_type(node: &mut Node) {
         // 将节点类型设为 变量的类型
         NodeKind::Var => {
             let var = &*node.var.as_ref().unwrap().clone();
-            let vt = *var.borrow().get_type().clone();
-            node.type_ = Some(Box::new(vt));
+            let vt = var.borrow().get_type().clone();
+            node.type_ = Some(vt.clone());
         }
         // 将节点类型设为 右部的类型
         NodeKind::Comma => {
@@ -300,8 +305,8 @@ pub fn add_type(node: &mut Node) {
         // 将节点类型设为 指针，并指向左部的类型
         NodeKind::Addr => {
             let t = node.lhs.as_ref().unwrap().type_.as_ref().unwrap().clone();
-            if t.kind == TypeKind::Array {
-                node.type_ = Some(Type::pointer_to(t.base.unwrap()));
+            if t.borrow().kind == TypeKind::Array {
+                node.type_ = Some(Type::pointer_to(t.borrow().base.as_ref().unwrap().clone()));
             } else {
                 node.type_ = Some(Type::pointer_to(t.clone()));
             }
@@ -310,13 +315,13 @@ pub fn add_type(node: &mut Node) {
         NodeKind::DeRef => {
             let lhs = node.lhs.as_ref().unwrap();
             let t = lhs.type_.as_ref().unwrap().clone();
-            if t.has_base() {
-                if t.kind == TypeKind::Void {
+            if t.borrow().has_base() {
+                if t.borrow().kind == TypeKind::Void {
                     let token = node.lhs.as_ref().unwrap().get_token();
                     error_token!(token, "dereferencing a void pointer");
                     return;
                 }
-                node.type_ = Some(t.base.unwrap());
+                node.type_ = Some(t.borrow().base.as_ref().unwrap().clone());
             } else {
                 let token = node.lhs.as_ref().unwrap().get_token();
                 error_token!(token, "invalid pointer dereference");

@@ -54,9 +54,14 @@ impl<'a> Generator<'a> {
                 } => {
                     let mut offset = 0;
                     for var in locals.iter().rev() {
+                        {
+                            let cv = var.clone();
+                            let v = cv.borrow();
+                            let t = v.get_type().borrow();
+                            offset += t.get_size() as isize;
+                            offset = align_to(offset, t.align as isize);
+                        }
                         let mut v = var.borrow_mut();
-                        offset += v.get_type().get_size() as isize;
-                        offset = align_to(offset, v.get_type().align as isize);
                         v.set_offset(-offset);
                     }
 
@@ -97,8 +102,11 @@ impl<'a> Generator<'a> {
                         self.write_file(format!("  # 全局段{}", name));
                         self.write_file(format!("  .globl {}", name));
                         self.write_file(format!("{}:", name));
-                        self.write_file(format!("  # 全局变量零填充{}位", type_.get_size()));
-                        self.write_file(format!("  .zero {}", type_.get_size()));
+                        self.write_file(format!(
+                            "  # 全局变量零填充{}位",
+                            type_.borrow().get_size()
+                        ));
+                        self.write_file(format!("  .zero {}", type_.borrow().get_size()));
                     }
                 }
                 _ => {}
@@ -169,7 +177,7 @@ impl<'a> Generator<'a> {
                     let mut i = 0;
                     for p in params.iter().rev() {
                         let p = p.borrow();
-                        let size = p.get_type().get_size();
+                        let size = p.get_type().borrow().get_size();
                         self.store_general(i, p.get_offset(), size);
                         i += 1;
                     }
@@ -444,7 +452,7 @@ impl<'a> Generator<'a> {
         self.gen_lrhs(node.lhs.as_ref().unwrap(), node.rhs.as_ref().unwrap());
 
         let typ = node.lhs.as_ref().unwrap().clone().type_.unwrap();
-        let suffix = if typ.kind == TypeKind::Long || typ.has_base() {
+        let suffix = if typ.borrow().kind == TypeKind::Long || typ.borrow().has_base() {
             ""
         } else {
             "w"
@@ -603,16 +611,16 @@ impl<'a> Generator<'a> {
         self.depth -= 1;
     }
 
-    fn load(&mut self, type_: Box<Type>) {
-        if type_.kind == TypeKind::Array
-            || type_.kind == TypeKind::Struct
-            || type_.kind == TypeKind::Union
+    fn load(&mut self, type_: Rc<RefCell<Type>>) {
+        if type_.borrow().kind == TypeKind::Array
+            || type_.borrow().kind == TypeKind::Struct
+            || type_.borrow().kind == TypeKind::Union
         {
             return;
         }
 
         self.write_file(format!("  # 读取a0中存放的地址，得到的值存入a0"));
-        let size = type_.get_size();
+        let size = type_.borrow().get_size();
         match size {
             1 => self.write_file(format!("  lb a0, 0(a0)")),
             2 => self.write_file(format!("  lh a0, 0(a0)")),
@@ -622,17 +630,18 @@ impl<'a> Generator<'a> {
         }
     }
 
-    fn store(&mut self, type_: Box<Type>) {
+    fn store(&mut self, type_: Rc<RefCell<Type>>) {
         self.pop("a1");
 
-        if type_.kind == TypeKind::Struct || type_.kind == TypeKind::Union {
-            let kind = if type_.kind == TypeKind::Struct {
+        let kind = &type_.borrow().kind;
+        if *kind == TypeKind::Struct || *kind == TypeKind::Union {
+            let k = if *kind == TypeKind::Struct {
                 "结构体"
             } else {
                 "联合体"
             };
-            self.write_file(format!("  # 对{}进行赋值", kind));
-            for i in 0..type_.size {
+            self.write_file(format!("  # 对{}进行赋值", k));
+            for i in 0..type_.borrow().size {
                 self.write_file(format!("  li t0, {}", i));
                 self.write_file(format!("  add t0, a0, t0"));
                 self.write_file(format!("  lb t1, 0(t0)"));
@@ -645,7 +654,7 @@ impl<'a> Generator<'a> {
         }
 
         self.write_file(format!("  # 将a0的值，写入到a1中存放的地址"));
-        let size = type_.get_size();
+        let size = type_.borrow().get_size();
         match size {
             1 => self.write_file(format!("  sb a0, 0(a1)")),
             2 => self.write_file(format!("  sh a0, 0(a1)")),
@@ -671,12 +680,12 @@ impl<'a> Generator<'a> {
         }
     }
 
-    fn cast(&mut self, from: Box<Type>, to: Box<Type>) {
-        if to.kind == TypeKind::Void {
+    fn cast(&mut self, from: Rc<RefCell<Type>>, to: Rc<RefCell<Type>>) {
+        if to.borrow().kind == TypeKind::Void {
             return;
         }
 
-        if to.kind == TypeKind::Bool {
+        if to.borrow().kind == TypeKind::Bool {
             self.write_file(format!("  # 转为bool类型：为0置0，非0置1"));
             self.write_file(format!("  snez a0, a0"));
             return;
@@ -696,8 +705,8 @@ const LI08: Option<&str> = Some("  # 转换为i8类型\n  slli a0, a0, 56\n  sra
 const LI16: Option<&str> = Some("  # 转换为i16类型\n  slli a0, a0, 48\n  srai a0, a0, 48");
 const LI32: Option<&str> = Some("  # 转换为i32类型\n  slli a0, a0, 32\n  srai a0, a0, 32");
 
-fn get_type_id(typ: Box<Type>) -> usize {
-    match typ.kind {
+fn get_type_id(typ: Rc<RefCell<Type>>) -> usize {
+    match typ.borrow().kind {
         TypeKind::Char => 0,
         TypeKind::Short => 1,
         TypeKind::Int => 2,
