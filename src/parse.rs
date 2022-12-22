@@ -30,7 +30,7 @@
 //! add = mul ("+" mul | "-" mul)*
 //! mul = cast ("*" cast | "/" cast)*
 //! cast = "(" typename ")" cast | unary
-//! unary = ("+" | "-" | "*" | "&") cast | postfix
+//! unary = ("+" | "-" | "*" | "&") cast | ("++" | "--") unary | postfix
 //! struct_members = (declspec declarator (","  declarator)* ";")*
 //! struct_declare = struct_union_declare
 //! union_declare = struct_union_declare
@@ -1093,7 +1093,7 @@ impl<'a> Parser<'a> {
     }
 
     /// 解析一元运算
-    /// unary = ("+" | "-" | "*" | "&") cast | postfix
+    /// unary = ("+" | "-" | "*" | "&") cast | ("++" | "--") unary | postfix
     fn unary(&mut self) -> Option<Node> {
         let (pos, token) = self.current();
         let nt = self.tokens[pos].clone();
@@ -1132,6 +1132,36 @@ impl<'a> Parser<'a> {
                 Box::new(self.cast().unwrap()),
                 nt,
             ));
+        }
+
+        // 转换 ++i 为 i+=1
+        // "++" unary
+        if token.equal("++") {
+            self.next();
+            let unary = self.unary().unwrap();
+            let node = self
+                .add_with_type(
+                    Box::new(unary),
+                    Box::new(Node::new_num(1, nt.clone())),
+                    nt.clone(),
+                )
+                .unwrap();
+            return self.assign_op(node);
+        }
+
+        // 转换 --i 为 i-=1
+        // "--" unary
+        if token.equal("--") {
+            self.next();
+            let unary = self.unary().unwrap();
+            let node = self
+                .sub_with_type(
+                    Box::new(unary),
+                    Box::new(Node::new_num(1, nt.clone())),
+                    nt.clone(),
+                )
+                .unwrap();
+            return self.assign_op(node);
         }
 
         // primary
