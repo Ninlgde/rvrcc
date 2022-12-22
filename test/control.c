@@ -44,6 +44,14 @@ int main() {
     ASSERT(0, (2-2)&&5);
     ASSERT(1, 1&&5);
 
+    // [89] 支持goto和标签语句
+    ASSERT(3, ({ int i=0; goto a; a: i++; b: i++; c: i++; i; }));
+    ASSERT(2, ({ int i=0; goto e; d: i++; e: i++; f: i++; i; }));
+    ASSERT(1, ({ int i=0; goto i; g: i++; h: i++; i: i++; i; }));
+
+    // [90] 解决typedef和标签之间的冲突
+    ASSERT(1, ({ typedef int foo; goto foo; foo:; 1; }));
+
     printf("\033[32mOK\033[0m\n");
     return 0;
 }

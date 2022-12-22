@@ -289,6 +289,13 @@ impl<'a> Generator<'a> {
                     self.gen_stmt(&Box::new(s.clone()));
                 }
             }
+            NodeKind::Goto => {
+                self.write_file(format!("  j {}", node.get_unique_label()));
+            }
+            NodeKind::Label => {
+                self.write_file(format!("{}:", node.get_unique_label()));
+                self.gen_stmt(node.lhs.as_ref().unwrap());
+            }
             // 生成表达式语句
             NodeKind::ExprStmt => {
                 self.gen_expr(node.lhs.as_ref().unwrap());

@@ -20,6 +20,8 @@
 //!        | "if" "(" expr ")" stmt ("else" stmt)?
 //!        | "for" "(" exprStmt expr? ";" expr? ")" stmt
 //!        | "while" "(" expr ")" stmt
+//!        | "goto" ident ";"
+//!        | ident ":" stmt
 //!        | "{" compound_stmt
 //!        | expr_stmt
 //! expr_stmt = expr? ";"
@@ -57,10 +59,10 @@
 
 use crate::ctype::{add_type, TypeKind};
 use crate::keywords::{
-    KW_BOOL, KW_CHAR, KW_ELSE, KW_ENUM, KW_FOR, KW_IF, KW_INT, KW_LONG, KW_RETURN, KW_SHORT,
-    KW_SIZEOF, KW_STATIC, KW_STRUCT, KW_TYPEDEF, KW_UNION, KW_VOID, KW_WHILE,
+    KW_BOOL, KW_CHAR, KW_ELSE, KW_ENUM, KW_FOR, KW_GOTO, KW_IF, KW_INT, KW_LONG, KW_RETURN,
+    KW_SHORT, KW_SIZEOF, KW_STATIC, KW_STRUCT, KW_TYPEDEF, KW_UNION, KW_VOID, KW_WHILE,
 };
-use crate::node::NodeKind;
+use crate::node::{LabelInfo, NodeKind};
 use crate::obj::{Member, Scope, VarAttr, VarScope};
 use crate::{align_to, error_at, error_token, Node, Obj, Token, Type};
 use std::cell::RefCell;
@@ -84,6 +86,8 @@ struct Parser<'a> {
     scopes: Vec<Scope>,
     // 当前正在解析的function
     cur_func: Option<Rc<RefCell<Obj>>>,
+    gotos: Vec<Rc<RefCell<LabelInfo>>>,
+    labels: Vec<Rc<RefCell<LabelInfo>>>,
 }
 
 impl<'a> Parser<'a> {
@@ -96,6 +100,8 @@ impl<'a> Parser<'a> {
             unique_idx: 0,
             scopes: vec![Scope::new()],
             cur_func: None,
+            gotos: Vec::new(),
+            labels: Vec::new(),
         }
     }
 
@@ -193,11 +199,34 @@ impl<'a> Parser<'a> {
             // function.set_function(true, params, self.locals.to_vec(), body);
             // 结束当前域
             self.leave_scope();
+            // 处理goto和标签
+            self.resolve_goto_labels();
         }
 
         // 把初始化移到这个地方,因为在构建方法的时候里面需要borrow_mut这个obj,如果放前面,会导致rust的RefCell报already mutably borrowed
         let mut function = gvar.as_ref().unwrap().borrow_mut();
         function.set_function(params, locals, body, definition, var_attr.is_static);
+    }
+
+    /// 处理goto和标签
+    fn resolve_goto_labels(&mut self) {
+        for goto in self.gotos.iter() {
+            let mut x = goto.borrow_mut();
+            for label in self.labels.iter() {
+                let y = label.borrow();
+                if x.equals(&y) {
+                    x.set_unique_label(y.unique_label.to_string())
+                }
+            }
+
+            if x.unique_label.len() == 0 {
+                let t = &x.token;
+                error_token!(t, "use of undeclared label");
+            }
+        }
+
+        self.gotos.clear();
+        self.labels.clear();
     }
 
     fn push_scope(&mut self, name: String) -> Rc<RefCell<VarScope>> {
@@ -486,12 +515,12 @@ impl<'a> Parser<'a> {
         // 逐句解析,并压入nodes
         // (declaration | stmt)* "}"
         loop {
-            let (_, token) = self.current();
+            let (pos, token) = self.current();
             if token.equal("}") {
                 break;
             }
             let mut node;
-            if self.is_typename(token) {
+            if self.is_typename(token) && !self.tokens[pos + 1].equal(":") {
                 let mut va = Some(VarAttr {
                     is_typedef: false,
                     is_static: false,
@@ -588,6 +617,8 @@ impl<'a> Parser<'a> {
     ///        | "if" "(" expr ")" stmt ("else" stmt)?
     ///        | "for" "(" exprStmt expr? ";" expr? ")" stmt
     ///        | "while" "(" expr ")" stmt
+    ///        | "goto" ident ";"
+    ///        | ident ":" stmt
     ///        | "{" compound_stmt
     ///        | expr_stmt
     fn stmt(&mut self) -> Option<Node> {
@@ -695,6 +726,30 @@ impl<'a> Parser<'a> {
             let mut node = Node::new(NodeKind::For, nt);
             node.cond = cond;
             node.then = then;
+            return Some(node);
+        }
+
+        // "goto" ident ";"
+        if token.equal(KW_GOTO) {
+            let mut node = Node::new(NodeKind::Goto, nt.clone());
+            let label = self.tokens[pos + 1].get_name().to_string();
+            let label = LabelInfo::new_goto(label, nt.clone());
+            node.label_info = Some(label.clone());
+            self.gotos.insert(0, label);
+            self.next().next().skip(";");
+            return Some(node);
+        }
+
+        // ident ":" stmt
+        if token.is_ident() && self.tokens[pos + 1].equal(":") {
+            let mut node = Node::new(NodeKind::Label, nt.clone());
+            let label = nt.get_name().to_string();
+            let unique_label = self.new_unique_name();
+            let label = LabelInfo::new(label, unique_label, nt.clone());
+            node.label_info = Some(label.clone());
+            self.labels.insert(0, label);
+            node.lhs = Some(Box::new(self.next().next().stmt().unwrap()));
+
             return Some(node);
         }
 
@@ -1935,10 +1990,15 @@ impl<'a> Parser<'a> {
         str_data: Vec<u8>,
         base_type: Rc<RefCell<Type>>,
     ) -> Rc<RefCell<Obj>> {
-        let name = format!(".L..{}", self.unique_idx);
-        self.unique_idx += 1;
+        let name = self.new_unique_name();
         let obj = Obj::new_gvar(name.to_string(), base_type, Some(str_data));
         // 加入globals
         self.new_gvar(name.to_string(), obj).unwrap()
+    }
+
+    pub fn new_unique_name(&mut self) -> String {
+        let name = format!(".L..{}", self.unique_idx);
+        self.unique_idx += 1;
+        name
     }
 }
