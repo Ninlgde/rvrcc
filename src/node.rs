@@ -62,6 +62,10 @@ pub enum NodeKind {
     For,
     // { ... }，代码块
     Block,
+    // goto，直接跳转语句
+    Goto,
+    // 标签语句
+    Label,
     // 函数调用
     FuncCall,
     // 表达式语句
@@ -115,6 +119,8 @@ pub struct Node {
     pub(crate) val: i64,
     // 结构体成员访问
     pub(crate) member: Option<Box<Member>>,
+    // goto和标签语句
+    pub(crate) label_info: Option<Rc<RefCell<LabelInfo>>>,
 }
 
 impl Node {
@@ -137,6 +143,7 @@ impl Node {
             var: None,
             val: 0,
             member: None,
+            label_info: None,
         }
     }
 
@@ -197,5 +204,41 @@ impl Node {
 
     pub fn get_type(&self) -> &Option<Rc<RefCell<Type>>> {
         &self.type_
+    }
+
+    pub fn get_unique_label(&self) -> String {
+        let label = self.label_info.as_ref().unwrap();
+        let x = label.clone();
+        let x = &*x.borrow();
+        x.unique_label.to_string()
+    }
+}
+
+pub struct LabelInfo {
+    // goto和标签语句
+    pub label: String,
+    pub unique_label: String,
+    pub token: Token,
+}
+
+impl LabelInfo {
+    pub fn new(label: String, unique_label: String, token: Token) -> Rc<RefCell<Self>> {
+        Rc::new(RefCell::new(LabelInfo {
+            label,
+            unique_label,
+            token,
+        }))
+    }
+
+    pub fn new_goto(label: String, token: Token) -> Rc<RefCell<Self>> {
+        Self::new(label, String::new(), token)
+    }
+
+    pub fn set_unique_label(&mut self, unique_label: String) {
+        self.unique_label = unique_label;
+    }
+
+    pub fn equals(&self, other: &Self) -> bool {
+        self.label == other.label
     }
 }
