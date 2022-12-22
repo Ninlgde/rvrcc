@@ -60,8 +60,9 @@
 
 use crate::ctype::{add_type, TypeKind};
 use crate::keywords::{
-    KW_BOOL, KW_BREAK, KW_CHAR, KW_ELSE, KW_ENUM, KW_FOR, KW_GOTO, KW_IF, KW_INT, KW_LONG,
-    KW_RETURN, KW_SHORT, KW_SIZEOF, KW_STATIC, KW_STRUCT, KW_TYPEDEF, KW_UNION, KW_VOID, KW_WHILE,
+    KW_BOOL, KW_BREAK, KW_CHAR, KW_CONTINUE, KW_ELSE, KW_ENUM, KW_FOR, KW_GOTO, KW_IF, KW_INT,
+    KW_LONG, KW_RETURN, KW_SHORT, KW_SIZEOF, KW_STATIC, KW_STRUCT, KW_TYPEDEF, KW_UNION, KW_VOID,
+    KW_WHILE,
 };
 use crate::node::{LabelInfo, NodeKind};
 use crate::obj::{Member, Scope, VarAttr, VarScope};
@@ -90,6 +91,7 @@ struct Parser<'a> {
     gotos: Vec<Rc<RefCell<LabelInfo>>>,
     labels: Vec<Rc<RefCell<LabelInfo>>>,
     brk_label: String,
+    ctn_label: String,
 }
 
 impl<'a> Parser<'a> {
@@ -105,6 +107,7 @@ impl<'a> Parser<'a> {
             gotos: Vec::new(),
             labels: Vec::new(),
             brk_label: String::new(),
+            ctn_label: String::new(),
         }
     }
 
@@ -622,6 +625,7 @@ impl<'a> Parser<'a> {
     ///        | "while" "(" expr ")" stmt
     ///        | "goto" ident ";"
     ///        | "break" ";"
+    ///        | "continue" ";"
     ///        | ident ":" stmt
     ///        | "{" compound_stmt
     ///        | expr_stmt
@@ -677,10 +681,12 @@ impl<'a> Parser<'a> {
             // 进入for的域
             self.enter_scope();
 
-            // 存储此前break标签的名称
+            // 存储此前break和continue标签的名称
             let brk_label = self.brk_label.to_string();
-            // 设置break标签的名称
+            let ctn_label = self.ctn_label.to_string();
+            // 设置break和continue标签的名称
             self.brk_label = self.new_unique_name();
+            self.ctn_label = self.new_unique_name();
 
             //expr_stmt
             let (_, token) = self.current();
@@ -716,11 +722,13 @@ impl<'a> Parser<'a> {
             node.cond = cond;
             node.then = then;
             node.break_label = Some(self.brk_label.to_string());
+            node.continue_label = Some(self.ctn_label.to_string());
 
             // 离开for的域
             self.leave_scope();
-            // 恢复此前的break标签
+            // 恢复此前的break和continue标签
             self.brk_label = brk_label;
+            self.ctn_label = ctn_label;
             return Some(node);
         }
 
@@ -733,10 +741,12 @@ impl<'a> Parser<'a> {
             // ")"
             self.skip(")");
 
-            // 存储此前break标签的名称
+            // 存储此前break和continue标签的名称
             let brk_label = self.brk_label.to_string();
-            // 设置break标签的名称
+            let ctn_label = self.ctn_label.to_string();
+            // 设置break和continue标签的名称
             self.brk_label = self.new_unique_name();
+            self.ctn_label = self.new_unique_name();
 
             // stmt
             let then = Some(Box::new(self.stmt().unwrap()));
@@ -745,9 +755,11 @@ impl<'a> Parser<'a> {
             node.cond = cond;
             node.then = then;
             node.break_label = Some(self.brk_label.to_string());
+            node.continue_label = Some(self.ctn_label.to_string());
 
-            // 恢复此前的break标签
+            // 恢复此前的break和continue标签
             self.brk_label = brk_label;
+            self.ctn_label = ctn_label;
             return Some(node);
         }
 
@@ -768,6 +780,20 @@ impl<'a> Parser<'a> {
             }
             let label = self.brk_label.to_string();
             let label = LabelInfo::new_break(label, nt.clone());
+            // 跳转到break标签的位置
+            let mut node = Node::new(NodeKind::Goto, nt.clone());
+            node.label_info = Some(label.clone());
+            self.next().skip(";");
+            return Some(node);
+        }
+
+        if token.equal(KW_CONTINUE) {
+            if self.brk_label.len() == 0 {
+                error_token!(&nt.clone(), "stray continue");
+            }
+            let label = self.ctn_label.to_string();
+            let label = LabelInfo::new_break(label, nt.clone());
+            // 跳转到continue标签的位置
             let mut node = Node::new(NodeKind::Goto, nt.clone());
             node.label_info = Some(label.clone());
             self.next().skip(";");
