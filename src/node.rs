@@ -121,6 +121,7 @@ pub struct Node {
     pub(crate) member: Option<Box<Member>>,
     // goto和标签语句
     pub(crate) label_info: Option<Rc<RefCell<LabelInfo>>>,
+    pub(crate) break_label: Option<String>,
 }
 
 impl Node {
@@ -144,6 +145,7 @@ impl Node {
             val: 0,
             member: None,
             label_info: None,
+            break_label: None,
         }
     }
 
@@ -232,6 +234,10 @@ impl LabelInfo {
 
     pub fn new_goto(label: String, token: Token) -> Rc<RefCell<Self>> {
         Self::new(label, String::new(), token)
+    }
+
+    pub fn new_break(unique_label: String, token: Token) -> Rc<RefCell<Self>> {
+        Self::new(String::new(), unique_label, token)
     }
 
     pub fn set_unique_label(&mut self, unique_label: String) {
