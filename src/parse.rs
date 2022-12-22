@@ -23,7 +23,9 @@
 //!        | expr_stmt
 //! expr_stmt = expr? ";"
 //! expr = assign ("," expr)?
-//! assign = bit_or (assign_op assign)?
+//! assign = log_or (assign_op assign)?
+//! log_or = log_and ("||" log_and)*
+//! log_and = bit_or ("&&" bit_or)*
 //! bit_or = bit_xor ("|" bit_xor)*
 //! bit_xor = bit_and ("^" bit_and)*
 //! bit_and = equality ("&" equality)*
@@ -712,10 +714,10 @@ impl<'a> Parser<'a> {
     }
 
     /// 解析赋值
-    /// assign = bit_or (assign_op assign)?
+    /// assign = log_or (assign_op assign)?
     fn assign(&mut self) -> Option<Node> {
         // equality
-        let node = self.bit_or().unwrap();
+        let node = self.log_or().unwrap();
 
         // 可能存在递归赋值，如a=b=1
         // ("=" assign)?
@@ -776,6 +778,36 @@ impl<'a> Parser<'a> {
             return self.assign_op(Node::new_binary(NodeKind::BitXor, Box::new(node), rhs, nt));
         }
 
+        Some(node)
+    }
+
+    /// log_or = log_and ("||" log_and)*
+    fn log_or(&mut self) -> Option<Node> {
+        let mut node = self.log_and().unwrap();
+        loop {
+            let (pos, token) = self.current();
+            let nt = self.tokens[pos].clone();
+            if !token.equal("||") {
+                break;
+            }
+            let rhs = self.next().log_and().unwrap();
+            node = Node::new_binary(NodeKind::LogOr, Box::new(node), Box::new(rhs), nt);
+        }
+        Some(node)
+    }
+
+    /// log_and = bit_or ("&&" bit_or)*
+    fn log_and(&mut self) -> Option<Node> {
+        let mut node = self.bit_or().unwrap();
+        loop {
+            let (pos, token) = self.current();
+            let nt = self.tokens[pos].clone();
+            if !token.equal("&&") {
+                break;
+            }
+            let rhs = self.next().bit_or().unwrap();
+            node = Node::new_binary(NodeKind::LogAnd, Box::new(node), Box::new(rhs), nt);
+        }
         Some(node)
     }
 

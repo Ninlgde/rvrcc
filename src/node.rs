@@ -50,6 +50,10 @@ pub enum NodeKind {
     Not,
     // ~, 按位取非
     BitNot,
+    // &&，与
+    LogAnd,
+    // ||，或
+    LogOr,
     // 返回
     Return,
     // "if"，条件判断

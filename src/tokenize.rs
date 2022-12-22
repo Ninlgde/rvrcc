@@ -203,6 +203,7 @@ fn starts_with_ignore_case(chars: &Vec<u8>, pos: usize, sub: &str) -> bool {
 fn read_punct(chars: &Vec<u8>, pos: &mut usize) {
     let ops = vec![
         "==", "!=", "<=", ">=", "->", "+=", "-=", "*=", "/=", "++", "--", "%=", "&=", "|=", "^=",
+        "&&", "||",
     ];
 
     for op in ops {
