@@ -17,7 +17,7 @@ test/%.exe: rvrcc test/%.c
 	$(CC) -static -o $@ test/$*.s -xc test/common
 
 test: $(TESTS)
-	for i in $^; do echo $$i; $(RUN) ./$$i || exit 1; echo; done
+	for i in $^; do echo "\033[34m"$$i"\033[0m"; $(RUN) ./$$i || exit 1; echo; done
 	test/driver.sh
 
 # 清理标签，清理所有非源代码文件

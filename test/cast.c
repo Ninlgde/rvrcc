@@ -12,6 +12,6 @@ int main() {
 
     (void)1;
 
-    printf("OK\n");
+    printf("\033[32mOK\033[0m\n");
     return 0;
 }

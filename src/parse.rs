@@ -2,7 +2,7 @@
 //! program = (typedef | function_definition* | global-variable)*
 //! function_definition = declspec declarator "(" ")" "{" compound_stmt*
 //! declspec = ("void" | "_Bool" | "char" | "short" | "int" | "long"
-//!            | "typedef"
+//!            | "typedef" | "static"
 //!            | struct_declare | union_declare | typedef_name
 //!            | enum_specifier)+
 //! enum_specifier = ident? "{" enum_list? "}"
@@ -49,7 +49,7 @@
 use crate::ctype::{add_type, TypeKind};
 use crate::keywords::{
     KW_BOOL, KW_CHAR, KW_ELSE, KW_ENUM, KW_FOR, KW_IF, KW_INT, KW_LONG, KW_RETURN, KW_SHORT,
-    KW_SIZEOF, KW_STRUCT, KW_TYPEDEF, KW_UNION, KW_VOID, KW_WHILE,
+    KW_SIZEOF, KW_STATIC, KW_STRUCT, KW_TYPEDEF, KW_UNION, KW_VOID, KW_WHILE,
 };
 use crate::node::NodeKind;
 use crate::obj::{Member, Scope, VarAttr, VarScope};
@@ -110,16 +110,20 @@ impl<'a> Parser<'a> {
             if token.at_eof() {
                 break;
             }
-            let mut va = Some(VarAttr { is_typedef: false });
+            let mut va = Some(VarAttr {
+                is_typedef: false,
+                is_static: false,
+            });
             // declspec
             let base_type = self.declspec(&mut va);
 
-            if va.unwrap().is_typedef {
+            let va = va.unwrap();
+            if va.is_typedef {
                 self.parse_typedef(base_type);
                 continue;
             }
             if self.is_function() {
-                self.function_definition(base_type);
+                self.function_definition(base_type, va);
                 continue;
             }
 
@@ -146,7 +150,7 @@ impl<'a> Parser<'a> {
     }
 
     /// function_definition = declspec declarator "(" ")" "{" compound_stmt*
-    fn function_definition(&mut self, base_type: Box<Type>) {
+    fn function_definition(&mut self, base_type: Box<Type>, var_attr: VarAttr) {
         // declarator
         // 声明获取到变量类型，包括变量名
         let type_ = self.declarator(base_type);
@@ -183,7 +187,7 @@ impl<'a> Parser<'a> {
 
         // 把初始化移到这个地方,因为在构建方法的时候里面需要borrow_mut这个obj,如果放前面,会导致rust的RefCell报already mutably borrowed
         let mut function = gvar.as_ref().unwrap().borrow_mut();
-        function.set_function(definition, params, locals, body);
+        function.set_function(params, locals, body, definition, var_attr.is_static);
     }
 
     fn push_scope(&mut self, name: String) -> Rc<RefCell<VarScope>> {
@@ -244,7 +248,7 @@ impl<'a> Parser<'a> {
     }
 
     /// declspec = ("void" | "_Bool" | "char" | "short" | "int" | "long"
-    ///            | "typedef"
+    ///            | "typedef" | "static"
     ///            | struct_declare | union_declare | typedef_name
     ///            | enum_specifier)+
     /// declarator specifier
@@ -273,14 +277,19 @@ impl<'a> Parser<'a> {
                 break;
             }
 
-            if token.equal(KW_TYPEDEF) {
+            if token.equal(KW_TYPEDEF) || token.equal(KW_STATIC) {
                 if attr.is_none() {
                     error_token!(
                         token,
                         "storage class specifier is not allowed in this context"
                     );
                 }
-                attr.as_mut().unwrap().is_typedef = true;
+                let is_t = token.equal(KW_TYPEDEF);
+                attr.as_mut().unwrap().is_typedef = is_t;
+                attr.as_mut().unwrap().is_static = !is_t;
+                if is_t && token.equal(KW_STATIC) {
+                    error_token!(token, "typedef and static may not be used together");
+                }
                 self.next();
                 continue;
             }
@@ -461,7 +470,10 @@ impl<'a> Parser<'a> {
             }
             let mut node;
             if self.is_typename(token) {
-                let mut va = Some(VarAttr { is_typedef: false });
+                let mut va = Some(VarAttr {
+                    is_typedef: false,
+                    is_static: false,
+                });
                 let base_type = self.declspec(&mut va);
 
                 // 解析typedef的语句

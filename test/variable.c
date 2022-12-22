@@ -76,6 +76,6 @@ int main() {
     // [61] 支持void类型
     { void *x; }
 
-    printf("OK\n");
+    printf("\033[32mOK\033[0m\n");
     return 0;
 }

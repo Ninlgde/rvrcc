@@ -62,6 +62,6 @@ int main() {
     // [58] 支持short类型
     ASSERT(4, ({ struct {char a; short b;} x; sizeof(x); }));
 
-    printf("OK\n");
+    printf("\033[32mOK\033[0m\n");
     return 0;
 }

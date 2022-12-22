@@ -39,6 +39,6 @@ int main() {
     // [68] 实现常规算术转换
     ASSERT(0, 1073741824 * 100 / 100);
 
-    printf("OK\n");
+    printf("\033[32mOK\033[0m\n");
     return 0;
 }

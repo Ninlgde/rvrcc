@@ -30,6 +30,6 @@ int main() {
     ASSERT(8, sizeof((long)-10 * 5));
     ASSERT(8, sizeof((long)-10 / 5));
 
-    printf("OK\n");
+    printf("\033[32mOK\033[0m\n");
     return 0;
 }
