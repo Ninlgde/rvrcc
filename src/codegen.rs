@@ -371,6 +371,13 @@ impl<'a> Generator<'a> {
                 self.cast(f_typ, t_typ);
                 return;
             }
+            NodeKind::Not => {
+                self.gen_expr(node.lhs.as_ref().unwrap());
+                self.write_file(format!("  # 非运算"));
+                // a0=0则置1，否则为0
+                self.write_file(format!("  seqz a0, a0"));
+                return;
+            }
             NodeKind::FuncCall => {
                 let mut argc = 0;
                 for arg in node.args.to_vec() {

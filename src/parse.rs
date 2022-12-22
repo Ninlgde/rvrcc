@@ -30,7 +30,7 @@
 //! add = mul ("+" mul | "-" mul)*
 //! mul = cast ("*" cast | "/" cast)*
 //! cast = "(" typename ")" cast | unary
-//! unary = ("+" | "-" | "*" | "&") cast | ("++" | "--") unary | postfix
+//! unary = ("+" | "-" | "*" | "&" | "!") cast | ("++" | "--") unary | postfix
 //! struct_members = (declspec declarator (","  declarator)* ";")*
 //! struct_declare = struct_union_declare
 //! union_declare = struct_union_declare
@@ -1093,7 +1093,7 @@ impl<'a> Parser<'a> {
     }
 
     /// 解析一元运算
-    /// unary = ("+" | "-" | "*" | "&") cast | ("++" | "--") unary | postfix
+    /// unary = ("+" | "-" | "*" | "&" | "!") cast | ("++" | "--") unary | postfix
     fn unary(&mut self) -> Option<Node> {
         let (pos, token) = self.current();
         let nt = self.tokens[pos].clone();
@@ -1129,6 +1129,16 @@ impl<'a> Parser<'a> {
             self.next();
             return Some(Node::new_unary(
                 NodeKind::DeRef,
+                Box::new(self.cast().unwrap()),
+                nt,
+            ));
+        }
+
+        // "!" cast
+        if token.equal("!") {
+            self.next();
+            return Some(Node::new_unary(
+                NodeKind::Not,
                 Box::new(self.cast().unwrap()),
                 nt,
             ));
