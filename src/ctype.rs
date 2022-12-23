@@ -20,6 +20,8 @@ pub enum TypeKind {
     Enum,
 }
 
+pub type TypeLink = Rc<RefCell<Type>>;
+
 #[derive(Clone)]
 pub struct Type {
     pub kind: TypeKind,
@@ -30,11 +32,11 @@ pub struct Type {
     // 对齐
     pub align: isize,
     // 指向的类型
-    pub base: Option<Rc<RefCell<Type>>>,
+    pub base: Option<TypeLink>,
     // 返回的类型
-    pub return_type: Option<Rc<RefCell<Type>>>,
+    pub return_type: Option<TypeLink>,
     // 形参
-    pub params: Vec<Rc<RefCell<Type>>>,
+    pub params: Vec<TypeLink>,
     // 数组长度, 元素总个数
     len: isize,
     // 结构体
@@ -56,58 +58,55 @@ impl Type {
         }
     }
 
-    pub fn new_void() -> Rc<RefCell<Type>> {
+    pub fn new_void() -> TypeLink {
         let type_ = Self::new(TypeKind::Void, 1, 1);
         Rc::new(RefCell::new(type_))
     }
 
-    pub fn new_bool() -> Rc<RefCell<Type>> {
+    pub fn new_bool() -> TypeLink {
         let type_ = Self::new(TypeKind::Bool, 1, 1);
         Rc::new(RefCell::new(type_))
     }
 
-    pub fn new_char() -> Rc<RefCell<Type>> {
+    pub fn new_char() -> TypeLink {
         let type_ = Self::new(TypeKind::Char, 1, 1);
         Rc::new(RefCell::new(type_))
     }
 
-    pub fn new_short() -> Rc<RefCell<Type>> {
+    pub fn new_short() -> TypeLink {
         let type_ = Self::new(TypeKind::Short, 2, 2);
         Rc::new(RefCell::new(type_))
     }
 
-    pub fn new_int() -> Rc<RefCell<Type>> {
+    pub fn new_int() -> TypeLink {
         let type_ = Self::new(TypeKind::Int, 4, 4);
         Rc::new(RefCell::new(type_))
     }
 
-    pub fn new_long() -> Rc<RefCell<Type>> {
+    pub fn new_long() -> TypeLink {
         let type_ = Self::new(TypeKind::Long, 8, 8);
         Rc::new(RefCell::new(type_))
     }
 
-    pub fn new_enum() -> Rc<RefCell<Type>> {
+    pub fn new_enum() -> TypeLink {
         let type_ = Self::new(TypeKind::Enum, 4, 4);
         Rc::new(RefCell::new(type_))
     }
 
-    pub fn pointer_to(base: Rc<RefCell<Type>>) -> Rc<RefCell<Type>> {
+    pub fn pointer_to(base: TypeLink) -> TypeLink {
         let mut type_ = Self::new(TypeKind::Ptr, 8, 8);
         type_.base = Some(base);
         Rc::new(RefCell::new(type_))
     }
 
-    pub fn func_type(
-        return_type: Rc<RefCell<Type>>,
-        params: Vec<Rc<RefCell<Type>>>,
-    ) -> Rc<RefCell<Type>> {
+    pub fn func_type(return_type: TypeLink, params: Vec<TypeLink>) -> TypeLink {
         let mut type_ = Self::new(TypeKind::Func, 8, 8);
         type_.return_type = Some(return_type);
         type_.params = params;
         Rc::new(RefCell::new(type_))
     }
 
-    pub fn array_of(base: Rc<RefCell<Type>>, len: isize) -> Rc<RefCell<Type>> {
+    pub fn array_of(base: TypeLink, len: isize) -> TypeLink {
         let size = base.borrow().get_size() * len;
         let mut type_ = Self::new(TypeKind::Array, size, base.borrow().align);
         type_.base = Some(base);
@@ -157,15 +156,15 @@ impl Type {
         }
     }
 
-    pub fn add_param(&mut self, param: Rc<RefCell<Type>>) {
+    pub fn add_param(&mut self, param: TypeLink) {
         self.params.insert(0, param);
     }
 
-    pub fn get_params(&self) -> Vec<Rc<RefCell<Type>>> {
-        self.params.to_vec()
+    pub fn get_params(&self) -> &Vec<TypeLink> {
+        &self.params
     }
 
-    pub fn get_common_type(typ1: Rc<RefCell<Type>>, typ2: Rc<RefCell<Type>>) -> Rc<RefCell<Type>> {
+    pub fn get_common_type(typ1: TypeLink, typ2: TypeLink) -> TypeLink {
         if typ1.borrow().has_base() {
             return Self::pointer_to(typ1.borrow().base.as_ref().unwrap().clone());
         }
@@ -177,11 +176,16 @@ impl Type {
     }
 }
 
-pub fn usual_arith_conv(lhs: &mut Box<Node>, rhs: &mut Box<Node>) {
-    let typ = Type::get_common_type(lhs.type_.clone().unwrap(), rhs.type_.clone().unwrap());
+pub fn usual_arith_conv(lhs: Box<Node>, rhs: Box<Node>) -> (Box<Node>, Box<Node>) {
+    let typ = Type::get_common_type(
+        lhs.type_.as_ref().unwrap().clone(),
+        rhs.type_.as_ref().unwrap().clone(),
+    );
 
-    *lhs = Box::new(Node::new_cast(lhs.clone(), typ.clone()));
-    *rhs = Box::new(Node::new_cast(rhs.clone(), typ));
+    let lhs = Box::new(Node::new_cast(lhs, typ.clone()));
+    let rhs = Box::new(Node::new_cast(rhs, typ));
+
+    (lhs, rhs)
 }
 
 pub fn add_type(node: &mut Node) {
@@ -239,17 +243,19 @@ pub fn add_type(node: &mut Node) {
         | NodeKind::BitOr
         | NodeKind::BitXor => {
             // 对左右部转换
-            usual_arith_conv(node.lhs.as_mut().unwrap(), node.rhs.as_mut().unwrap());
+            let (lhs, rhs) = usual_arith_conv(node.lhs.take().unwrap(), node.rhs.take().unwrap());
+            node.lhs = Some(lhs);
+            node.rhs = Some(rhs);
             node.type_ = node.lhs.as_ref().unwrap().type_.clone();
         }
         NodeKind::Neg => {
             // 对左部转换
             let typ = Type::get_common_type(
                 Type::new_int(),
-                node.lhs.as_ref().unwrap().type_.clone().unwrap(),
+                node.lhs.as_ref().unwrap().type_.as_ref().unwrap().clone(),
             );
             node.lhs = Some(Box::new(Node::new_cast(
-                node.lhs.as_ref().unwrap().clone(),
+                node.lhs.take().unwrap(),
                 typ.clone(),
             )));
             node.type_ = Some(typ);
@@ -265,7 +271,7 @@ pub fn add_type(node: &mut Node) {
             }
             if t.borrow().kind != TypeKind::Struct {
                 node.rhs = Some(Box::new(Node::new_cast(
-                    node.rhs.as_ref().unwrap().clone(),
+                    node.rhs.take().unwrap(),
                     t.clone(),
                 )))
             }
@@ -274,7 +280,9 @@ pub fn add_type(node: &mut Node) {
         // 将节点类型设为 int
         NodeKind::Eq | NodeKind::Ne | NodeKind::Lt | NodeKind::Le => {
             // 对左右部转换
-            usual_arith_conv(node.lhs.as_mut().unwrap(), node.rhs.as_mut().unwrap());
+            let (lhs, rhs) = usual_arith_conv(node.lhs.take().unwrap(), node.rhs.take().unwrap());
+            node.lhs = Some(lhs);
+            node.rhs = Some(rhs);
             node.type_ = Some(Type::new_int());
         }
         NodeKind::FuncCall => {
@@ -330,7 +338,7 @@ pub fn add_type(node: &mut Node) {
         // 节点类型为 最后的表达式语句的类型
         NodeKind::StmtExpr => {
             if node.body.len() > 0 {
-                let last = node.body.last().unwrap().clone();
+                let last = node.body.last().unwrap();
                 if last.kind == NodeKind::ExprStmt {
                     node.type_ = last.lhs.as_ref().unwrap().type_.clone();
                     return;

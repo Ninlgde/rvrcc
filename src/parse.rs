@@ -18,6 +18,9 @@
 //!    declspec (declarator ("=" expr)? ("," declarator ("=" expr)?)*)? ";"
 //! stmt = "return" expr ";"
 //!        | "if" "(" expr ")" stmt ("else" stmt)?
+//!        | "switch" "(" expr ")" stmt
+//!        | "case" num ":" stmt
+//!        | "default" ":" stmt
 //!        | "for" "(" exprStmt expr? ";" expr? ")" stmt
 //!        | "while" "(" expr ")" stmt
 //!        | "goto" ident ";"
@@ -58,19 +61,19 @@
 //! abstract_declarator = "*"* ("(" abstract_declarator ")")? type_suffix
 //! func_call = ident "(" (assign ("," assign)*)? ")"
 
-use crate::ctype::{add_type, TypeKind};
+use crate::ctype::{add_type, TypeKind, TypeLink};
 use crate::keywords::{
-    KW_BOOL, KW_BREAK, KW_CHAR, KW_CONTINUE, KW_ELSE, KW_ENUM, KW_FOR, KW_GOTO, KW_IF, KW_INT,
-    KW_LONG, KW_RETURN, KW_SHORT, KW_SIZEOF, KW_STATIC, KW_STRUCT, KW_TYPEDEF, KW_UNION, KW_VOID,
-    KW_WHILE,
+    KW_BOOL, KW_BREAK, KW_CASE, KW_CHAR, KW_CONTINUE, KW_DEFAULT, KW_ELSE, KW_ENUM, KW_FOR,
+    KW_GOTO, KW_IF, KW_INT, KW_LONG, KW_RETURN, KW_SHORT, KW_SIZEOF, KW_STATIC, KW_STRUCT,
+    KW_SWITCH, KW_TYPEDEF, KW_UNION, KW_VOID, KW_WHILE,
 };
 use crate::node::{LabelInfo, NodeKind};
-use crate::obj::{Member, Scope, VarAttr, VarScope};
+use crate::obj::{Member, ObjLink, Scope, VarAttr, VarScope};
 use crate::{align_to, error_at, error_token, Node, Obj, Token, Type};
 use std::cell::RefCell;
 use std::rc::Rc;
 
-pub fn parse(tokens: &Vec<Token>) -> Vec<Rc<RefCell<Obj>>> {
+pub fn parse(tokens: &Vec<Token>) -> Vec<ObjLink> {
     let mut parser = Parser::new(tokens);
     parser.parse()
 }
@@ -79,19 +82,20 @@ struct Parser<'a> {
     tokens: &'a Vec<Token>,
     cursor: usize,
     // 本地变量
-    locals: Vec<Rc<RefCell<Obj>>>,
+    locals: Vec<ObjLink>,
     // 全局变量
-    globals: Vec<Rc<RefCell<Obj>>>,
+    globals: Vec<ObjLink>,
     // 唯一名称idx
     unique_idx: usize,
     // 变量域
     scopes: Vec<Scope>,
     // 当前正在解析的function
-    cur_func: Option<Rc<RefCell<Obj>>>,
+    cur_func: Option<ObjLink>,
     gotos: Vec<Rc<RefCell<LabelInfo>>>,
     labels: Vec<Rc<RefCell<LabelInfo>>>,
     brk_label: String,
     ctn_label: String,
+    cur_switch: Option<Node>,
 }
 
 impl<'a> Parser<'a> {
@@ -108,6 +112,7 @@ impl<'a> Parser<'a> {
             labels: Vec::new(),
             brk_label: String::new(),
             ctn_label: String::new(),
+            cur_switch: None,
         }
     }
 
@@ -124,7 +129,7 @@ impl<'a> Parser<'a> {
 
     /// 语法解析入口函数
     /// program = function_definition*
-    pub fn parse(&mut self) -> Vec<Rc<RefCell<Obj>>> {
+    pub fn parse(&mut self) -> Vec<ObjLink> {
         // "{"
         loop {
             let (_, token) = self.current();
@@ -154,7 +159,7 @@ impl<'a> Parser<'a> {
         self.globals.to_vec()
     }
 
-    fn global_variable(&mut self, base_type: Rc<RefCell<Type>>) {
+    fn global_variable(&mut self, base_type: TypeLink) {
         let mut first = true;
 
         while !self.consume(";") {
@@ -171,7 +176,7 @@ impl<'a> Parser<'a> {
     }
 
     /// function_definition = declspec declarator "(" ")" "{" compound_stmt*
-    fn function_definition(&mut self, base_type: Rc<RefCell<Type>>, var_attr: VarAttr) {
+    fn function_definition(&mut self, base_type: TypeLink, var_attr: VarAttr) {
         // declarator
         // 声明获取到变量类型，包括变量名
         let type_ = self.declarator(base_type);
@@ -240,23 +245,23 @@ impl<'a> Parser<'a> {
         return vs.clone();
     }
 
-    fn push_tag_scope(&mut self, name: String, type_: Rc<RefCell<Type>>) {
+    fn push_tag_scope(&mut self, name: String, type_: TypeLink) {
         self.scopes[0].add_tag(name, type_);
     }
 
     /// 将形参添加到locals
-    fn create_param_lvars(&mut self, params: Vec<Rc<RefCell<Type>>>) {
+    fn create_param_lvars(&mut self, params: &Vec<TypeLink>) {
         for param in params.iter() {
             self.new_lvar(param.clone());
         }
     }
 
-    fn find_typedef(&self, token: &Token) -> Option<Rc<RefCell<Type>>> {
+    fn find_typedef(&self, token: &Token) -> Option<TypeLink> {
         match token {
             Token::Ident { t_str, .. } => {
                 let vs = self.find_var(t_str);
-                if vs.is_some() {
-                    let typedef = vs.as_ref().unwrap().borrow().typedef.clone();
+                if let Some(vs) = vs {
+                    let typedef = &vs.borrow().typedef;
                     if typedef.is_some() {
                         let var = typedef.as_ref().unwrap().clone();
                         return Some(var);
@@ -269,7 +274,7 @@ impl<'a> Parser<'a> {
     }
 
     /// 创建新的左值
-    fn new_lvar(&mut self, base_type: Rc<RefCell<Type>>) -> Option<Rc<RefCell<Obj>>> {
+    fn new_lvar(&mut self, base_type: TypeLink) -> Option<ObjLink> {
         let name = base_type.borrow().get_name().to_string();
         let nvar = Rc::new(RefCell::new(Obj::new_lvar(name.to_string(), base_type)));
         self.locals.push(nvar.clone());
@@ -281,7 +286,7 @@ impl<'a> Parser<'a> {
         Some(nvar)
     }
 
-    fn new_gvar(&mut self, name: String, obj: Obj) -> Option<Rc<RefCell<Obj>>> {
+    fn new_gvar(&mut self, name: String, obj: Obj) -> Option<ObjLink> {
         let gvar = Rc::new(RefCell::new(obj));
         self.globals.push(gvar.clone());
         let vs = self.push_scope(name);
@@ -297,7 +302,7 @@ impl<'a> Parser<'a> {
     ///            | struct_declare | union_declare | typedef_name
     ///            | enum_specifier)+
     /// declarator specifier
-    fn declspec(&mut self, attr: &mut Option<VarAttr>) -> Rc<RefCell<Type>> {
+    fn declspec(&mut self, attr: &mut Option<VarAttr>) -> TypeLink {
         // 类型的组合，被表示为例如：LONG+LONG=1<<9
         // 可知long int和int long是等价的。
         const VOID: i32 = 1 << 0;
@@ -398,7 +403,7 @@ impl<'a> Parser<'a> {
     }
 
     /// type_suffix = "(" funcParams | "[" array_dimensions | ε
-    fn declarator(&mut self, mut type_: Rc<RefCell<Type>>) -> Rc<RefCell<Type>> {
+    fn declarator(&mut self, mut type_: TypeLink) -> TypeLink {
         // "*"*
         // 构建所有的（多重）指针
         while self.consume("*") {
@@ -443,7 +448,7 @@ impl<'a> Parser<'a> {
     }
 
     /// type_suffix = "(" func_params | "[" num "]" type_suffix | ε
-    fn type_suffix(&mut self, base_type: Rc<RefCell<Type>>) -> Rc<RefCell<Type>> {
+    fn type_suffix(&mut self, base_type: TypeLink) -> TypeLink {
         let (_, token) = self.current();
         // "(" func_params
         if token.equal("(") {
@@ -459,7 +464,7 @@ impl<'a> Parser<'a> {
     }
 
     /// array_dimensions = num? "]" typeSuffix
-    fn array_dimensions(&mut self, mut base_type: Rc<RefCell<Type>>) -> Rc<RefCell<Type>> {
+    fn array_dimensions(&mut self, mut base_type: TypeLink) -> TypeLink {
         let (_, token) = self.current();
         // "]" 无数组维数的 "[]"
         if token.equal("]") {
@@ -476,7 +481,7 @@ impl<'a> Parser<'a> {
 
     /// func_params = (param ("," param)*)? ")"
     /// param = declspec declarator
-    fn func_params(&mut self, type_: Rc<RefCell<Type>>) -> Rc<RefCell<Type>> {
+    fn func_params(&mut self, type_: TypeLink) -> TypeLink {
         let mut params = vec![];
         loop {
             let (_, token) = self.current();
@@ -513,7 +518,7 @@ impl<'a> Parser<'a> {
     fn compound_stmt(&mut self) -> Option<Node> {
         let mut nodes = vec![];
         let (pos, _) = self.current();
-        let nt = self.tokens[pos].clone();
+        let nt = &self.tokens[pos];
 
         // 进入新的域
         self.enter_scope();
@@ -548,7 +553,7 @@ impl<'a> Parser<'a> {
             nodes.push(node);
         }
 
-        let node = Node::new_block(NodeKind::Block, nodes, nt);
+        let node = Node::new_block(NodeKind::Block, nodes, nt.clone());
         self.next();
 
         // 结束当前的域
@@ -559,7 +564,7 @@ impl<'a> Parser<'a> {
 
     /// declaration =
     ///    declspec (declarator ("=" expr)? ("," declarator ("=" expr)?)*)? ";"
-    fn declaration(&mut self, base_type: Rc<RefCell<Type>>) -> Option<Node> {
+    fn declaration(&mut self, base_type: TypeLink) -> Option<Node> {
         let mut nodes = vec![];
         let mut i = 0;
 
@@ -621,6 +626,9 @@ impl<'a> Parser<'a> {
     /// 解析语句
     /// stmt = "return" expr ";"
     ///        | "if" "(" expr ")" stmt ("else" stmt)?
+    ///        | "switch" "(" expr ")" stmt
+    ///        | "case" num ":" stmt
+    ///        | "default" ":" stmt
     ///        | "for" "(" exprStmt expr? ";" expr? ")" stmt
     ///        | "while" "(" expr ")" stmt
     ///        | "goto" ident ";"
@@ -648,6 +656,82 @@ impl<'a> Parser<'a> {
                     .clone(),
             );
             let node = Node::new_unary(NodeKind::Return, Box::new(cast), nt);
+            return Some(node);
+        }
+
+        // "switch" "(" expr ")" stmt
+        if token.equal(KW_SWITCH) {
+            let mut node = Node::new(NodeKind::Switch, nt);
+            self.next().skip("(");
+            node.cond = Some(Box::new(self.expr().unwrap()));
+            self.skip(")");
+
+            // 存储此前break标签的名称
+            let brk_label = self.brk_label.to_string();
+            // 设置break标签的名称
+            self.brk_label = self.new_unique_name();
+            node.break_label = Some(self.brk_label.to_string());
+
+            let sw = self.cur_switch.take();
+
+            self.cur_switch = Some(node);
+
+            // 进入解析各个case
+            // stmt
+            let then = self.stmt().unwrap();
+            node = self.cur_switch.take().unwrap();
+            node.then = Some(Box::new(then));
+
+            self.cur_switch = sw;
+            // 恢复此前break标签的名称
+            self.brk_label = brk_label;
+            return Some(node);
+        }
+
+        // "case" num ":" stmt
+        if token.equal(KW_CASE) {
+            if self.cur_switch.is_none() {
+                let (_, token) = self.current();
+                error_token!(token, "stray case");
+                unreachable!()
+            }
+            // case后面的数值
+            let val = self.next().get_number();
+            self.next();
+
+            let mut node = Node::new(NodeKind::Case, nt.clone());
+            self.skip(":");
+            node.continue_label = Some(self.new_unique_name());
+            // case中的语句
+            node.lhs = Some(Box::new(self.stmt().unwrap()));
+            // case对应的数值
+            node.val = val;
+
+            // 将Nd存入CurrentSwitch的CaseNext
+            self.cur_switch
+                .as_mut()
+                .unwrap()
+                .case_next
+                .insert(0, node.clone());
+
+            return Some(node);
+        }
+
+        if token.equal(KW_DEFAULT) {
+            if self.cur_switch.is_none() {
+                let (_, token) = self.current();
+                error_token!(token, "stray default");
+                unreachable!()
+            }
+
+            let mut node = Node::new(NodeKind::Case, nt.clone());
+            self.next().skip(":");
+            node.continue_label = Some(self.new_unique_name());
+            node.lhs = Some(Box::new(self.stmt().unwrap()));
+
+            // 存入CurrentSwitch->DefaultCase的默认标签
+            self.cur_switch.as_mut().unwrap().default_case = Some(Box::new(node.clone()));
+
             return Some(node);
         }
 
@@ -1011,7 +1095,7 @@ impl<'a> Parser<'a> {
         // TMP
         let var = self
             .new_lvar(Type::pointer_to(
-                binary.lhs.as_ref().unwrap().clone().type_.unwrap(),
+                binary.lhs.as_ref().unwrap().type_.as_ref().unwrap().clone(),
             ))
             .unwrap();
         // TMP = &A
@@ -1029,7 +1113,7 @@ impl<'a> Parser<'a> {
         let rhs = Node::new_binary(
             binary.kind.clone(),
             Box::new(lhs.clone()),
-            binary.rhs.unwrap().clone(),
+            binary.rhs.take().unwrap(),
             token.clone(),
         );
         let expr2 = Node::new_binary(
@@ -1411,7 +1495,7 @@ impl<'a> Parser<'a> {
         self.postfix()
     }
 
-    fn enum_specifier(&mut self) -> Rc<RefCell<Type>> {
+    fn enum_specifier(&mut self) -> TypeLink {
         let typ = Type::new_enum();
 
         let mut tag = None;
@@ -1509,7 +1593,7 @@ impl<'a> Parser<'a> {
     }
 
     /// struct_declare = struct_union_declare
-    fn struct_declare(&mut self) -> Rc<RefCell<Type>> {
+    fn struct_declare(&mut self) -> TypeLink {
         let type_ = self.struct_union_declare();
         let mut tm = type_.borrow_mut();
         tm.kind = TypeKind::Struct;
@@ -1538,7 +1622,7 @@ impl<'a> Parser<'a> {
     }
 
     /// union_declare = struct_union_declare
-    fn union_declare(&mut self) -> Rc<RefCell<Type>> {
+    fn union_declare(&mut self) -> TypeLink {
         let type_ = self.struct_union_declare();
         let mut tm = type_.borrow_mut();
         tm.kind = TypeKind::Union;
@@ -1561,7 +1645,7 @@ impl<'a> Parser<'a> {
     }
 
     /// struct_union_declare = ident? ("{" struct_members)?
-    fn struct_union_declare(&mut self) -> Rc<RefCell<Type>> {
+    fn struct_union_declare(&mut self) -> TypeLink {
         let mut tag = None;
         let mut name = None;
         let (_, tag_token) = self.current();
@@ -1581,7 +1665,7 @@ impl<'a> Parser<'a> {
 
             let mut type_ = Type::new_union_struct();
             type_.size = -1;
-            type_.name = name.clone().unwrap();
+            type_.name = name.as_ref().unwrap().clone();
             let type_ = Rc::new(RefCell::new(type_));
             self.push_tag_scope(name.unwrap(), type_.clone());
             return type_;
@@ -1598,7 +1682,7 @@ impl<'a> Parser<'a> {
         if tag.is_some() {
             // 当前域里找
             let s = &mut self.scopes[0];
-            let t = s.replace_tag(name.clone().unwrap().as_ref(), type_.clone());
+            let t = s.replace_tag(name.as_ref().unwrap(), type_.clone());
             if t.is_some() {
                 return t.unwrap();
             }
@@ -1612,7 +1696,7 @@ impl<'a> Parser<'a> {
     }
 
     // 获取结构体成员
-    fn get_struct_member(&mut self, type_: &Rc<RefCell<Type>>, token: &Token) -> Option<Member> {
+    fn get_struct_member(&mut self, type_: &TypeLink, token: &Token) -> Option<Member> {
         for member in type_.borrow().members.iter() {
             if token.equal(member.name.as_str()) {
                 return Some(member.clone());
@@ -1642,8 +1726,8 @@ impl<'a> Parser<'a> {
 
     fn inc_dec(&mut self, mut node: Node, addend: i64) -> Option<Node> {
         add_type(&mut node);
-        let token = node.clone().token;
-        let typ = node.clone().type_.unwrap();
+        let token = &node.token.clone();
+        let typ = &node.type_.as_ref().unwrap().clone();
         let num = Box::new(Node::new_num(addend, token.clone()));
         let num_neg = Box::new(Node::new_num(-addend, token.clone()));
         let add = self
@@ -1653,7 +1737,7 @@ impl<'a> Parser<'a> {
         let add = self
             .add_with_type(Box::new(lhs), num_neg, token.clone())
             .unwrap();
-        let cast = Node::new_cast(Box::new(add), typ);
+        let cast = Node::new_cast(Box::new(add), typ.clone());
         Some(cast)
     }
     /// postfix = primary ("[" expr "]" | "." ident)* | "->" ident | "++" | "--")*
@@ -1727,7 +1811,7 @@ impl<'a> Parser<'a> {
         if token.equal("(") && next.equal("{") {
             // This is a GNU statement expresssion.
             self.next().next();
-            let body = self.compound_stmt().unwrap().body.to_vec();
+            let body = self.compound_stmt().unwrap().body;
             let node = Node::new_block(NodeKind::StmtExpr, body, nt);
             self.skip(")");
             return Some(node);
@@ -1829,14 +1913,14 @@ impl<'a> Parser<'a> {
     }
 
     /// typename = declspec abstract_declarator
-    fn typename(&mut self) -> Rc<RefCell<Type>> {
+    fn typename(&mut self) -> TypeLink {
         let typ = self.declspec(&mut None);
 
         return self.abstract_declarator(typ);
     }
 
     /// abstract_declarator = "*"* ("(" abstract_declarator ")")? type_suffix
-    fn abstract_declarator(&mut self, mut base_type: Rc<RefCell<Type>>) -> Rc<RefCell<Type>> {
+    fn abstract_declarator(&mut self, mut base_type: TypeLink) -> TypeLink {
         // "*"*
         loop {
             let (_, token) = self.current();
@@ -1898,7 +1982,7 @@ impl<'a> Parser<'a> {
         match typ.borrow().kind {
             TypeKind::Func => {
                 t = typ;
-                params = t.borrow().params.to_vec();
+                params = t.borrow().clone().params;
             }
             _ => {
                 error_token!(&nt, "not a function");
@@ -1968,7 +2052,7 @@ impl<'a> Parser<'a> {
     }
 
     /// 通过名称，查找tag
-    fn find_tag(&self, name: &String) -> Option<Rc<RefCell<Type>>> {
+    fn find_tag(&self, name: &String) -> Option<TypeLink> {
         for scope in self.scopes.iter() {
             if let Some(tag) = scope.get_tag(name) {
                 return Some(tag.clone());
@@ -1988,7 +2072,7 @@ impl<'a> Parser<'a> {
         self.find_typedef(token).is_some()
     }
 
-    fn parse_typedef(&mut self, base_type: Rc<RefCell<Type>>) {
+    fn parse_typedef(&mut self, base_type: TypeLink) {
         let mut first = true;
 
         while !self.consume(";") {
@@ -2045,11 +2129,7 @@ impl<'a> Parser<'a> {
         return type_.borrow().is_func();
     }
 
-    fn new_string_literal(
-        &mut self,
-        str_data: Vec<u8>,
-        base_type: Rc<RefCell<Type>>,
-    ) -> Rc<RefCell<Obj>> {
+    fn new_string_literal(&mut self, str_data: Vec<u8>, base_type: TypeLink) -> ObjLink {
         let name = self.new_unique_name();
         let obj = Obj::new_gvar(name.to_string(), base_type, Some(str_data));
         // 加入globals
