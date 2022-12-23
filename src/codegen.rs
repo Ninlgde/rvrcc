@@ -1,20 +1,19 @@
-use crate::ctype::TypeKind;
+use crate::ctype::{TypeKind, TypeLink};
 use crate::node::NodeKind;
-use crate::{align_to, error_token, Node, Obj, Type};
-use std::cell::RefCell;
+use crate::obj::ObjLink;
+use crate::{align_to, error_token, Node, Obj};
 use std::io::Write;
-use std::rc::Rc;
 
 /// 形参name
 const ARG_NAMES: [&str; 6] = ["a0", "a1", "a2", "a3", "a4", "a5"];
 
-pub fn codegen(program: &mut Vec<Rc<RefCell<Obj>>>, write_file: Box<dyn Write>) {
+pub fn codegen(program: &mut Vec<ObjLink>, write_file: Box<dyn Write>) {
     let mut generator = Generator::new(program, write_file);
     generator.generate();
 }
 
 struct Generator<'a> {
-    program: &'a mut Vec<Rc<RefCell<Obj>>>,
+    program: &'a mut Vec<ObjLink>,
     current_function_name: String,
     write_file: Box<dyn Write>,
     depth: usize,
@@ -22,7 +21,7 @@ struct Generator<'a> {
 }
 
 impl<'a> Generator<'a> {
-    pub fn new(program: &'a mut Vec<Rc<RefCell<Obj>>>, write_file: Box<dyn Write>) -> Self {
+    pub fn new(program: &'a mut Vec<ObjLink>, write_file: Box<dyn Write>) -> Self {
         Generator {
             program,
             current_function_name: "".to_string(),
@@ -210,7 +209,7 @@ impl<'a> Generator<'a> {
         }
     }
 
-    fn gen_stmt(&mut self, node: &Box<Node>) {
+    fn gen_stmt(&mut self, node: &Node) {
         self.write_file(format!("  .loc 1 {}", node.get_token().get_line_no()));
 
         match node.kind {
@@ -287,6 +286,44 @@ impl<'a> Generator<'a> {
                 self.write_file(format!("\n# 分支{}的.L.end.{}段标签", c, c));
                 self.write_file(format!(".L.end.{}:", c));
             }
+            NodeKind::Switch => {
+                self.write_file(format!("\n# =====switch语句==============="));
+                self.gen_expr(node.cond.as_ref().unwrap());
+
+                self.write_file(format!("  # 遍历跳转到值等于a0的case标签"));
+                for case in node.case_next.iter() {
+                    self.write_file(format!("  li t0, {}", case.val as i32));
+                    self.write_file(format!(
+                        "  beq a0, t0, {}",
+                        case.continue_label.as_ref().unwrap()
+                    ));
+                }
+
+                if node.default_case.is_some() {
+                    self.write_file(format!("  # 跳转到default标签"));
+                    self.write_file(format!(
+                        "  j {}",
+                        node.default_case
+                            .as_ref()
+                            .unwrap()
+                            .continue_label
+                            .as_ref()
+                            .unwrap(),
+                    ));
+                }
+
+                self.write_file(format!("  # 结束switch，跳转break标签"));
+                self.write_file(format!("  j {}", node.break_label.as_ref().unwrap()));
+                // 生成case标签的语句
+                self.gen_stmt(node.then.as_ref().unwrap());
+                self.write_file(format!("# switch的break标签，结束switch"));
+                self.write_file(format!("{}:", node.break_label.as_ref().unwrap()));
+            }
+            NodeKind::Case => {
+                self.write_file(format!("# case标签，值为{}", node.val as i32));
+                self.write_file(format!("{}:", node.continue_label.as_ref().unwrap()));
+                self.gen_stmt(node.lhs.as_ref().unwrap());
+            }
             // 生成代码块，遍历代码块的语句vec
             NodeKind::Block => {
                 for s in &node.body {
@@ -323,7 +360,7 @@ impl<'a> Generator<'a> {
     }
 
     /// 生成表达式
-    fn gen_expr(&mut self, node: &Box<Node>) {
+    fn gen_expr(&mut self, node: &Node) {
         // .loc 文件编号 行号
         self.write_file(format!("  .loc 1 {}", node.get_token().get_line_no()));
 
@@ -384,9 +421,10 @@ impl<'a> Generator<'a> {
                 return;
             }
             NodeKind::Cast => {
-                self.gen_expr(node.lhs.as_ref().unwrap());
-                let f_typ = node.lhs.as_ref().unwrap().clone().type_.unwrap();
-                let t_typ = node.type_.clone().unwrap();
+                let lhs = node.lhs.as_ref().unwrap();
+                self.gen_expr(lhs);
+                let f_typ = lhs.type_.as_ref().unwrap().clone();
+                let t_typ = node.type_.as_ref().unwrap().clone();
                 self.cast(f_typ, t_typ);
                 return;
             }
@@ -442,8 +480,8 @@ impl<'a> Generator<'a> {
             }
             NodeKind::FuncCall => {
                 let mut argc = 0;
-                for arg in node.args.to_vec() {
-                    self.gen_expr(&Box::new(arg));
+                for arg in node.args.iter() {
+                    self.gen_expr(arg);
                     self.push();
                     argc += 1;
                 }
@@ -462,8 +500,9 @@ impl<'a> Generator<'a> {
 
         self.gen_lrhs(node.lhs.as_ref().unwrap(), node.rhs.as_ref().unwrap());
 
-        let typ = node.lhs.as_ref().unwrap().clone().type_.unwrap();
-        let suffix = if typ.borrow().kind == TypeKind::Long || typ.borrow().has_base() {
+        let typ = node.lhs.as_ref().unwrap().type_.as_ref().unwrap().clone();
+        let typ = typ.borrow();
+        let suffix = if typ.kind == TypeKind::Long || typ.has_base() {
             ""
         } else {
             "w"
@@ -542,11 +581,11 @@ impl<'a> Generator<'a> {
                 self.write_file(format!("  slt a0, a1, a0"));
                 self.write_file(format!("  xori a0, a0, 1"));
             }
-            _ => error_token!(node.as_ref().get_token(), "invalid expression"),
+            _ => error_token!(&node.get_token(), "invalid expression"),
         }
     }
 
-    fn gen_lrhs(&mut self, lhs: &Box<Node>, rhs: &Box<Node>) {
+    fn gen_lrhs(&mut self, lhs: &Node, rhs: &Node) {
         // 递归到最右节点
         self.gen_expr(rhs);
         // 将结果压入栈
@@ -558,7 +597,7 @@ impl<'a> Generator<'a> {
     }
     /// 计算给定节点的绝对地址
     /// 如果报错，说明节点不在内存中
-    fn gen_addr(&mut self, node: &Box<Node>) {
+    fn gen_addr(&mut self, node: &Node) {
         if node.kind == NodeKind::Var {
             // 变量
             let var = &node.var;
@@ -599,7 +638,7 @@ impl<'a> Generator<'a> {
             self.write_file(format!("  li t0, {}", offset));
             self.write_file(format!("  add a0, a0, t0"));
         } else {
-            error_token!(node.as_ref().get_token(), "not an lvalue")
+            error_token!(&node.get_token(), "not an lvalue")
         }
     }
 
@@ -622,7 +661,7 @@ impl<'a> Generator<'a> {
         self.depth -= 1;
     }
 
-    fn load(&mut self, type_: Rc<RefCell<Type>>) {
+    fn load(&mut self, type_: TypeLink) {
         if type_.borrow().kind == TypeKind::Array
             || type_.borrow().kind == TypeKind::Struct
             || type_.borrow().kind == TypeKind::Union
@@ -641,7 +680,7 @@ impl<'a> Generator<'a> {
         }
     }
 
-    fn store(&mut self, type_: Rc<RefCell<Type>>) {
+    fn store(&mut self, type_: TypeLink) {
         self.pop("a1");
 
         let kind = &type_.borrow().kind;
@@ -691,7 +730,7 @@ impl<'a> Generator<'a> {
         }
     }
 
-    fn cast(&mut self, from: Rc<RefCell<Type>>, to: Rc<RefCell<Type>>) {
+    fn cast(&mut self, from: TypeLink, to: TypeLink) {
         if to.borrow().kind == TypeKind::Void {
             return;
         }
@@ -716,7 +755,7 @@ const LI08: Option<&str> = Some("  # 转换为i8类型\n  slli a0, a0, 56\n  sra
 const LI16: Option<&str> = Some("  # 转换为i16类型\n  slli a0, a0, 48\n  srai a0, a0, 48");
 const LI32: Option<&str> = Some("  # 转换为i32类型\n  slli a0, a0, 32\n  srai a0, a0, 32");
 
-fn get_type_id(typ: Rc<RefCell<Type>>) -> usize {
+fn get_type_id(typ: TypeLink) -> usize {
     match typ.borrow().kind {
         TypeKind::Char => 0,
         TypeKind::Short => 1,

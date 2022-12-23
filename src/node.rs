@@ -2,9 +2,9 @@
 // 生成AST（抽象语法树），语法解析
 //
 
-use crate::ctype::add_type;
-use crate::obj::Member;
-use crate::{Obj, Token, Type};
+use crate::ctype::{add_type, TypeLink};
+use crate::obj::{Member, ObjLink};
+use crate::{Token, Type};
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -60,6 +60,10 @@ pub enum NodeKind {
     If,
     // "for" 或 "while"，循环
     For,
+    // "switch"，分支语句
+    Switch,
+    // "case"
+    Case,
     // { ... }，代码块
     Block,
     // goto，直接跳转语句
@@ -88,7 +92,7 @@ pub struct Node {
     // 对应的token,增加翻译阶段的报错信息
     pub(crate) token: Token,
     // 类型
-    pub(crate) type_: Option<Rc<RefCell<Type>>>,
+    pub(crate) type_: Option<TypeLink>,
 
     // 各种孩子
     // 左部，left-hand side(单节点)
@@ -110,11 +114,11 @@ pub struct Node {
     // 变量名
     pub(crate) func_name: String,
     // 函数类型
-    pub(crate) func_type: Option<Rc<RefCell<Type>>>,
+    pub(crate) func_type: Option<TypeLink>,
     // 入参
     pub(crate) args: Vec<Node>,
     // 存储ND_VAR的字符串
-    pub(crate) var: Option<Rc<RefCell<Obj>>>,
+    pub(crate) var: Option<ObjLink>,
     // 存储ND_NUM种类的值
     pub(crate) val: i64,
     // 结构体成员访问
@@ -123,8 +127,11 @@ pub struct Node {
     pub(crate) label_info: Option<Rc<RefCell<LabelInfo>>>,
     // "break" 标签
     pub(crate) break_label: Option<String>,
-    // "continue" 标签
+    // "continue" 标签 switch/case 时是case的label
     pub(crate) continue_label: Option<String>,
+    // switch和case
+    pub(crate) case_next: Vec<Node>,
+    pub(crate) default_case: Option<Box<Node>>,
 }
 
 impl Node {
@@ -150,6 +157,8 @@ impl Node {
             label_info: None,
             break_label: None,
             continue_label: None,
+            case_next: Vec::new(),
+            default_case: None,
         }
     }
 
@@ -179,7 +188,7 @@ impl Node {
         node
     }
 
-    pub fn new_var(val: Rc<RefCell<Obj>>, token: Token) -> Self {
+    pub fn new_var(val: ObjLink, token: Token) -> Self {
         let mut node = Self::new(NodeKind::Var, token);
         node.var = Some(val);
         node
@@ -191,7 +200,7 @@ impl Node {
         node
     }
 
-    pub fn new_cast(mut expr: Box<Node>, typ: Rc<RefCell<Type>>) -> Self {
+    pub fn new_cast(mut expr: Box<Node>, typ: TypeLink) -> Self {
         add_type(&mut expr);
         let mut node = Self::new(NodeKind::Cast, expr.token.clone());
         node.lhs = Some(expr);
@@ -199,7 +208,7 @@ impl Node {
         node
     }
 
-    pub fn set_type(&mut self, type_: Rc<RefCell<Type>>) -> &Self {
+    pub fn set_type(&mut self, type_: TypeLink) -> &Self {
         self.type_ = Some(type_);
         self
     }
@@ -208,7 +217,7 @@ impl Node {
         &self.token
     }
 
-    pub fn get_type(&self) -> &Option<Rc<RefCell<Type>>> {
+    pub fn get_type(&self) -> &Option<TypeLink> {
         &self.type_
     }
 

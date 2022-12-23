@@ -1,7 +1,5 @@
+use crate::ctype::TypeLink;
 use crate::keywords::KW_TYPENAME;
-use crate::Type;
-use std::cell::RefCell;
-use std::rc::Rc;
 
 /// token
 #[derive(Clone)]
@@ -47,7 +45,7 @@ pub enum Token {
         // 值
         val: Vec<u8>,
         // 类型
-        type_: Rc<RefCell<Type>>,
+        type_: TypeLink,
         // 在解析的字符串内的位置
         offset: usize,
         // 行号

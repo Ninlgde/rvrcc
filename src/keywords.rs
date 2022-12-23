@@ -19,9 +19,12 @@ pub const KEYWORDS: [&str; KW_COUNT] = [
     KW_GOTO,
     KW_BREAK,
     KW_CONTINUE,
+    KW_SWITCH,
+    KW_CASE,
+    KW_DEFAULT,
 ];
 
-const KW_COUNT: usize = 20;
+const KW_COUNT: usize = 23;
 
 pub const KW_TYPENAME: [&str; KW_TYPENAME_COUNT] = [
     KW_CHAR, KW_SHORT, KW_INT, KW_LONG, KW_STRUCT, KW_UNION, KW_VOID, KW_TYPEDEF, KW_BOOL, KW_ENUM,
@@ -70,3 +73,9 @@ pub const KW_GOTO: &str = "goto";
 pub const KW_BREAK: &str = "break";
 /// 关键字: continue
 pub const KW_CONTINUE: &str = "continue";
+/// 关键字: switch
+pub const KW_SWITCH: &str = "switch";
+/// 关键字: case
+pub const KW_CASE: &str = "case";
+/// 关键字: default
+pub const KW_DEFAULT: &str = "default";

@@ -1,6 +1,9 @@
+use crate::ctype::TypeLink;
 use crate::{Node, Token, Type};
 use std::cell::RefCell;
 use std::rc::Rc;
+
+pub type ObjLink = Rc<RefCell<Obj>>;
 
 #[derive(Clone)]
 pub enum Obj {
@@ -10,7 +13,7 @@ pub enum Obj {
         // fp的偏移量
         offset: isize,
         // 类型
-        type_: Rc<RefCell<Type>>,
+        type_: TypeLink,
         // 是 局部或全局 变量
         is_local: bool,
         // 全局变量
@@ -22,13 +25,13 @@ pub enum Obj {
         // 变量名
         name: String,
         // 类型
-        type_: Rc<RefCell<Type>>,
+        type_: TypeLink,
         // 方法参数
-        params: Vec<Rc<RefCell<Obj>>>,
+        params: Vec<ObjLink>,
         // 函数体
         body: Option<Node>,
         // 本地变量
-        locals: Vec<Rc<RefCell<Obj>>>,
+        locals: Vec<ObjLink>,
         // 栈大小
         stack_size: isize,
         // 是否为函数定义
@@ -60,13 +63,13 @@ impl Obj {
         }
     }
 
-    pub fn get_type(&self) -> &Rc<RefCell<Type>> {
+    pub fn get_type(&self) -> &TypeLink {
         match self {
             Self::Var { type_, .. } | Self::Func { type_, .. } => type_,
         }
     }
 
-    pub fn get_func_return_type(&self) -> Option<Rc<RefCell<Type>>> {
+    pub fn get_func_return_type(&self) -> Option<TypeLink> {
         match self {
             Self::Func { type_, .. } => {
                 let t = type_.borrow();
@@ -88,7 +91,7 @@ impl Obj {
 
     pub fn new_var(
         name: String,
-        type_: Rc<RefCell<Type>>,
+        type_: TypeLink,
         is_local: bool,
         init_data: Option<Vec<u8>>,
     ) -> Self {
@@ -102,18 +105,18 @@ impl Obj {
         }
     }
 
-    pub fn new_lvar(name: String, type_: Rc<RefCell<Type>>) -> Self {
+    pub fn new_lvar(name: String, type_: TypeLink) -> Self {
         Self::new_var(name, type_, true, None)
     }
 
-    pub fn new_gvar(name: String, type_: Rc<RefCell<Type>>, init_data: Option<Vec<u8>>) -> Self {
+    pub fn new_gvar(name: String, type_: TypeLink, init_data: Option<Vec<u8>>) -> Self {
         Self::new_var(name, type_, false, init_data)
     }
 
     pub fn set_function(
         &mut self,
-        params_: Vec<Rc<RefCell<Obj>>>,
-        locals_: Vec<Rc<RefCell<Obj>>>,
+        params_: Vec<ObjLink>,
+        locals_: Vec<ObjLink>,
         body_: Option<Node>,
         definition: bool,
         is_static_: bool,
@@ -137,7 +140,7 @@ impl Obj {
         }
     }
 
-    pub fn new_func(name: String, type_: Rc<RefCell<Type>>) -> Self {
+    pub fn new_func(name: String, type_: TypeLink) -> Self {
         Self::Func {
             name,
             params: vec![],
@@ -157,11 +160,11 @@ pub struct VarScope {
     // 变量域名称
     pub(crate) name: String,
     // 对应的变量
-    pub(crate) var: Option<Rc<RefCell<Obj>>>,
+    pub(crate) var: Option<ObjLink>,
     // 别名
-    pub(crate) typedef: Option<Rc<RefCell<Type>>>,
+    pub(crate) typedef: Option<TypeLink>,
     // 枚举的类型
-    pub(crate) enum_type: Option<Rc<RefCell<Type>>>,
+    pub(crate) enum_type: Option<TypeLink>,
     // 枚举的值
     pub(crate) enum_val: i64,
 }
@@ -177,15 +180,15 @@ impl VarScope {
         }
     }
 
-    pub fn set_var(&mut self, var: Rc<RefCell<Obj>>) {
+    pub fn set_var(&mut self, var: ObjLink) {
         self.var = Some(var);
     }
 
-    pub fn set_typedef(&mut self, typedef: Rc<RefCell<Type>>) {
+    pub fn set_typedef(&mut self, typedef: TypeLink) {
         self.typedef = Some(typedef);
     }
 
-    pub fn set_enum(&mut self, enum_type: Rc<RefCell<Type>>, enum_val: i64) {
+    pub fn set_enum(&mut self, enum_type: TypeLink, enum_val: i64) {
         self.enum_type = Some(enum_type);
         self.enum_val = enum_val;
     }
@@ -197,7 +200,7 @@ pub struct TagScope {
     // 域名称
     name: String,
     // 域类型
-    typ: Rc<RefCell<Type>>,
+    typ: TypeLink,
 }
 
 // 变量属性
@@ -234,30 +237,30 @@ impl Scope {
 
     /// 找到对应的var
     pub fn get_var(&self, name: &str) -> Option<Rc<RefCell<VarScope>>> {
-        for scope in self.vars.to_vec() {
+        for scope in self.vars.iter() {
             if name.eq(scope.borrow().name.as_str()) {
-                return Some(scope);
+                return Some(scope.clone());
             }
         }
         return None;
     }
 
     /// 添加一个tag
-    pub fn add_tag(&mut self, name: String, typ: Rc<RefCell<Type>>) {
+    pub fn add_tag(&mut self, name: String, typ: TypeLink) {
         self.tags.push(TagScope { name, typ })
     }
 
     /// 找到对应的tag
-    pub fn get_tag(&self, name: &str) -> Option<Rc<RefCell<Type>>> {
-        for scope in self.tags.to_vec() {
+    pub fn get_tag(&self, name: &str) -> Option<TypeLink> {
+        for scope in self.tags.iter() {
             if name.eq(scope.name.as_str()) {
-                return Some(scope.typ);
+                return Some(scope.typ.clone());
             }
         }
         return None;
     }
 
-    pub fn replace_tag(&mut self, name: &str, typ: Type) -> Option<Rc<RefCell<Type>>> {
+    pub fn replace_tag(&mut self, name: &str, typ: Type) -> Option<TypeLink> {
         for i in 0..self.tags.len() {
             let ts = &mut self.tags[i];
             if name.eq(ts.name.as_str()) {
@@ -274,7 +277,7 @@ pub struct Member {
     // 名称
     pub(crate) name: String,
     // 类型
-    pub(crate) type_: Option<Rc<RefCell<Type>>>,
+    pub(crate) type_: Option<TypeLink>,
     // 偏移量
     pub(crate) offset: isize,
     // 用于报错信息
@@ -282,7 +285,7 @@ pub struct Member {
 }
 
 impl Member {
-    pub fn new(name: String, type_: Option<Rc<RefCell<Type>>>) -> Self {
+    pub fn new(name: String, type_: Option<TypeLink>) -> Self {
         Self {
             name,
             type_,

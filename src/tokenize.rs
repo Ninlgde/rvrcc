@@ -17,7 +17,7 @@ pub fn tokenize(path: String, input: String) -> Vec<Token> {
 
     let mut tokens: Vec<Token> = vec![];
 
-    let chars = input.clone().into_bytes();
+    let chars = input.into_bytes();
     let mut pos = 0;
 
     let mut line_no = 1usize;
