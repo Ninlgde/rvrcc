@@ -1,4 +1,4 @@
-use crate::{align_to, error_token, Node, NodeKind, Obj, ObjLink, TypeKind, TypeLink};
+use crate::{align_to, error_token, NodeKind, NodeLink, Obj, ObjLink, TypeKind, TypeLink};
 use core::fmt;
 use std::io::Write;
 
@@ -196,7 +196,7 @@ impl<'a> Generator<'a> {
                     }
 
                     writeln!("# ====={}段主体===============", name);
-                    self.gen_stmt(&Box::new(body.as_ref().unwrap().clone()));
+                    self.gen_stmt(&body.as_ref().unwrap().clone());
                     assert_eq!(self.depth, 0);
 
                     // Epilogue，后语
@@ -223,15 +223,14 @@ impl<'a> Generator<'a> {
         }
     }
 
-    fn gen_stmt(&mut self, node: &Node) {
+    fn gen_stmt(&mut self, node: &NodeLink) {
         writeln!("  .loc 1 {}", node.get_token().get_line_no());
 
         match node.kind {
             // 生成for或while循环语句
             NodeKind::For => {
                 // 代码段计数
-                let c: u32 = self.counter;
-                self.counter += 1;
+                let c: u32 = self.count();
                 let brk = node.break_label.as_ref().unwrap();
                 let ctn = node.continue_label.as_ref().unwrap();
                 writeln!("\n# =====循环语句{}===============", c);
@@ -273,8 +272,7 @@ impl<'a> Generator<'a> {
             // 生成if语句
             NodeKind::If => {
                 // 代码段计数
-                let c: u32 = self.counter;
-                self.counter += 1;
+                let c: u32 = self.count();
                 writeln!("\n# =====分支语句{}==============", c);
                 // 生成条件内语句
                 writeln!("\n# cond表达式{}", c);
@@ -368,7 +366,7 @@ impl<'a> Generator<'a> {
     }
 
     /// 生成表达式
-    fn gen_expr(&mut self, node: &Node) {
+    fn gen_expr(&mut self, node: &NodeLink) {
         // .loc 文件编号 行号
         writeln!("  .loc 1 {}", node.get_token().get_line_no());
 
@@ -418,7 +416,7 @@ impl<'a> Generator<'a> {
             // 语句表达式
             NodeKind::StmtExpr => {
                 for node in &node.body {
-                    self.gen_stmt(&Box::new(node.clone()));
+                    self.gen_stmt(&node.clone());
                 }
                 return;
             }
@@ -436,6 +434,20 @@ impl<'a> Generator<'a> {
                 self.cast(f_typ, t_typ);
                 return;
             }
+            NodeKind::Cond => {
+                let c: u32 = self.count();
+                writeln!("\n# =====条件运算符{}===========", c);
+                self.gen_expr(node.cond.as_ref().unwrap());
+                writeln!("  # 条件判断，为0则跳转");
+                writeln!("  beqz a0, .L.else.{}", c);
+                self.gen_expr(node.then.as_ref().unwrap());
+                writeln!("  # 跳转到条件运算符结尾部分");
+                writeln!("  j .L.end.{}", c);
+                writeln!(".L.else.{}:", c);
+                self.gen_expr(node.els.as_ref().unwrap());
+                writeln!(".L.end.{}:", c);
+                return;
+            }
             NodeKind::Not => {
                 self.gen_expr(node.lhs.as_ref().unwrap());
                 writeln!("  # 非运算");
@@ -444,8 +456,7 @@ impl<'a> Generator<'a> {
                 return;
             }
             NodeKind::LogAnd => {
-                let c = self.counter;
-                self.counter += 1;
+                let c: u32 = self.count();
                 writeln!("\n# =====逻辑与{}===============", c);
                 self.gen_expr(node.lhs.as_ref().unwrap());
                 // 判断是否为短路操作
@@ -462,8 +473,7 @@ impl<'a> Generator<'a> {
                 return;
             }
             NodeKind::LogOr => {
-                let c = self.counter;
-                self.counter += 1;
+                let c: u32 = self.count();
                 writeln!("\n# =====逻辑或{}===============", c);
                 self.gen_expr(node.lhs.as_ref().unwrap());
                 // 判断是否为短路操作
@@ -540,25 +550,21 @@ impl<'a> Generator<'a> {
                 // % a0=a0%a1
                 writeln!("  # a0%%a1，结果写入a0");
                 writeln!("  rem{} a0, a0, a1", suffix);
-                return;
             }
             NodeKind::BitAnd => {
                 // & a0=a0&a1
                 writeln!("  # a0&a1，结果写入a0");
                 writeln!("  and a0, a0, a1");
-                return;
             }
             NodeKind::BitOr => {
                 // | a0=a0|a1
                 writeln!("  # a0|a1，结果写入a0");
                 writeln!("  or a0, a0, a1");
-                return;
             }
             NodeKind::BitXor => {
                 // ^ a0=a0^a1
                 writeln!("  # a0^a1，结果写入a0");
                 writeln!("  xor a0, a0, a1");
-                return;
             }
             NodeKind::Eq => {
                 // a0=a0^a1，异或指令
@@ -601,7 +607,7 @@ impl<'a> Generator<'a> {
         }
     }
 
-    fn gen_lrhs(&mut self, lhs: &Node, rhs: &Node) {
+    fn gen_lrhs(&mut self, lhs: &NodeLink, rhs: &NodeLink) {
         // 递归到最右节点
         self.gen_expr(rhs);
         // 将结果压入栈
@@ -613,7 +619,7 @@ impl<'a> Generator<'a> {
     }
     /// 计算给定节点的绝对地址
     /// 如果报错，说明节点不在内存中
-    fn gen_addr(&mut self, node: &Node) {
+    fn gen_addr(&mut self, node: &NodeLink) {
         if node.kind == NodeKind::Var {
             // 变量
             let var = &node.var;
@@ -762,6 +768,12 @@ impl<'a> Generator<'a> {
             writeln!("  # 转换函数");
             writeln!("{}", cast.unwrap());
         }
+    }
+
+    fn count(&mut self) -> u32 {
+        let c = self.counter;
+        self.counter += 1;
+        c
     }
 }
 
