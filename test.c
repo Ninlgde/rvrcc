@@ -1,10 +1,5 @@
 
 int main() {
-    int i = 0;
-    switch (-1) {
-        case 0xffffffff:
-            i = 3;
-            break;
-    }
-    i;
+    char x[(int) 0xfffffffffff + 5];
+    sizeof(x);
 }

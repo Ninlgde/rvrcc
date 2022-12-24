@@ -186,7 +186,7 @@ pub fn usual_arith_conv(lhs: NodeLink, rhs: NodeLink) -> (NodeLink, NodeLink) {
     (lhs, rhs)
 }
 
-pub fn add_type(node: &mut Node) {
+pub fn add_type(node: &mut NodeLink) {
     // 判断 节点类型已经有值，那么就直接返回
     if node.get_type().is_some() {
         return;

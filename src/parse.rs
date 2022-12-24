@@ -7,10 +7,10 @@
 //!            | enum_specifier)+
 //! enum_specifier = ident? "{" enum_list? "}"
 //!                 | ident ("{" enum_list? "}")?
-//! enum_list = ident ("=" num)? ("," ident ("=" num)?)*
+//! enum_list = ident ("=" const_expr)? ("," ident ("=" const_expr)?)*
 //! declarator = "*"* ("(" ident ")" | "(" declarator ")" | ident) type_suffix
 //! type_suffix = "(" funcParams | "[" array_dimensions | ε
-//! array_dimensions = num? "]" typeSuffix
+//! array_dimensions = const_expr? "]" typeSuffix
 //! func_params = (param ("," param)*)? ")"
 //! param = declspec declarator
 //! compound_stmt = (typedef | declaration | stmt)* "}"
@@ -19,7 +19,7 @@
 //! stmt = "return" expr ";"
 //!        | "if" "(" expr ")" stmt ("else" stmt)?
 //!        | "switch" "(" expr ")" stmt
-//!        | "case" num ":" stmt
+//!        | "case" const_expr ":" stmt
 //!        | "default" ":" stmt
 //!        | "for" "(" exprStmt expr? ";" expr? ")" stmt
 //!        | "while" "(" expr ")" stmt
@@ -70,8 +70,8 @@ use crate::keywords::{
     KW_SWITCH, KW_TYPEDEF, KW_UNION, KW_VOID, KW_WHILE,
 };
 use crate::{
-    add_type, align_to, error_at, error_token, LabelInfo, Member, Node, NodeKind, NodeLink, Obj,
-    ObjLink, Scope, Token, Type, TypeKind, TypeLink, VarAttr, VarScope,
+    add_type, align_to, error_at, error_token, eval, LabelInfo, Member, Node, NodeKind, NodeLink,
+    Obj, ObjLink, Scope, Token, Type, TypeKind, TypeLink, VarAttr, VarScope,
 };
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -450,7 +450,7 @@ impl<'a> Parser<'a> {
         type_
     }
 
-    /// type_suffix = "(" func_params | "[" num "]" type_suffix | ε
+    /// type_suffix = "(" func_params | "[" const_expr "]" type_suffix | ε
     fn type_suffix(&mut self, base_type: TypeLink) -> TypeLink {
         let (_, token) = self.current();
         // "(" func_params
@@ -458,7 +458,7 @@ impl<'a> Parser<'a> {
             return self.next().func_params(base_type);
         }
 
-        // "[" num "]"
+        // "[" const_expr "]"
         if token.equal("[") {
             return self.next().array_dimensions(base_type);
         }
@@ -466,7 +466,7 @@ impl<'a> Parser<'a> {
         return base_type;
     }
 
-    /// array_dimensions = num? "]" typeSuffix
+    /// array_dimensions = const_expr? "]" typeSuffix
     fn array_dimensions(&mut self, mut base_type: TypeLink) -> TypeLink {
         let (_, token) = self.current();
         // "]" 无数组维数的 "[]"
@@ -476,8 +476,8 @@ impl<'a> Parser<'a> {
         }
 
         // 有数组维数的情况
-        let size = self.get_number();
-        self.next().skip("]");
+        let size = self.const_expr();
+        self.skip("]");
         base_type = self.type_suffix(base_type);
         Type::array_of(base_type, size as isize)
     }
@@ -629,7 +629,7 @@ impl<'a> Parser<'a> {
     /// stmt = "return" expr ";"
     ///        | "if" "(" expr ")" stmt ("else" stmt)?
     ///        | "switch" "(" expr ")" stmt
-    ///        | "case" num ":" stmt
+    ///        | "case" const_expr ":" stmt
     ///        | "default" ":" stmt
     ///        | "for" "(" exprStmt expr? ";" expr? ")" stmt
     ///        | "while" "(" expr ")" stmt
@@ -690,18 +690,17 @@ impl<'a> Parser<'a> {
             return Some(node);
         }
 
-        // "case" num ":" stmt
+        // "case" const_expr ":" stmt
         if token.equal(KW_CASE) {
             if self.cur_switch.is_none() {
                 let (_, token) = self.current();
                 error_token!(token, "stray case");
                 unreachable!()
             }
-            // case后面的数值
-            let val = self.next().get_number();
-            self.next();
 
             let mut node = Node::new(NodeKind::Case, nt.clone());
+            // case后面的数值
+            let val = self.next().const_expr();
             self.skip(":");
             node.continue_label = Some(self.new_unique_name());
             // case中的语句
@@ -924,6 +923,14 @@ impl<'a> Parser<'a> {
         self.skip(";");
 
         Some(node)
+    }
+
+    /// 解析常量表达式
+    fn const_expr(&mut self) -> i64 {
+        // 进行常量表达式的构造
+        let mut node = self.conditional().unwrap();
+
+        return eval(&mut node);
     }
 
     /// 解析表达式
@@ -1265,8 +1272,8 @@ impl<'a> Parser<'a> {
         nt: Token,
     ) -> Option<NodeLink> {
         // 为左右部添加类型
-        add_type(lhs.as_mut());
-        add_type(rhs.as_mut());
+        add_type(&mut lhs);
+        add_type(&mut rhs);
 
         let lhs_t = lhs.get_type().as_ref().unwrap().clone();
         let rhs_t = rhs.get_type().as_ref().unwrap().clone();
@@ -1310,8 +1317,8 @@ impl<'a> Parser<'a> {
         nt: Token,
     ) -> Option<NodeLink> {
         // 为左右部添加类型
-        add_type(lhs.as_mut());
-        add_type(rhs.as_mut());
+        add_type(&mut lhs);
+        add_type(&mut rhs);
 
         let lhs_t = lhs.get_type().as_ref().unwrap().clone();
         let rhs_t = rhs.get_type().as_ref().unwrap().clone();
@@ -1325,7 +1332,7 @@ impl<'a> Parser<'a> {
             let size: i64 = lhs_t.borrow().get_base_size() as i64;
             let size = Node::new_long(size, nt.clone());
             let mut f_rhs = Node::new_binary(NodeKind::Mul, rhs, size, nt.clone());
-            add_type(f_rhs.as_mut());
+            add_type(&mut f_rhs);
             let mut node = Node::new_binary(NodeKind::Sub, lhs, f_rhs, nt);
             node.set_type(lhs_t);
             return Some(node);
@@ -1505,6 +1512,10 @@ impl<'a> Parser<'a> {
         self.postfix()
     }
 
+    /// 获取枚举类型信息
+    /// enumSpecifier = ident? "{" enum_list? "}"
+    ///               | ident ("{" enum_list? "}")?
+    /// enum_list     = ident ("=" const_expr)? ("," ident ("=" const_expr)?)*
     fn enum_specifier(&mut self) -> TypeLink {
         let typ = Type::new_enum();
 
@@ -1550,8 +1561,7 @@ impl<'a> Parser<'a> {
             // 判断是否存在赋值
             let (_, token) = self.current(); // 重新取
             if token.equal("=") {
-                val = self.next().get_number();
-                self.next(); // 跳过数字
+                val = self.next().const_expr();
             }
 
             let vs = self.push_scope(name);
@@ -1718,7 +1728,7 @@ impl<'a> Parser<'a> {
 
     /// 构建结构体成员的节点
     fn struct_ref(&mut self, mut lhs: NodeLink) -> Option<NodeLink> {
-        add_type(lhs.as_mut());
+        add_type(&mut lhs);
 
         let lhs_t = lhs.type_.as_ref().unwrap().clone();
         if lhs_t.borrow().kind != TypeKind::Struct && lhs_t.borrow().kind != TypeKind::Union {
@@ -2108,17 +2118,6 @@ impl<'a> Parser<'a> {
             return true;
         }
         return false;
-    }
-
-    fn get_number(&mut self) -> i64 {
-        let (_, token) = self.current();
-        return match token {
-            Token::Num { val, .. } => *val,
-            _ => {
-                error_token!(token, "expect a number");
-                0 // 不会走到这里
-            }
-        };
     }
 
     /// 判断是否是方法,要回档哦

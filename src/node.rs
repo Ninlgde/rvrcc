@@ -234,6 +234,136 @@ impl Node {
     }
 }
 
+/// 计算给定节点的常量表达式计算
+pub fn eval(node: &mut Box<Node>) -> i64 {
+    add_type(node);
+
+    match node.kind {
+        NodeKind::Add => {
+            return eval(node.lhs.as_mut().unwrap()) + eval(node.rhs.as_mut().unwrap());
+        }
+        NodeKind::Sub => {
+            return eval(node.lhs.as_mut().unwrap()) - eval(node.rhs.as_mut().unwrap());
+        }
+        NodeKind::Mul => {
+            return eval(node.lhs.as_mut().unwrap()) * eval(node.rhs.as_mut().unwrap());
+        }
+        NodeKind::Div => {
+            return eval(node.lhs.as_mut().unwrap()) / eval(node.rhs.as_mut().unwrap());
+        }
+        NodeKind::Neg => {
+            return -eval(node.lhs.as_mut().unwrap());
+        }
+        NodeKind::Mod => {
+            return eval(node.lhs.as_mut().unwrap()) % eval(node.rhs.as_mut().unwrap());
+        }
+        NodeKind::BitAnd => {
+            return eval(node.lhs.as_mut().unwrap()) & eval(node.rhs.as_mut().unwrap());
+        }
+        NodeKind::BitOr => {
+            return eval(node.lhs.as_mut().unwrap()) | eval(node.rhs.as_mut().unwrap());
+        }
+        NodeKind::BitXor => {
+            return eval(node.lhs.as_mut().unwrap()) ^ eval(node.rhs.as_mut().unwrap());
+        }
+        NodeKind::ShL => {
+            return eval(node.lhs.as_mut().unwrap()) << eval(node.rhs.as_mut().unwrap());
+        }
+        NodeKind::ShR => {
+            return eval(node.lhs.as_mut().unwrap()) >> eval(node.rhs.as_mut().unwrap());
+        }
+        NodeKind::Eq => {
+            return bool_to_i64(
+                eval(node.lhs.as_mut().unwrap()) == eval(node.rhs.as_mut().unwrap()),
+            );
+        }
+        NodeKind::Ne => {
+            return bool_to_i64(
+                eval(node.lhs.as_mut().unwrap()) != eval(node.rhs.as_mut().unwrap()),
+            )
+        }
+        NodeKind::Lt => {
+            return bool_to_i64(
+                eval(node.lhs.as_mut().unwrap()) < eval(node.rhs.as_mut().unwrap()),
+            );
+        }
+        NodeKind::Le => {
+            return bool_to_i64(
+                eval(node.lhs.as_mut().unwrap()) <= eval(node.rhs.as_mut().unwrap()),
+            );
+        }
+        NodeKind::Cond => {
+            let cond = eval(node.cond.as_mut().unwrap());
+            return if cond == 1 {
+                eval(node.then.as_mut().unwrap())
+            } else {
+                eval(node.els.as_mut().unwrap())
+            };
+        }
+        NodeKind::Comma => {
+            return eval(node.rhs.as_mut().unwrap());
+        }
+        NodeKind::Not => {
+            return eval(node.lhs.as_mut().unwrap()) ^ 1; // 0 ^ 1 = 1; 1 ^ 1 = 0;
+        }
+        NodeKind::BitNot => {
+            return !eval(node.lhs.as_mut().unwrap()); // 按位取反
+        }
+        NodeKind::LogAnd => {
+            return bool_to_i64(
+                i64_to_bool(eval(node.lhs.as_mut().unwrap()))
+                    && i64_to_bool(eval(node.rhs.as_mut().unwrap())),
+            )
+        }
+        NodeKind::LogOr => {
+            return bool_to_i64(
+                i64_to_bool(eval(node.lhs.as_mut().unwrap()))
+                    || i64_to_bool(eval(node.rhs.as_mut().unwrap())),
+            )
+        }
+        NodeKind::Cast => {
+            let t = node.type_.as_ref().unwrap().borrow();
+            let r = eval(node.lhs.as_mut().unwrap());
+            if t.is_int() {
+                match t.size {
+                    1 => {
+                        return r as i8 as i64;
+                    }
+                    2 => {
+                        return r as i16 as i64;
+                    }
+                    4 => {
+                        return r as i32 as i64;
+                    }
+                    _ => {}
+                }
+            }
+            return r;
+        }
+        NodeKind::Num => {
+            return node.val;
+        }
+        _ => {}
+    }
+    0
+}
+
+fn bool_to_i64(result: bool) -> i64 {
+    if result {
+        1
+    } else {
+        0
+    }
+}
+
+fn i64_to_bool(result: i64) -> bool {
+    if result != 0 {
+        true
+    } else {
+        false
+    }
+}
+
 pub struct LabelInfo {
     // goto和标签语句
     pub label: String,
