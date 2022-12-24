@@ -1,6 +1,4 @@
-use crate::node::NodeKind;
-use crate::obj::Member;
-use crate::{error_token, Node};
+use crate::{error_token, Member, Node, NodeKind, NodeLink};
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -24,23 +22,23 @@ pub type TypeLink = Rc<RefCell<Type>>;
 
 #[derive(Clone)]
 pub struct Type {
-    pub kind: TypeKind,
+    pub(crate) kind: TypeKind,
     // 名称
-    pub name: String,
+    pub(crate) name: String,
     // 大小, sizeof返回的值
-    pub size: isize,
+    pub(crate) size: isize,
     // 对齐
-    pub align: isize,
+    pub(crate) align: isize,
     // 指向的类型
-    pub base: Option<TypeLink>,
+    pub(crate) base: Option<TypeLink>,
     // 返回的类型
-    pub return_type: Option<TypeLink>,
+    pub(crate) return_type: Option<TypeLink>,
     // 形参
-    pub params: Vec<TypeLink>,
+    pub(crate) params: Vec<TypeLink>,
     // 数组长度, 元素总个数
     len: isize,
     // 结构体
-    pub members: Vec<Member>,
+    pub(crate) members: Vec<Box<Member>>,
 }
 
 impl Type {
@@ -176,14 +174,14 @@ impl Type {
     }
 }
 
-pub fn usual_arith_conv(lhs: Box<Node>, rhs: Box<Node>) -> (Box<Node>, Box<Node>) {
+pub fn usual_arith_conv(lhs: NodeLink, rhs: NodeLink) -> (NodeLink, NodeLink) {
     let typ = Type::get_common_type(
         lhs.type_.as_ref().unwrap().clone(),
         rhs.type_.as_ref().unwrap().clone(),
     );
 
-    let lhs = Box::new(Node::new_cast(lhs, typ.clone()));
-    let rhs = Box::new(Node::new_cast(rhs, typ));
+    let lhs = Node::new_cast(lhs, typ.clone());
+    let rhs = Node::new_cast(rhs, typ);
 
     (lhs, rhs)
 }
@@ -254,10 +252,7 @@ pub fn add_type(node: &mut Node) {
                 Type::new_int(),
                 node.lhs.as_ref().unwrap().type_.as_ref().unwrap().clone(),
             );
-            node.lhs = Some(Box::new(Node::new_cast(
-                node.lhs.take().unwrap(),
-                typ.clone(),
-            )));
+            node.lhs = Some(Node::new_cast(node.lhs.take().unwrap(), typ.clone()));
             node.type_ = Some(typ);
         }
         // 将节点类型设为 节点左部的类型
@@ -270,10 +265,7 @@ pub fn add_type(node: &mut Node) {
                 unreachable!()
             }
             if t.borrow().kind != TypeKind::Struct {
-                node.rhs = Some(Box::new(Node::new_cast(
-                    node.rhs.take().unwrap(),
-                    t.clone(),
-                )))
+                node.rhs = Some(Node::new_cast(node.rhs.take().unwrap(), t.clone()))
             }
             node.type_ = Some(t);
         }
@@ -293,7 +285,7 @@ pub fn add_type(node: &mut Node) {
             node.type_ = Some(Type::new_int());
         }
         // 将节点类型设为 左部的类型
-        NodeKind::BitNot => {
+        NodeKind::BitNot | NodeKind::ShL | NodeKind::ShR => {
             node.type_ = node.lhs.as_ref().unwrap().type_.clone();
         }
         // 将节点类型设为 变量的类型

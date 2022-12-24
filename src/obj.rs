@@ -1,5 +1,4 @@
-use crate::ctype::TypeLink;
-use crate::{Node, Token, Type};
+use crate::{NodeLink, Token, Type, TypeLink};
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -29,7 +28,7 @@ pub enum Obj {
         // 方法参数
         params: Vec<ObjLink>,
         // 函数体
-        body: Option<Node>,
+        body: Option<NodeLink>,
         // 本地变量
         locals: Vec<ObjLink>,
         // 栈大小
@@ -117,7 +116,7 @@ impl Obj {
         &mut self,
         params_: Vec<ObjLink>,
         locals_: Vec<ObjLink>,
-        body_: Option<Node>,
+        body_: Option<NodeLink>,
         definition: bool,
         is_static_: bool,
     ) {
@@ -207,9 +206,9 @@ pub struct TagScope {
 #[derive(Clone)]
 pub struct VarAttr {
     // 是否为类型别名
-    pub is_typedef: bool,
+    pub(crate) is_typedef: bool,
     // 是否为文件域内的
-    pub is_static: bool,
+    pub(crate) is_static: bool,
 }
 
 // C有两个域：变量（或类型别名）域，结构体（或联合体，枚举）标签域
@@ -281,23 +280,25 @@ pub struct Member {
     // 偏移量
     pub(crate) offset: isize,
     // 用于报错信息
+    #[allow(dead_code)]
     pub(crate) token: Option<Token>,
 }
 
 impl Member {
-    pub fn new(name: String, type_: Option<TypeLink>) -> Self {
-        Self {
+    pub fn new(name: String, type_: Option<TypeLink>) -> Box<Self> {
+        Box::new(Self {
             name,
             type_,
             offset: 0,
             token: None,
-        }
+        })
     }
 
     pub fn set_offset(&mut self, offset: isize) {
         self.offset = offset
     }
 
+    #[allow(dead_code)]
     pub fn set_token(&mut self, token: Token) {
         self.token = Some(token);
     }

@@ -2,9 +2,7 @@
 // 生成AST（抽象语法树），语法解析
 //
 
-use crate::ctype::{add_type, TypeLink};
-use crate::obj::{Member, ObjLink};
-use crate::{Token, Type};
+use crate::{add_type, Member, ObjLink, Token, Type, TypeLink};
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -28,6 +26,10 @@ pub enum NodeKind {
     BitOr,
     // ^，按位异或
     BitXor,
+    // <<，左移
+    ShL,
+    // >>，右移
+    ShR,
     // ==
     Eq,
     // !=
@@ -84,6 +86,8 @@ pub enum NodeKind {
     Cast,
 }
 
+pub type NodeLink = Box<Node>;
+
 // AST的节点种类
 #[derive(Clone)]
 pub struct Node {
@@ -96,27 +100,27 @@ pub struct Node {
 
     // 各种孩子
     // 左部，left-hand side(单节点)
-    pub(crate) lhs: Option<Box<Node>>,
+    pub(crate) lhs: Option<NodeLink>,
     // 右部，right-hand side
-    pub(crate) rhs: Option<Box<Node>>,
+    pub(crate) rhs: Option<NodeLink>,
     // 条件内的表达式
-    pub(crate) cond: Option<Box<Node>>,
+    pub(crate) cond: Option<NodeLink>,
     // 符合条件后的语句
-    pub(crate) then: Option<Box<Node>>,
+    pub(crate) then: Option<NodeLink>,
     // 不符合条件后的语句
-    pub(crate) els: Option<Box<Node>>,
+    pub(crate) els: Option<NodeLink>,
     // 初始化语句
-    pub(crate) init: Option<Box<Node>>,
+    pub(crate) init: Option<NodeLink>,
     // 递增语句
-    pub(crate) inc: Option<Box<Node>>,
+    pub(crate) inc: Option<NodeLink>,
     // 代码块
-    pub(crate) body: Vec<Node>,
+    pub(crate) body: Vec<NodeLink>,
     // 变量名
     pub(crate) func_name: String,
     // 函数类型
     pub(crate) func_type: Option<TypeLink>,
     // 入参
-    pub(crate) args: Vec<Node>,
+    pub(crate) args: Vec<NodeLink>,
     // 存储ND_VAR的字符串
     pub(crate) var: Option<ObjLink>,
     // 存储ND_NUM种类的值
@@ -130,13 +134,13 @@ pub struct Node {
     // "continue" 标签 switch/case 时是case的label
     pub(crate) continue_label: Option<String>,
     // switch和case
-    pub(crate) case_next: Vec<Node>,
-    pub(crate) default_case: Option<Box<Node>>,
+    pub(crate) case_next: Vec<NodeLink>,
+    pub(crate) default_case: Option<NodeLink>,
 }
 
 impl Node {
-    pub fn new(kind: NodeKind, token: Token) -> Self {
-        Self {
+    pub fn new(kind: NodeKind, token: Token) -> NodeLink {
+        Box::new(Self {
             kind,
             token,
             type_: None,
@@ -159,48 +163,48 @@ impl Node {
             continue_label: None,
             case_next: Vec::new(),
             default_case: None,
-        }
+        })
     }
 
-    pub fn new_unary(kind: NodeKind, expr: Box<Node>, token: Token) -> Self {
+    pub fn new_unary(kind: NodeKind, expr: NodeLink, token: Token) -> NodeLink {
         let mut node = Self::new(kind, token);
         node.lhs = Some(expr);
         node
     }
 
-    pub fn new_binary(kind: NodeKind, lhs: Box<Node>, rhs: Box<Node>, token: Token) -> Self {
+    pub fn new_binary(kind: NodeKind, lhs: NodeLink, rhs: NodeLink, token: Token) -> NodeLink {
         let mut node = Self::new(kind, token);
         node.lhs = Some(lhs);
         node.rhs = Some(rhs);
         node
     }
 
-    pub fn new_num(val: i64, token: Token) -> Self {
+    pub fn new_num(val: i64, token: Token) -> NodeLink {
         let mut node = Self::new(NodeKind::Num, token);
         node.val = val;
         node
     }
 
-    pub fn new_long(val: i64, token: Token) -> Self {
+    pub fn new_long(val: i64, token: Token) -> NodeLink {
         let mut node = Self::new(NodeKind::Num, token);
         node.val = val;
         node.type_ = Some(Type::new_long());
         node
     }
 
-    pub fn new_var(val: ObjLink, token: Token) -> Self {
+    pub fn new_var(val: ObjLink, token: Token) -> NodeLink {
         let mut node = Self::new(NodeKind::Var, token);
         node.var = Some(val);
         node
     }
 
-    pub fn new_block(kind: NodeKind, body: Vec<Node>, token: Token) -> Self {
+    pub fn new_block(kind: NodeKind, body: Vec<NodeLink>, token: Token) -> NodeLink {
         let mut node = Self::new(kind, token);
         node.body = body;
         node
     }
 
-    pub fn new_cast(mut expr: Box<Node>, typ: TypeLink) -> Self {
+    pub fn new_cast(mut expr: NodeLink, typ: TypeLink) -> NodeLink {
         add_type(&mut expr);
         let mut node = Self::new(NodeKind::Cast, expr.token.clone());
         node.lhs = Some(expr);
@@ -208,9 +212,8 @@ impl Node {
         node
     }
 
-    pub fn set_type(&mut self, type_: TypeLink) -> &Self {
+    pub fn set_type(&mut self, type_: TypeLink) {
         self.type_ = Some(type_);
-        self
     }
 
     pub fn get_token(&self) -> &Token {

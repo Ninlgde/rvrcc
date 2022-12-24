@@ -11,9 +11,9 @@ mod token;
 mod tokenize;
 mod utils;
 
-use ctype::Type;
-use node::Node;
-use obj::Obj;
+use ctype::*;
+use node::*;
+use obj::*;
 use token::Token;
 use utils::*;
 
