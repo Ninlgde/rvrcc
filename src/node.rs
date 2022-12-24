@@ -40,6 +40,8 @@ pub enum NodeKind {
     Le,
     // 赋值
     Assign,
+    // ?:，条件运算符
+    Cond,
     // , 逗号
     Comma,
     // . 结构体成员访问

@@ -30,7 +30,8 @@
 //!        | expr_stmt
 //! expr_stmt = expr? ";"
 //! expr = assign ("," expr)?
-//! assign = log_or (assign_op assign)?
+//! assign = conditional (assign_op assign)?
+//! conditional = log_or ("?" expr ":" conditional)?
 //! log_or = log_and ("||" log_and)*
 //! log_and = bit_or ("&&" bit_or)*
 //! bit_or = bit_xor ("|" bit_xor)*
@@ -980,12 +981,12 @@ impl<'a> Parser<'a> {
     }
 
     /// 解析赋值
-    /// assign = log_or (assign_op assign)?
+    /// assign = conditional (assign_op assign)?
     /// assign_op = "=" | "+=" | "-=" | "*=" | "/=" | "%=" | "&=" | "|=" | "^="
     ///           | "<<=" | ">>="
     fn assign(&mut self) -> Option<NodeLink> {
         // equality
-        let node = self.log_or().unwrap();
+        let node = self.conditional().unwrap();
 
         // 可能存在递归赋值，如a=b=1
         // ("=" assign)?
@@ -1057,6 +1058,29 @@ impl<'a> Parser<'a> {
             let rhs = self.next().assign().unwrap();
             return self.to_assign(Node::new_binary(NodeKind::ShR, node, rhs, nt));
         }
+
+        Some(node)
+    }
+
+    /// conditional = log_or ("?" expr ":" conditional)?
+    fn conditional(&mut self) -> Option<NodeLink> {
+        // log_or
+        let cond = self.log_or().unwrap();
+
+        let (_, token) = self.current();
+        // "?"
+        if !token.equal("?") {
+            return Some(cond);
+        }
+
+        // expr ":" conditional
+        let mut node = Node::new(NodeKind::Cond, token.clone());
+        node.cond = Some(cond);
+        // expr ":"
+        node.then = self.next().expr();
+        self.skip(":");
+        // conditional，这里不能被解析为赋值式
+        node.els = self.conditional();
 
         Some(node)
     }

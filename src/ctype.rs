@@ -294,6 +294,20 @@ pub fn add_type(node: &mut Node) {
             let vt = var.borrow().get_type().clone();
             node.type_ = Some(vt.clone());
         }
+        NodeKind::Cond => {
+            let then_t = node.then.as_ref().unwrap().type_.as_ref().unwrap().clone();
+            let els_t = node.els.as_ref().unwrap().type_.as_ref().unwrap().clone();
+            if then_t.borrow().kind == TypeKind::Void || els_t.borrow().kind == TypeKind::Void {
+                node.type_ = Some(Type::new_void());
+            } else {
+                // 对左右部转换
+                let (lhs, rhs) =
+                    usual_arith_conv(node.then.take().unwrap(), node.els.take().unwrap());
+                node.then = Some(lhs);
+                node.els = Some(rhs);
+                node.type_ = node.then.as_ref().unwrap().type_.clone();
+            }
+        }
         // 将节点类型设为 右部的类型
         NodeKind::Comma => {
             node.type_ = node.rhs.as_ref().unwrap().type_.clone();
