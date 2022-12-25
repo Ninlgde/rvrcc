@@ -622,6 +622,16 @@ impl<'a> Parser<'a> {
         Some(node)
     }
 
+    fn skip_excess_element(&mut self) {
+        let (_, token) = self.current();
+        if token.equal("{") {
+            self.next().skip_excess_element();
+            self.skip("}");
+        }
+
+        self.assign();
+    }
+
     /// initializer = "{" initializer ("," initializer)* "}" | assign
     fn initializer0(&mut self, init: &mut Box<Initializer>) {
         // "{" initializer ("," initializer)* "}"
@@ -632,17 +642,21 @@ impl<'a> Parser<'a> {
             // 遍历数组
             let mut i = 0;
             loop {
-                let (_, token) = self.current();
-                if i >= t.len || token.equal("}") {
+                if self.consume("}") {
                     break;
                 }
                 if i > 0 {
                     self.skip(",");
                 }
-                self.initializer0(&mut init.children[i as usize]);
+                if i < t.len {
+                    // 正常解析元素
+                    self.initializer0(&mut init.children[i as usize]);
+                } else {
+                    // 跳过多余的元素
+                    self.skip_excess_element();
+                }
                 i += 1;
             }
-            self.skip("}");
             return;
         }
 
