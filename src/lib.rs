@@ -3,6 +3,7 @@ extern crate core;
 mod codegen;
 mod ctype;
 mod error_print;
+mod initializer;
 mod keywords;
 mod node;
 mod obj;

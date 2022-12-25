@@ -1,3 +1,5 @@
+//! 汇编生成器
+
 use crate::{align_to, error_token, NodeKind, NodeLink, Obj, ObjLink, TypeKind, TypeLink};
 use core::fmt;
 use std::io::Write;
@@ -371,6 +373,9 @@ impl<'a> Generator<'a> {
         writeln!("  .loc 1 {}", node.get_token().get_line_no());
 
         match node.kind {
+            NodeKind::NullExpr => {
+                return;
+            }
             // 加载数字到a0
             NodeKind::Num => {
                 writeln!("  # 将{}加载到a0中", node.val);
@@ -595,11 +600,11 @@ impl<'a> Generator<'a> {
                 writeln!("  slt a0, a1, a0");
                 writeln!("  xori a0, a0, 1");
             }
-            NodeKind::ShL => {
+            NodeKind::Shl => {
                 writeln!("  # a0逻辑左移a1位");
                 writeln!("  sll{} a0, a0, a1", suffix);
             }
-            NodeKind::ShR => {
+            NodeKind::Shr => {
                 writeln!("  # a0算术右移a1位");
                 writeln!("  sra{} a0, a0, a1", suffix);
             }

@@ -1,3 +1,5 @@
+//! C语言的类型实现
+
 use crate::{error_token, Member, Node, NodeKind, NodeLink};
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -36,7 +38,7 @@ pub struct Type {
     // 形参
     pub(crate) params: Vec<TypeLink>,
     // 数组长度, 元素总个数
-    len: isize,
+    pub(crate) len: isize,
     // 结构体
     pub(crate) members: Vec<Box<Member>>,
 }
@@ -285,7 +287,7 @@ pub fn add_type(node: &mut NodeLink) {
             node.type_ = Some(Type::new_int());
         }
         // 将节点类型设为 左部的类型
-        NodeKind::BitNot | NodeKind::ShL | NodeKind::ShR => {
+        NodeKind::BitNot | NodeKind::Shl | NodeKind::Shr => {
             node.type_ = node.lhs.as_ref().unwrap().type_.clone();
         }
         // 将节点类型设为 变量的类型

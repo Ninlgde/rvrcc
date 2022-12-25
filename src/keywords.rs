@@ -1,3 +1,6 @@
+//! C语言关键字
+
+/// 关键字列表
 pub const KEYWORDS: [&str; KW_COUNT] = [
     KW_RETURN,
     KW_IF,
@@ -24,13 +27,16 @@ pub const KEYWORDS: [&str; KW_COUNT] = [
     KW_DEFAULT,
 ];
 
+/// 关键字数量
 const KW_COUNT: usize = 23;
 
+/// 类型名称列表
 pub const KW_TYPENAME: [&str; KW_TYPENAME_COUNT] = [
     KW_CHAR, KW_SHORT, KW_INT, KW_LONG, KW_STRUCT, KW_UNION, KW_VOID, KW_TYPEDEF, KW_BOOL, KW_ENUM,
     KW_STATIC,
 ];
 
+/// 类型名称数量
 const KW_TYPENAME_COUNT: usize = 11;
 
 /// 关键字: 返回

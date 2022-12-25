@@ -1,4 +1,5 @@
 //! AST parser
+//!
 //! program = (typedef | function_definition* | global-variable)*
 //! function_definition = declspec declarator "(" ")" "{" compound_stmt*
 //! declspec = ("void" | "_Bool" | "char" | "short" | "int" | "long"
@@ -64,14 +65,16 @@
 //! abstract_declarator = "*"* ("(" abstract_declarator ")")? type_suffix
 //! func_call = ident "(" (assign ("," assign)*)? ")"
 
+use crate::initializer::{create_lvar_init, InitDesig, Initializer};
 use crate::keywords::{
     KW_BOOL, KW_BREAK, KW_CASE, KW_CHAR, KW_CONTINUE, KW_DEFAULT, KW_ELSE, KW_ENUM, KW_FOR,
     KW_GOTO, KW_IF, KW_INT, KW_LONG, KW_RETURN, KW_SHORT, KW_SIZEOF, KW_STATIC, KW_STRUCT,
     KW_SWITCH, KW_TYPEDEF, KW_UNION, KW_VOID, KW_WHILE,
 };
 use crate::{
-    add_type, align_to, error_at, error_token, eval, LabelInfo, Member, Node, NodeKind, NodeLink,
-    Obj, ObjLink, Scope, Token, Type, TypeKind, TypeLink, VarAttr, VarScope,
+    add_type, add_with_type, align_to, error_at, error_token, eval, sub_with_type, LabelInfo,
+    Member, Node, NodeKind, NodeLink, Obj, ObjLink, Scope, Token, Type, TypeKind, TypeLink,
+    VarAttr, VarScope,
 };
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -565,8 +568,8 @@ impl<'a> Parser<'a> {
         Some(node)
     }
 
-    /// declaration =
-    ///    declspec (declarator ("=" expr)? ("," declarator ("=" expr)?)*)? ";"
+    /// declaration = declspec (declarator ("=" initializer)?
+    ///                        ("," declarator ("=" initializer)?)*)? ";"
     fn declaration(&mut self, base_type: TypeLink) -> Option<NodeLink> {
         let mut nodes = vec![];
         let mut i = 0;
@@ -602,19 +605,13 @@ impl<'a> Parser<'a> {
             let (pos, token) = self.current();
             let nt = self.tokens[pos].clone();
             // 如果不存在"="则为变量声明，不需要生成节点，已经存储在Locals中了
-            if !token.equal("=") {
-                continue;
+            if token.equal("=") {
+                // 解析变量的初始化器
+                let expr = self.next().lvar_initializer(nvar).unwrap();
+                // 存放在表达式语句中
+                let node = Node::new_unary(NodeKind::ExprStmt, expr, nt);
+                nodes.push(node);
             }
-
-            // 解析“=”后面的Token
-            let lhs = Node::new_var(nvar, nt);
-            // 解析递归赋值语句
-            let rhs = self.next().assign().unwrap();
-            let (pos, _) = self.current();
-            let nt = self.tokens[pos].clone();
-            let expr = Node::new_binary(NodeKind::Assign, lhs, rhs, nt.clone());
-            let node = Node::new_unary(NodeKind::ExprStmt, expr, nt);
-            nodes.push(node);
         }
 
         let (pos, _) = self.current();
@@ -623,6 +620,53 @@ impl<'a> Parser<'a> {
         self.next();
 
         Some(node)
+    }
+
+    /// initializer = "{" initializer ("," initializer)* "}" | assign
+    fn initializer0(&mut self, init: &mut Box<Initializer>) {
+        // "{" initializer ("," initializer)* "}"
+        let t = init.typ.as_ref().unwrap().borrow();
+        if t.kind == TypeKind::Array {
+            self.skip("{");
+
+            // 遍历数组
+            for i in 0..t.len {
+                if i > 0 {
+                    self.skip(",");
+                }
+                self.initializer0(&mut init.children[i as usize]);
+            }
+            self.skip("}");
+            return;
+        }
+
+        // assign
+        // 为节点存储对应的表达式
+        init.expr = self.assign()
+    }
+
+    /// 初始化器
+    fn initializer(&mut self, typ: TypeLink) -> Option<Box<Initializer>> {
+        // 新建一个解析了类型的初始化器
+        let mut init = Initializer::new(typ);
+        // 解析需要赋值到Init中
+        self.initializer0(&mut init);
+        Some(init)
+    }
+
+    /// 局部变量初始化器
+    fn lvar_initializer(&mut self, var: ObjLink) -> Option<NodeLink> {
+        let (pos, _) = self.current();
+        let nt = self.tokens[pos].clone();
+
+        // 获取初始化器，将值与数据结构一一对应
+        let binding = var.borrow();
+        let typ = binding.get_type();
+        let init = self.initializer(typ.clone()).unwrap();
+        // 指派初始化
+        let id = InitDesig::new_with_var(var.clone(), 0);
+
+        return create_lvar_init(init, typ.clone(), id, nt);
     }
 
     /// 解析语句
@@ -1007,14 +1051,14 @@ impl<'a> Parser<'a> {
         // ("+=" assign)?
         if token.equal("+=") {
             let rhs = self.next().assign().unwrap();
-            let node = self.add_with_type(node, rhs, nt).unwrap();
+            let node = add_with_type(node, rhs, nt).unwrap();
             return self.to_assign(node);
         }
 
         // ("-=" assign)?
         if token.equal("-=") {
             let rhs = self.next().assign().unwrap();
-            let node = self.sub_with_type(node, rhs, nt).unwrap();
+            let node = sub_with_type(node, rhs, nt).unwrap();
             return self.to_assign(node);
         }
 
@@ -1057,13 +1101,13 @@ impl<'a> Parser<'a> {
         // ("<<=" assign)?
         if token.equal("<<=") {
             let rhs = self.next().assign().unwrap();
-            return self.to_assign(Node::new_binary(NodeKind::ShL, node, rhs, nt));
+            return self.to_assign(Node::new_binary(NodeKind::Shl, node, rhs, nt));
         }
 
         // (">>=" assign)?
         if token.equal(">>=") {
             let rhs = self.next().assign().unwrap();
-            return self.to_assign(Node::new_binary(NodeKind::ShR, node, rhs, nt));
+            return self.to_assign(Node::new_binary(NodeKind::Shr, node, rhs, nt));
         }
 
         Some(node)
@@ -1250,106 +1294,18 @@ impl<'a> Parser<'a> {
             // "<<" add
             if token.equal("<<") {
                 let rhs = self.next().add().unwrap();
-                node = Some(Node::new_binary(NodeKind::ShL, node.unwrap(), rhs, nt));
+                node = Some(Node::new_binary(NodeKind::Shl, node.unwrap(), rhs, nt));
                 continue;
             }
             // ">>" add
             if token.equal(">>") {
                 let rhs = self.next().add().unwrap();
-                node = Some(Node::new_binary(NodeKind::ShR, node.unwrap(), rhs, nt));
+                node = Some(Node::new_binary(NodeKind::Shr, node.unwrap(), rhs, nt));
                 continue;
             }
 
             return node;
         }
-    }
-
-    // 解析各种type的加法
-    fn add_with_type(
-        &mut self,
-        mut lhs: NodeLink,
-        mut rhs: NodeLink,
-        nt: Token,
-    ) -> Option<NodeLink> {
-        // 为左右部添加类型
-        add_type(&mut lhs);
-        add_type(&mut rhs);
-
-        let lhs_t = lhs.get_type().as_ref().unwrap().clone();
-        let rhs_t = rhs.get_type().as_ref().unwrap().clone();
-        // num + num
-        if lhs_t.borrow().is_int() && rhs_t.borrow().is_int() {
-            return Some(Node::new_binary(NodeKind::Add, lhs, rhs, nt));
-        }
-
-        // 不能解析 ptr + ptr
-        if lhs_t.borrow().has_base() && rhs_t.borrow().has_base() {
-            error_token!(&nt, "invalid operands");
-            return None;
-        }
-
-        // 将 num + ptr 转换为 ptr + num
-        let n_lhs;
-        let n_rhs;
-        let size;
-        if !lhs_t.borrow().has_base() && rhs_t.borrow().has_base() {
-            n_lhs = rhs;
-            n_rhs = lhs;
-            size = rhs_t.borrow().get_base_size() as i64;
-        } else {
-            n_lhs = lhs;
-            n_rhs = rhs;
-            size = lhs_t.borrow().get_base_size() as i64;
-        }
-
-        // ptr + num
-        // 指针加法，ptr+1，这里的1不是1个字节，而是1个元素的空间，所以需要 ×size 操作
-        let size = Node::new_long(size, nt.clone());
-        let f_rhs = Node::new_binary(NodeKind::Mul, n_rhs, size, nt.clone());
-        Some(Node::new_binary(NodeKind::Add, n_lhs, f_rhs, nt))
-    }
-
-    // 解析各种type的减法
-    fn sub_with_type(
-        &mut self,
-        mut lhs: NodeLink,
-        mut rhs: NodeLink,
-        nt: Token,
-    ) -> Option<NodeLink> {
-        // 为左右部添加类型
-        add_type(&mut lhs);
-        add_type(&mut rhs);
-
-        let lhs_t = lhs.get_type().as_ref().unwrap().clone();
-        let rhs_t = rhs.get_type().as_ref().unwrap().clone();
-        // num + num
-        if lhs_t.borrow().is_int() && rhs_t.borrow().is_int() {
-            return Some(Node::new_binary(NodeKind::Sub, lhs, rhs, nt));
-        }
-
-        // ptr - num
-        if lhs_t.borrow().has_base() && rhs_t.borrow().is_int() {
-            let size: i64 = lhs_t.borrow().get_base_size() as i64;
-            let size = Node::new_long(size, nt.clone());
-            let mut f_rhs = Node::new_binary(NodeKind::Mul, rhs, size, nt.clone());
-            add_type(&mut f_rhs);
-            let mut node = Node::new_binary(NodeKind::Sub, lhs, f_rhs, nt);
-            node.set_type(lhs_t);
-            return Some(node);
-        }
-
-        // ptr - ptr，返回两指针间有多少元素
-        if lhs_t.borrow().has_base() && rhs_t.borrow().has_base() {
-            let mut node = Node::new_binary(NodeKind::Sub, lhs, rhs, nt.clone());
-            node.set_type(Type::new_long());
-            let size: i64 = lhs_t.borrow().get_base_size() as i64;
-            let size = Node::new_num(size, nt.clone());
-            // size.set_type(Type::new_int());
-            return Some(Node::new_binary(NodeKind::Div, node, size, nt));
-        }
-
-        error_token!(&nt, "invalid operands");
-        return None;
     }
 
     /// 解析加减
@@ -1365,14 +1321,14 @@ impl<'a> Parser<'a> {
             // "+" mul
             if token.equal("+") {
                 let rhs = self.next().mul().unwrap();
-                node = self.add_with_type(node.unwrap(), rhs, nt);
+                node = add_with_type(node.unwrap(), rhs, nt);
                 continue;
             }
 
             // "-" mul
             if token.equal("-") {
                 let rhs = self.next().mul().unwrap();
-                node = self.sub_with_type(node.unwrap(), rhs, nt);
+                node = sub_with_type(node.unwrap(), rhs, nt);
                 continue;
             }
 
@@ -1492,9 +1448,7 @@ impl<'a> Parser<'a> {
         // "++" unary
         if token.equal("++") {
             let unary = self.next().unary().unwrap();
-            let node = self
-                .add_with_type(unary, Node::new_num(1, nt.clone()), nt.clone())
-                .unwrap();
+            let node = add_with_type(unary, Node::new_num(1, nt.clone()), nt.clone()).unwrap();
             return self.to_assign(node);
         }
 
@@ -1502,9 +1456,7 @@ impl<'a> Parser<'a> {
         // "--" unary
         if token.equal("--") {
             let unary = self.next().unary().unwrap();
-            let node = self
-                .sub_with_type(unary, Node::new_num(1, nt.clone()), nt.clone())
-                .unwrap();
+            let node = sub_with_type(unary, Node::new_num(1, nt.clone()), nt.clone()).unwrap();
             return self.to_assign(node);
         }
 
@@ -1750,9 +1702,9 @@ impl<'a> Parser<'a> {
         let typ = &node.type_.as_ref().unwrap().clone();
         let num = Node::new_num(addend, token.clone());
         let num_neg = Node::new_num(-addend, token.clone());
-        let add = self.add_with_type(node, num, token.clone()).unwrap();
+        let add = add_with_type(node, num, token.clone()).unwrap();
         let lhs = self.to_assign(add).unwrap();
-        let add = self.add_with_type(lhs, num_neg, token.clone()).unwrap();
+        let add = add_with_type(lhs, num_neg, token.clone()).unwrap();
         let cast = Node::new_cast(add, typ.clone());
         Some(cast)
     }
@@ -1769,7 +1721,7 @@ impl<'a> Parser<'a> {
                 // x[y] 等价于 *(x+y)
                 let idx = self.next().expr().unwrap();
                 self.skip("]");
-                let unary = self.add_with_type(node, idx, nt.clone()).unwrap();
+                let unary = add_with_type(node, idx, nt.clone()).unwrap();
                 node = Node::new_unary(NodeKind::DeRef, unary, nt);
                 continue;
             }
@@ -2039,7 +1991,6 @@ impl<'a> Parser<'a> {
         let mut node = Node::new(NodeKind::FuncCall, nt);
         node.func_name = func_name;
         node.func_type = Some(t.clone());
-        // let t = t.return_type;
         let tb = t.borrow();
         node.type_ = Some(tb.return_type.as_ref().unwrap().clone());
         node.args = nodes;

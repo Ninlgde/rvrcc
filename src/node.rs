@@ -1,13 +1,15 @@
-//
-// 生成AST（抽象语法树），语法解析
-//
+//!
+//! 生成AST（抽象语法树），语法解析
+//!
 
-use crate::{add_type, Member, ObjLink, Token, Type, TypeLink};
+use crate::{add_type, error_token, Member, ObjLink, Token, Type, TypeLink};
 use std::cell::RefCell;
 use std::rc::Rc;
 
 #[derive(Clone, Eq, PartialEq)]
 pub enum NodeKind {
+    // 空表达式
+    NullExpr,
     // +
     Add,
     // -
@@ -27,9 +29,9 @@ pub enum NodeKind {
     // ^，按位异或
     BitXor,
     // <<，左移
-    ShL,
+    Shl,
     // >>，右移
-    ShR,
+    Shr,
     // ==
     Eq,
     // !=
@@ -266,10 +268,10 @@ pub fn eval(node: &mut Box<Node>) -> i64 {
         NodeKind::BitXor => {
             return eval(node.lhs.as_mut().unwrap()) ^ eval(node.rhs.as_mut().unwrap());
         }
-        NodeKind::ShL => {
+        NodeKind::Shl => {
             return eval(node.lhs.as_mut().unwrap()) << eval(node.rhs.as_mut().unwrap());
         }
-        NodeKind::ShR => {
+        NodeKind::Shr => {
             return eval(node.lhs.as_mut().unwrap()) >> eval(node.rhs.as_mut().unwrap());
         }
         NodeKind::Eq => {
@@ -395,4 +397,82 @@ impl LabelInfo {
     pub fn equals(&self, other: &Self) -> bool {
         self.label == other.label
     }
+}
+
+// 解析各种type的加法
+pub fn add_with_type(mut lhs: NodeLink, mut rhs: NodeLink, nt: Token) -> Option<NodeLink> {
+    // 为左右部添加类型
+    add_type(&mut lhs);
+    add_type(&mut rhs);
+
+    let lhs_t = lhs.get_type().as_ref().unwrap().clone();
+    let rhs_t = rhs.get_type().as_ref().unwrap().clone();
+    // num + num
+    if lhs_t.borrow().is_int() && rhs_t.borrow().is_int() {
+        return Some(Node::new_binary(NodeKind::Add, lhs, rhs, nt));
+    }
+
+    // 不能解析 ptr + ptr
+    if lhs_t.borrow().has_base() && rhs_t.borrow().has_base() {
+        error_token!(&nt, "invalid operands");
+        return None;
+    }
+
+    // 将 num + ptr 转换为 ptr + num
+    let n_lhs;
+    let n_rhs;
+    let size;
+    if !lhs_t.borrow().has_base() && rhs_t.borrow().has_base() {
+        n_lhs = rhs;
+        n_rhs = lhs;
+        size = rhs_t.borrow().get_base_size() as i64;
+    } else {
+        n_lhs = lhs;
+        n_rhs = rhs;
+        size = lhs_t.borrow().get_base_size() as i64;
+    }
+
+    // ptr + num
+    // 指针加法，ptr+1，这里的1不是1个字节，而是1个元素的空间，所以需要 ×size 操作
+    let size = Node::new_long(size, nt.clone());
+    let f_rhs = Node::new_binary(NodeKind::Mul, n_rhs, size, nt.clone());
+    Some(Node::new_binary(NodeKind::Add, n_lhs, f_rhs, nt))
+}
+
+// 解析各种type的减法
+pub fn sub_with_type(mut lhs: NodeLink, mut rhs: NodeLink, nt: Token) -> Option<NodeLink> {
+    // 为左右部添加类型
+    add_type(&mut lhs);
+    add_type(&mut rhs);
+
+    let lhs_t = lhs.get_type().as_ref().unwrap().clone();
+    let rhs_t = rhs.get_type().as_ref().unwrap().clone();
+    // num + num
+    if lhs_t.borrow().is_int() && rhs_t.borrow().is_int() {
+        return Some(Node::new_binary(NodeKind::Sub, lhs, rhs, nt));
+    }
+
+    // ptr - num
+    if lhs_t.borrow().has_base() && rhs_t.borrow().is_int() {
+        let size: i64 = lhs_t.borrow().get_base_size() as i64;
+        let size = Node::new_long(size, nt.clone());
+        let mut f_rhs = Node::new_binary(NodeKind::Mul, rhs, size, nt.clone());
+        add_type(&mut f_rhs);
+        let mut node = Node::new_binary(NodeKind::Sub, lhs, f_rhs, nt);
+        node.set_type(lhs_t);
+        return Some(node);
+    }
+
+    // ptr - ptr，返回两指针间有多少元素
+    if lhs_t.borrow().has_base() && rhs_t.borrow().has_base() {
+        let mut node = Node::new_binary(NodeKind::Sub, lhs, rhs, nt.clone());
+        node.set_type(Type::new_long());
+        let size: i64 = lhs_t.borrow().get_base_size() as i64;
+        let size = Node::new_num(size, nt.clone());
+        // size.set_type(Type::new_int());
+        return Some(Node::new_binary(NodeKind::Div, node, size, nt));
+    }
+
+    error_token!(&nt, "invalid operands");
+    return None;
 }

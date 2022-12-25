@@ -1,5 +1,5 @@
 
 int main() {
-    char x[(int) 0xfffffffffff + 5];
-    sizeof(x);
+    int x[3] = {1, 2, 3};
+    x[0];
 }

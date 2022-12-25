@@ -1,3 +1,5 @@
+//! 错误打印相关宏
+
 use crate::{slice_to_string, Token, FILE_NAME, INPUT};
 use core::fmt;
 
