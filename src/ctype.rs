@@ -1,6 +1,6 @@
 //! C语言的类型实现
 
-use crate::{error_token, Member, Node, NodeKind, NodeLink};
+use crate::{error_token, Member, Node, NodeKind, NodeLink, Token};
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -26,7 +26,8 @@ pub type TypeLink = Rc<RefCell<Type>>;
 pub struct Type {
     pub(crate) kind: TypeKind,
     // 名称
-    pub(crate) name: String,
+    pub(crate) name: Token,
+    pub(crate) name_string: String,
     // 大小, sizeof返回的值
     pub(crate) size: isize,
     // 对齐
@@ -47,7 +48,8 @@ impl Type {
     pub fn new(kind: TypeKind, size: isize, align: isize) -> Self {
         Self {
             kind,
-            name: String::new(),
+            name: Token::Undefined,
+            name_string: "".to_string(),
             size,
             align,
             base: None,
@@ -137,11 +139,12 @@ impl Type {
     }
 
     pub fn get_name(&self) -> &str {
-        self.name.as_str()
+        self.name_string.as_str()
     }
 
-    pub fn set_name(&mut self, s: String) {
-        self.name = s;
+    pub fn set_name(&mut self, s: Token) {
+        self.name = s.clone();
+        self.name_string = s.get_name();
     }
 
     pub fn get_size(&self) -> isize {

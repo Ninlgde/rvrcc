@@ -421,7 +421,6 @@ impl<'a> Parser<'a> {
         }
 
         let (start_pos, token) = self.current();
-        let mut name = "".to_string();
         // "(" declarator ")"
         if token.equal("(") {
             // 使Tok前进到")"后面的位置
@@ -440,15 +439,7 @@ impl<'a> Parser<'a> {
             return type_;
         }
 
-        match token {
-            Token::Ident { t_str, .. } => {
-                name = t_str.to_string();
-            }
-            _ => {
-                error_token!(token, "expected a variable name");
-            }
-        }
-
+        let name = token.clone();
         // type_suffix
         type_ = self.next().type_suffix(type_);
         // ident
@@ -593,11 +584,6 @@ impl<'a> Parser<'a> {
             // declarator
             // 声明获取到变量类型，包括变量名
             let type_ = self.declarator(base_type.clone());
-            if type_.borrow().size < 0 {
-                let (_, token) = self.current();
-                error_token!(token, "variable has incomplete type");
-                unreachable!()
-            }
             if type_.borrow().kind == TypeKind::Void {
                 let (_, token) = self.current();
                 error_token!(token, "variable declared void");
@@ -611,10 +597,21 @@ impl<'a> Parser<'a> {
             // 如果不存在"="则为变量声明，不需要生成节点，已经存储在Locals中了
             if token.equal("=") {
                 // 解析变量的初始化器
-                let expr = self.next().lvar_initializer(nvar).unwrap();
+                let expr = self.next().lvar_initializer(nvar.clone());
                 // 存放在表达式语句中
-                let node = Node::new_unary(NodeKind::ExprStmt, expr, nt);
+                let node = Node::new_unary(NodeKind::ExprStmt, expr.unwrap(), nt);
                 nodes.push(node);
+                continue;
+            }
+
+            let var = nvar.clone();
+            let var = var.borrow();
+            let t = var.get_type().borrow();
+            if t.size < 0 {
+                error_token!(&t.name, "o variable has incomplete type");
+            }
+            if t.kind == TypeKind::Void {
+                error_token!(&t.name, "o variable declared void");
             }
         }
 
@@ -638,26 +635,70 @@ impl<'a> Parser<'a> {
 
     /// string_initializer = string_literal
     fn string_initializer(&mut self, init: &mut Box<Initializer>) {
-        let t = init.typ.as_ref().unwrap().borrow();
+        let t = init.typ.as_ref().unwrap().clone();
+        let t = t.borrow();
+
         let (_, token) = self.current();
-        match token {
-            Token::Str { val, type_, .. } => {
-                let mut len = type_.borrow().len;
-                len = cmp::min(t.len, len);
-                for i in 0..len {
-                    let mut child = &mut init.children[i as usize];
-                    child.expr = Some(Node::new_num(val[i as usize] as i64, token.clone()));
-                }
-            }
-            _ => {}
+        let (chars, token_type) = token.get_string();
+        // 如果是可调整的，就构造一个包含数组的初始化器
+        // 字符串字面量在词法解析部分已经增加了'\0'
+        if init.is_flexible {
+            let new_type =
+                Type::array_of(t.base.as_ref().unwrap().clone(), token_type.borrow().len);
+            init.set_type(new_type);
+            init.is_flexible = false;
+        }
+        let t = init.typ.as_ref().unwrap().clone();
+        let t = t.borrow();
+        let (_, token) = self.current();
+        let mut len = token_type.borrow().len;
+        len = cmp::min(t.len, len);
+        for i in 0..len {
+            let mut child = &mut init.children[i as usize];
+            child.expr = Some(Node::new_num(chars[i as usize] as i64, token.clone()));
         }
         self.next();
     }
 
+    /// 计算数组初始化元素个数
+    fn count_array_init_elements(&mut self, typ: TypeLink) -> isize {
+        let (start_pos, _) = self.current();
+        let mut dummy = Initializer::new(typ.borrow().base.as_ref().unwrap().clone(), false);
+
+        // 项数
+        let mut count = 0;
+        // 遍历所有匹配的项
+        loop {
+            let (_, token) = self.current();
+            if token.equal("}") {
+                break;
+            }
+            if count > 0 {
+                self.skip(",");
+            }
+            self.initializer0(&mut dummy);
+            count += 1;
+        }
+
+        // cursor 回档
+        self.cursor = start_pos;
+        return count;
+    }
+
     /// array_initializer = "{" initializer ("," initializer)* "}"
     fn array_initializer(&mut self, init: &mut Box<Initializer>) {
-        let t = init.typ.as_ref().unwrap().borrow();
+        let typ = init.typ.as_ref().unwrap().clone();
+        let t = typ.borrow();
         self.skip("{");
+        // 如果数组是可调整的，那么就计算数组的元素数，然后进行初始化器的构造
+        if init.is_flexible {
+            let len = self.count_array_init_elements(typ.clone());
+            // 在这里Ty也被重新构造为了数组
+            let new_type = Type::array_of(t.base.as_ref().unwrap().clone(), len);
+            init.set_type(new_type);
+            init.is_flexible = false;
+        }
+        let typ = init.typ.as_ref().unwrap().clone(); // 可能被替换了,重新取下
 
         // 遍历数组
         let mut i = 0;
@@ -668,6 +709,7 @@ impl<'a> Parser<'a> {
             if i > 0 {
                 self.skip(",");
             }
+            let t = typ.borrow();
             if i < t.len {
                 // 正常解析元素
                 self.initializer0(&mut init.children[i as usize]);
@@ -702,9 +744,11 @@ impl<'a> Parser<'a> {
     }
 
     /// 初始化器
-    fn initializer(&mut self, typ: TypeLink) -> Option<Box<Initializer>> {
+    fn initializer(&mut self, var: ObjLink) -> Option<Box<Initializer>> {
+        let binding = var.borrow();
+        let typ = binding.get_type();
         // 新建一个解析了类型的初始化器
-        let mut init = Initializer::new(typ);
+        let mut init = Initializer::new(typ.clone(), true);
         // 解析需要赋值到Init中
         self.initializer0(&mut init);
         Some(init)
@@ -716,16 +760,17 @@ impl<'a> Parser<'a> {
         let nt = self.tokens[pos].clone();
 
         // 获取初始化器，将值与数据结构一一对应
-        let binding = var.borrow();
-        let typ = binding.get_type();
-        let init = self.initializer(typ.clone()).unwrap();
+        let init = self.initializer(var.clone()).unwrap();
+        let new_type = init.typ.as_ref().unwrap().clone();
+        var.borrow_mut().set_type(new_type);
         // 指派初始化
         let id = InitDesig::new_with_var(var.clone(), 0);
-
         // 我们首先为所有元素赋0，然后有指定值的再进行赋值
         let mut lhs = Node::new(NodeKind::MemZero, nt.clone());
         lhs.var = Some(var.clone());
         // 创建局部变量的初始化
+        let binding = var.borrow();
+        let typ = binding.get_type();
         let rhs = create_lvar_init(init, typ.clone(), id, nt.clone()).unwrap();
         // 左部为全部清零，右部为需要赋值的部分
         return Some(Node::new_binary(NodeKind::Comma, lhs, rhs, nt.clone()));
@@ -1699,7 +1744,7 @@ impl<'a> Parser<'a> {
 
             let mut type_ = Type::new_union_struct();
             type_.size = -1;
-            type_.name = name.as_ref().unwrap().clone();
+            type_.name = tag.unwrap().clone();
             let type_ = Rc::new(RefCell::new(type_));
             self.push_tag_scope(name.unwrap(), type_.clone());
             return type_;

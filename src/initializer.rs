@@ -16,26 +16,49 @@ pub struct Initializer<'a> {
     pub(crate) expr: Option<NodeLink>,
     // 如果是聚合类型（如数组或结构体），Children有子节点的初始化器
     pub(crate) children: Vec<Box<Initializer<'a>>>,
+    // 可调整的，表示需要重新构造
+    pub(crate) is_flexible: bool,
 }
 
 impl<'a> Initializer<'a> {
-    pub fn new(typ: TypeLink) -> Box<Self> {
+    pub fn new(typ: TypeLink, is_flexible: bool) -> Box<Self> {
         let mut init = Box::new(Initializer {
             typ: Some(typ.clone()),
             token: None,
             expr: None,
             children: vec![],
+            is_flexible: false,
         });
 
         let t = typ.borrow();
         if t.kind == TypeKind::Array {
+            // 判断是否需要调整数组元素数并且数组不完整
+            if is_flexible && t.size < 0 {
+                // 设置初始化器为可调整的，之后进行完数组元素数的计算后，再构造初始化器
+                init.is_flexible = true;
+                return init;
+            }
             for _ in 0..t.len {
                 init.children
-                    .push(Initializer::new(t.base.as_ref().unwrap().clone()))
+                    .push(Initializer::new(t.base.as_ref().unwrap().clone(), false))
             }
         }
 
         init
+    }
+
+    pub fn set_type(&mut self, typ: TypeLink) {
+        typ.borrow_mut()
+            .set_name(self.typ.as_ref().unwrap().borrow().clone().name);
+        self.typ = Some(typ.clone());
+
+        let t = typ.borrow();
+        if t.kind == TypeKind::Array {
+            for _ in 0..t.len {
+                self.children
+                    .push(Initializer::new(t.base.as_ref().unwrap().clone(), false))
+            }
+        }
     }
 }
 

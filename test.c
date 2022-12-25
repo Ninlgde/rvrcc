@@ -1,5 +1,5 @@
 
 int main() {
-    int x[3] = {1, 2, 3};
-    x[0];
+    char x[] = "foo";
+    sizeof(x);
 }

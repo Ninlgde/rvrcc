@@ -68,6 +68,14 @@ impl Obj {
         }
     }
 
+    pub fn set_type(&mut self, t: TypeLink) {
+        match self {
+            Self::Var { type_, .. } | Self::Func { type_, .. } => {
+                *type_ = t;
+            }
+        }
+    }
+
     pub fn get_func_return_type(&self) -> Option<TypeLink> {
         match self {
             Self::Func { type_, .. } => {

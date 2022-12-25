@@ -1,9 +1,11 @@
 use crate::ctype::TypeLink;
 use crate::keywords::KW_TYPENAME;
+use crate::Type;
 
 /// token
 #[derive(Clone)]
 pub enum Token {
+    Undefined,
     Ident {
         // token 名
         t_str: String,
@@ -68,6 +70,7 @@ impl Token {
             Self::Num { offset, .. } => *offset,
             Self::Str { offset, .. } => *offset,
             Self::Eof { offset, .. } => *offset,
+            _ => 0,
         }
     }
 
@@ -79,6 +82,7 @@ impl Token {
             Self::Num { line_no, .. } => *line_no,
             Self::Str { line_no, .. } => *line_no,
             Self::Eof { line_no, .. } => *line_no,
+            _ => 0,
         }
     }
 
@@ -92,6 +96,13 @@ impl Token {
 
     pub fn is_string(&self) -> bool {
         matches!(self, Self::Str { .. })
+    }
+
+    pub fn get_string(&self) -> (Vec<u8>, TypeLink) {
+        match self {
+            Self::Str { val, type_, .. } => return (val.to_vec(), type_.clone()),
+            _ => (vec![], Type::new_char()),
+        }
     }
 
     pub fn get_name(&self) -> String {
