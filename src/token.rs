@@ -83,17 +83,15 @@ impl Token {
     }
 
     pub fn at_eof(&self) -> bool {
-        match self {
-            Self::Eof { .. } => true,
-            _ => false,
-        }
+        matches!(self, Self::Eof { .. })
     }
 
     pub fn is_ident(&self) -> bool {
-        match self {
-            Self::Ident { .. } => true,
-            _ => false,
-        }
+        matches!(self, Self::Ident { .. })
+    }
+
+    pub fn is_string(&self) -> bool {
+        matches!(self, Self::Str { .. })
     }
 
     pub fn get_name(&self) -> String {

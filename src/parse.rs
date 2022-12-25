@@ -15,8 +15,11 @@
 //! func_params = (param ("," param)*)? ")"
 //! param = declspec declarator
 //! compound_stmt = (typedef | declaration | stmt)* "}"
-//! declaration =
-//!    declspec (declarator ("=" expr)? ("," declarator ("=" expr)?)*)? ";"
+//! declaration = declspec (declarator ("=" initializer)?
+//!                         ("," declarator ("=" initializer)?)*)? ";"
+//! initializer = string_initializer | array_initializer | assign
+//! string_initializer = string_literal
+//! array_initializer = "{" initializer ("," initializer)* "}"
 //! stmt = "return" expr ";"
 //!        | "if" "(" expr ")" stmt ("else" stmt)?
 //!        | "switch" "(" expr ")" stmt
@@ -77,6 +80,7 @@ use crate::{
     VarAttr, VarScope,
 };
 use std::cell::RefCell;
+use std::cmp;
 use std::rc::Rc;
 
 pub fn parse(tokens: &Vec<Token>) -> Vec<ObjLink> {
@@ -632,31 +636,63 @@ impl<'a> Parser<'a> {
         self.assign();
     }
 
-    /// initializer = "{" initializer ("," initializer)* "}" | assign
-    fn initializer0(&mut self, init: &mut Box<Initializer>) {
-        // "{" initializer ("," initializer)* "}"
+    /// string_initializer = string_literal
+    fn string_initializer(&mut self, init: &mut Box<Initializer>) {
         let t = init.typ.as_ref().unwrap().borrow();
-        if t.kind == TypeKind::Array {
-            self.skip("{");
-
-            // 遍历数组
-            let mut i = 0;
-            loop {
-                if self.consume("}") {
-                    break;
+        let (_, token) = self.current();
+        match token {
+            Token::Str { val, type_, .. } => {
+                let mut len = type_.borrow().len;
+                len = cmp::min(t.len, len);
+                for i in 0..len {
+                    let mut child = &mut init.children[i as usize];
+                    child.expr = Some(Node::new_num(val[i as usize] as i64, token.clone()));
                 }
-                if i > 0 {
-                    self.skip(",");
-                }
-                if i < t.len {
-                    // 正常解析元素
-                    self.initializer0(&mut init.children[i as usize]);
-                } else {
-                    // 跳过多余的元素
-                    self.skip_excess_element();
-                }
-                i += 1;
             }
+            _ => {}
+        }
+        self.next();
+    }
+
+    /// array_initializer = "{" initializer ("," initializer)* "}"
+    fn array_initializer(&mut self, init: &mut Box<Initializer>) {
+        let t = init.typ.as_ref().unwrap().borrow();
+        self.skip("{");
+
+        // 遍历数组
+        let mut i = 0;
+        loop {
+            if self.consume("}") {
+                break;
+            }
+            if i > 0 {
+                self.skip(",");
+            }
+            if i < t.len {
+                // 正常解析元素
+                self.initializer0(&mut init.children[i as usize]);
+            } else {
+                // 跳过多余的元素
+                self.skip_excess_element();
+            }
+            i += 1;
+        }
+    }
+
+    /// initializer = string_initializer | array_initializer | assign
+    fn initializer0(&mut self, init: &mut Box<Initializer>) {
+        // string_initializer
+        let t = init.typ.as_ref().unwrap().clone();
+        let t = t.borrow();
+        let (_, token) = self.current();
+        if t.kind == TypeKind::Array && token.is_string() {
+            self.string_initializer(init);
+            return;
+        }
+
+        // array_initializer
+        if t.kind == TypeKind::Array {
+            self.array_initializer(init);
             return;
         }
 
