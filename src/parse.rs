@@ -630,11 +630,17 @@ impl<'a> Parser<'a> {
             self.skip("{");
 
             // 遍历数组
-            for i in 0..t.len {
+            let mut i = 0;
+            loop {
+                let (_, token) = self.current();
+                if i >= t.len || token.equal("}") {
+                    break;
+                }
                 if i > 0 {
                     self.skip(",");
                 }
                 self.initializer0(&mut init.children[i as usize]);
+                i += 1;
             }
             self.skip("}");
             return;
@@ -666,7 +672,13 @@ impl<'a> Parser<'a> {
         // 指派初始化
         let id = InitDesig::new_with_var(var.clone(), 0);
 
-        return create_lvar_init(init, typ.clone(), id, nt);
+        // 我们首先为所有元素赋0，然后有指定值的再进行赋值
+        let mut lhs = Node::new(NodeKind::MemZero, nt.clone());
+        lhs.var = Some(var.clone());
+        // 创建局部变量的初始化
+        let rhs = create_lvar_init(init, typ.clone(), id, nt.clone()).unwrap();
+        // 左部为全部清零，右部为需要赋值的部分
+        return Some(Node::new_binary(NodeKind::Comma, lhs, rhs, nt.clone()));
     }
 
     /// 解析语句
@@ -1684,7 +1696,7 @@ impl<'a> Parser<'a> {
 
         let lhs_t = lhs.type_.as_ref().unwrap().clone();
         if lhs_t.borrow().kind != TypeKind::Struct && lhs_t.borrow().kind != TypeKind::Union {
-            error_token!(&lhs.as_ref().token, "not a struct nor a union");
+            error_token!(&lhs.token, "not a struct nor a union");
         }
 
         let lhs_t = lhs.type_.as_ref().unwrap().clone();

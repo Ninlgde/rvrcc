@@ -83,9 +83,12 @@ pub fn create_lvar_init(
 ) -> Option<NodeLink> {
     let t = typ.borrow();
     if t.kind == TypeKind::Array {
+        // 预备空表达式的情况
         let mut node = Node::new(NodeKind::NullExpr, token.clone());
         for i in 0..t.len {
+            // 这里next指向了上一级Desig的信息，以及在其中的偏移量。
             let id = InitDesig::new_with_next(desig.clone(), i);
+            // 局部变量进行初始化
             let rhs = create_lvar_init(
                 init.children[i as usize].clone(),
                 t.base.as_ref().unwrap().clone(),
@@ -93,14 +96,19 @@ pub fn create_lvar_init(
                 token.clone(),
             )
             .unwrap();
+            // 构造一个形如：NULL_EXPR，EXPR1，EXPR2…的二叉树
             node = Node::new_binary(NodeKind::Comma, node, rhs, token.clone());
         }
         return Some(node);
     }
 
+    // 如果需要作为右值的表达式为空，则设为空表达式
+    if init.expr.is_none() {
+        return Some(Node::new(NodeKind::NullExpr, token.clone()));
+    }
+    // 变量等可以直接赋值的左值
     let lhs = init_desig_expr(desig, token.clone()).unwrap();
     let rhs = init.expr.unwrap();
-
     return Some(Node::new_binary(NodeKind::Assign, lhs, rhs, token.clone()));
 }
 
@@ -118,8 +126,9 @@ pub fn init_desig_expr(desig: Box<InitDesig>, token: Token) -> Option<NodeLink> 
     // 递归到次外层Desig，有此时最外层有Desig->Var
     // 然后逐层计算偏移量
     let lhs = init_desig_expr(desig.next.unwrap(), token.clone()).unwrap();
+    // 偏移量
     let rhs = Node::new_num(desig.idx as i64, token.clone());
-
+    // 返回偏移后的变量地址
     let unary = add_with_type(lhs, rhs, token.clone()).unwrap();
     return Some(Node::new_unary(NodeKind::DeRef, unary, token.clone()));
 }

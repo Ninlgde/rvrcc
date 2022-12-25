@@ -439,6 +439,22 @@ impl<'a> Generator<'a> {
                 self.cast(f_typ, t_typ);
                 return;
             }
+            NodeKind::MemZero => {
+                let var = node.var.as_ref().unwrap().clone();
+                let var = var.borrow();
+                let typ = var.get_type().borrow();
+                writeln!(
+                    "  # 对{}的内存{}(fp)清零{}位",
+                    var.get_name(),
+                    var.get_offset(),
+                    typ.size
+                );
+                // 对栈内变量所占用的每个字节都进行清零
+                for i in 0..typ.size {
+                    writeln!("  sb zero, {}(fp)", var.get_offset() + i);
+                }
+                return;
+            }
             NodeKind::Cond => {
                 let c: u32 = self.count();
                 writeln!("\n# =====条件运算符{}===========", c);

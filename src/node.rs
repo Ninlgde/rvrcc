@@ -88,6 +88,8 @@ pub enum NodeKind {
     Num,
     // 类型转换
     Cast,
+    // 栈中变量清零
+    MemZero,
 }
 
 pub type NodeLink = Box<Node>;
