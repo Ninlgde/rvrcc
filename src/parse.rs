@@ -773,6 +773,15 @@ impl<'a> Parser<'a> {
 
         // struct_initializer
         if t.kind == TypeKind::Struct {
+            // 匹配使用其他结构体来赋值，其他结构体需要先被解析过
+            if !token.equal("{") {
+                let mut expr = self.assign().unwrap();
+                add_type(&mut expr);
+                if expr.type_.as_ref().unwrap().borrow().kind == TypeKind::Struct {
+                    init.expr = Some(expr);
+                    return;
+                }
+            }
             self.struct_initializer(init);
             return;
         }

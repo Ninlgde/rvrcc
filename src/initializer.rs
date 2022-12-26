@@ -150,7 +150,7 @@ pub fn create_lvar_init(
         return Some(node);
     }
 
-    if t.kind == TypeKind::Struct {
+    if t.kind == TypeKind::Struct && init.expr.is_none() {
         // 构造结构体的初始化器结构
         let mut node = Node::new(NodeKind::NullExpr, token.clone());
 
