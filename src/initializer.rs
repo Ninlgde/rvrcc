@@ -34,6 +34,7 @@ impl<'a> Initializer<'a> {
         });
 
         let t = typ.borrow();
+        // 处理数组类型
         if t.kind == TypeKind::Array {
             // 判断是否需要调整数组元素数并且数组不完整
             if is_flexible && t.size < 0 {
@@ -41,15 +42,17 @@ impl<'a> Initializer<'a> {
                 init.is_flexible = true;
                 return init;
             }
+            // 为数组的最外层的每个元素分配空间
+            // 遍历解析数组最外层的每个元素
             for _ in 0..t.len {
                 init.children
                     .push(Initializer::new(t.base.as_ref().unwrap().clone(), false))
             }
         }
 
-        if t.kind == TypeKind::Struct {
-            // let len = t.members.len();
-            // let children: Vec<Box<Initializer<'a>>> = Vec::with_capacity(len);
+        // 处理结构体和联合体
+        if t.kind == TypeKind::Struct || t.kind == TypeKind::Union {
+            // 遍历子项进行赋值
             for member in t.members.iter() {
                 init.children.push(Initializer::new(
                     member.type_.as_ref().unwrap().clone(),
@@ -166,6 +169,18 @@ pub fn create_lvar_init(
             node = Node::new_binary(NodeKind::Comma, node, rhs, token.clone());
         }
         return Some(node);
+    }
+
+    if t.kind == TypeKind::Union {
+        let member = &t.members[0];
+        // id存储了成员变量
+        let id = InitDesig::new_with_next(desig.clone(), 0, Some(member.clone()));
+        return create_lvar_init(
+            init.children[0].clone(),
+            member.type_.as_ref().unwrap().clone(),
+            id,
+            token.clone(),
+        );
     }
 
     // 如果需要作为右值的表达式为空，则设为空表达式

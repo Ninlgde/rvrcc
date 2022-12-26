@@ -18,10 +18,11 @@
 //! declaration = declspec (declarator ("=" initializer)?
 //!                         ("," declarator ("=" initializer)?)*)? ";"
 //! initializer = string_initializer | array_initializer | struct_initializer
-//!             | assign
+//!             | union_initializer | assign
 //! string_initializer = string_literal
 //! array_initializer = "{" initializer ("," initializer)* "}"
-// struct_initializer = "{" initializer ("," initializer)* "}"
+//! struct_initializer = "{" initializer ("," initializer)* "}"
+//! union_initializer = "{" initializer "}"
 //! stmt = "return" expr ";"
 //!        | "if" "(" expr ")" stmt ("else" stmt)?
 //!        | "switch" "(" expr ")" stmt
@@ -638,6 +639,14 @@ impl<'a> Parser<'a> {
         Some(node)
     }
 
+    /// union_initializer = "{" initializer "}"
+    fn union_initializer(&mut self, init: &mut Box<Initializer>) {
+        // 联合体只接受第一个成员用来初始化
+        self.skip("{");
+        self.initializer0(&mut init.children[0]);
+        self.skip("}");
+    }
+
     /// struct_initializer = "{" initializer ("," initializer)* "}"
     fn struct_initializer(&mut self, init: &mut Box<Initializer>) {
         let typ = init.typ.as_ref().unwrap().clone();
@@ -754,7 +763,8 @@ impl<'a> Parser<'a> {
         }
     }
 
-    /// initializer = string_initializer | array_initializer | assign
+    /// initializer = string_initializer | array_initializer | string_initializer
+    ///             | union_initializer | assign
     fn initializer0(&mut self, init: &mut Box<Initializer>) {
         // string_initializer
         let t = init.typ.as_ref().unwrap().clone();
@@ -783,6 +793,12 @@ impl<'a> Parser<'a> {
                 }
             }
             self.struct_initializer(init);
+            return;
+        }
+
+        // union_initializer
+        if t.kind == TypeKind::Union {
+            self.union_initializer(init);
             return;
         }
 
