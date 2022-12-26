@@ -21,7 +21,7 @@ pub enum Obj {
         /// 是 局部或全局 变量
         is_local: bool,
         /// 全局变量
-        init_data: Option<Vec<u8>>,
+        init_data: Option<Vec<i8>>,
         /// 是否为文件域内的
         is_static: bool,
     },
@@ -115,7 +115,7 @@ impl Obj {
         name: String,
         type_: TypeLink,
         is_local: bool,
-        init_data: Option<Vec<u8>>,
+        init_data: Option<Vec<i8>>,
     ) -> Self {
         Self::Var {
             name,
@@ -133,8 +133,17 @@ impl Obj {
     }
 
     /// 创建全局变量对象
-    pub fn new_gvar(name: String, type_: TypeLink, init_data: Option<Vec<u8>>) -> Self {
+    pub fn new_gvar(name: String, type_: TypeLink, init_data: Option<Vec<i8>>) -> Self {
         Self::new_var(name, type_, false, init_data)
+    }
+
+    pub fn set_init_data(&mut self, buf: Vec<i8>) {
+        match self {
+            Self::Var { init_data, .. } => {
+                *init_data = Some(buf);
+            }
+            _ => (),
+        }
     }
 
     /// 函数对象设置相关信息

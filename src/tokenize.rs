@@ -31,11 +31,11 @@ pub fn tokenize(path: String, input: String) -> Vec<Token> {
 
             loop {
                 let c = chars[pos] as char;
+                pos += 1;
                 if c == '\n' {
                     line_no += 1; // 单核注释 行号+1
                     break;
                 }
-                pos += 1;
             }
             continue;
         }

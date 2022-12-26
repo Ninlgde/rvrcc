@@ -1,7 +1,7 @@
 //! 初始化器
 
 use crate::ctype::{TypeKind, TypeLink};
-use crate::node::{add_with_type, Node, NodeKind, NodeLink};
+use crate::node::{add_with_type, eval, Node, NodeKind, NodeLink};
 use crate::obj::{Member, ObjLink};
 use crate::token::Token;
 
@@ -219,4 +219,35 @@ pub fn init_desig_expr(desig: Box<InitDesig>, token: Token) -> Option<NodeLink> 
     // 返回偏移后的变量地址
     let unary = add_with_type(lhs, rhs, token.clone()).unwrap();
     return Some(Node::new_unary(NodeKind::DeRef, unary, token.clone()));
+}
+
+/// 对全局变量的初始化器写入数据
+pub fn write_gvar_data(init: Box<Initializer>, typ: &TypeLink, chars: &mut Vec<i8>, offset: usize) {
+    let t = typ.borrow();
+    if t.kind == TypeKind::Array {
+        let tb = t.base.as_ref().unwrap();
+        let size = tb.borrow().size;
+        for i in 0..t.len as usize {
+            write_gvar_data(
+                init.children[i].clone(),
+                tb,
+                chars,
+                offset + i * size as usize,
+            );
+        }
+        return;
+    }
+
+    if init.expr.is_some() {
+        let mut expr = init.expr.as_ref().unwrap().clone();
+        write_buf(chars, offset, eval(&mut expr), t.size);
+    }
+}
+
+/// 把val
+fn write_buf(chars: &mut Vec<i8>, start: usize, val: i64, size: isize) {
+    let bytes = val.to_le_bytes();
+    for i in 0..size as usize {
+        chars[start + i] = bytes[i] as i8;
+    }
 }

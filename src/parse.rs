@@ -72,7 +72,7 @@
 //! func_call = ident "(" (assign ("," assign)*)? ")"
 
 use crate::ctype::{add_type, Type, TypeKind, TypeLink};
-use crate::initializer::{create_lvar_init, InitDesig, Initializer};
+use crate::initializer::{create_lvar_init, write_gvar_data, InitDesig, Initializer};
 use crate::keywords::{
     KW_BOOL, KW_BREAK, KW_CASE, KW_CHAR, KW_CONTINUE, KW_DEFAULT, KW_ELSE, KW_ENUM, KW_FOR,
     KW_GOTO, KW_IF, KW_INT, KW_LONG, KW_RETURN, KW_SHORT, KW_SIZEOF, KW_STATIC, KW_STRUCT,
@@ -81,7 +81,7 @@ use crate::keywords::{
 use crate::node::{add_with_type, eval, sub_with_type, LabelInfo, Node, NodeKind, NodeLink};
 use crate::obj::{Member, Obj, ObjLink, Scope, VarAttr, VarScope};
 use crate::token::Token;
-use crate::{align_to, error_at, error_token};
+use crate::{align_to, error_at, error_token, vec_u8_into_i8};
 use std::cell::RefCell;
 use std::cmp;
 use std::rc::Rc;
@@ -193,7 +193,11 @@ impl<'a> Parser<'a> {
             let type_ = self.declarator(base_type.clone());
             let name = type_.borrow().get_name().to_string();
             let obj = Obj::new_gvar(name.to_string(), type_, None);
-            self.new_gvar(name.to_string(), obj);
+            let var = self.new_gvar(name.to_string(), obj);
+            let (_, token) = self.current();
+            if token.equal("=") {
+                self.next().gvar_initializer(var.unwrap());
+            }
         }
     }
 
@@ -314,7 +318,7 @@ impl<'a> Parser<'a> {
     /// 创建新的全局变量
     fn new_gvar(&mut self, name: String, obj: Obj) -> Option<ObjLink> {
         let gvar = Rc::new(RefCell::new(obj));
-        self.globals.push(gvar.clone());
+        self.globals.insert(0, gvar.clone());
         let vs = self.push_scope(name);
         {
             let mut vsm = vs.as_ref().borrow_mut();
@@ -838,6 +842,27 @@ impl<'a> Parser<'a> {
         let rhs = create_lvar_init(init, typ.clone(), id, nt.clone()).unwrap();
         // 左部为全部清零，右部为需要赋值的部分
         return Some(Node::new_binary(NodeKind::Comma, lhs, rhs, nt.clone()));
+    }
+
+    /// 全局变量在编译时需计算出初始化的值，然后写入.data段。
+    fn gvar_initializer(&mut self, var: ObjLink) {
+        // 获取到初始化器
+        let init = self.initializer(var.clone()).unwrap();
+        let new_type = init.typ.as_ref().unwrap().clone();
+        let mut binding = var.borrow_mut();
+        binding.set_type(new_type);
+
+        // 写入计算过后的数据
+        let typ = binding.get_type();
+        let size = typ.borrow().size as usize;
+        let mut buf = Vec::with_capacity(size);
+        for _ in 0..size {
+            buf.push(0);
+        }
+        {
+            write_gvar_data(init, typ, &mut buf, 0);
+            binding.set_init_data(buf);
+        }
     }
 
     /// 解析语句
@@ -2024,7 +2049,7 @@ impl<'a> Parser<'a> {
                 return None;
             }
             Token::Str { val, type_, .. } => {
-                let var = self.new_string_literal(val.to_vec(), type_.clone());
+                let var = self.new_string_literal(vec_u8_into_i8(val.to_vec()), type_.clone());
                 let node = Node::new_var(var, nt);
                 self.next();
                 return Some(node);
@@ -2259,7 +2284,7 @@ impl<'a> Parser<'a> {
     }
 
     /// 新增字符串字面量
-    fn new_string_literal(&mut self, str_data: Vec<u8>, base_type: TypeLink) -> ObjLink {
+    fn new_string_literal(&mut self, str_data: Vec<i8>, base_type: TypeLink) -> ObjLink {
         let name = self.new_unique_name();
         let obj = Obj::new_gvar(name.to_string(), base_type, Some(str_data));
         // 加入globals

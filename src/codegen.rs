@@ -114,7 +114,7 @@ impl<'a> Generator<'a> {
                     init_data,
                     ..
                 } => {
-                    writeln!("  # 数据段标签");
+                    writeln!("\n  # 数据段标签");
                     writeln!("  .data");
                     // 判断是否有初始值
                     if init_data.is_some() {
@@ -123,8 +123,8 @@ impl<'a> Generator<'a> {
                         writeln!("  # 字符串字面量");
                         let chars = init_data.as_ref().unwrap();
                         for i in chars {
-                            let c = *i as char;
-                            if !c.is_ascii_control() {
+                            let c = *i as u8 as char;
+                            if c.is_ascii() && !c.is_ascii_control() {
                                 writeln!("  .byte {}\t# {}", i, c);
                             } else {
                                 writeln!("  .byte {}", i);
