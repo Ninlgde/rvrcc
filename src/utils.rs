@@ -47,3 +47,9 @@ pub fn open_file_for_write(path: &String) -> Box<dyn Write> {
         Box::new(f.expect("error to open file"))
     };
 }
+
+/// 向文件`file`写入字符串`string`
+pub fn write_file(file: &mut impl Write, string: &str) {
+    file.write_all(string.as_ref())
+        .expect("write file got error");
+}

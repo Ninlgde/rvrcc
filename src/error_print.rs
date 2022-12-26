@@ -1,7 +1,8 @@
 //! 错误打印相关宏
 
-use crate::{slice_to_string, Token, FILE_NAME, INPUT};
-use core::fmt;
+use crate::token::Token;
+use crate::{slice_to_string, FILE_NAME, INPUT};
+use std::fmt;
 
 /// 根据偏移位置计算出行号和行的起始与结束
 fn find_line_info(chars: &Vec<u8>, s_line_no: usize, offset: usize) -> (usize, usize, usize) {
@@ -39,7 +40,7 @@ fn find_line_info(chars: &Vec<u8>, s_line_no: usize, offset: usize) -> (usize, u
     (line_no, line_start, line_end)
 }
 
-// 字符解析出错，并退出程序
+/// 字符解析出错，并退出程序
 pub fn print_with_error(mut line_no: usize, offset: usize, args: fmt::Arguments) {
     let input = unsafe { INPUT.to_string().into_bytes() };
     let file_name = unsafe { FILE_NAME.to_string() };
@@ -60,7 +61,7 @@ pub fn print_with_error(mut line_no: usize, offset: usize, args: fmt::Arguments)
     panic!("error at offset: {}", offset);
 }
 
-// Tok解析出错，并退出程序
+/// Tok解析出错，并退出程序
 pub fn print_with_token_error(token: &Token, args: fmt::Arguments) {
     print_with_error(token.get_line_no(), token.get_offset(), args);
 }
@@ -73,7 +74,7 @@ macro_rules! error_at {
     }
 }
 
-/// error token
+/// error when parse token
 #[macro_export]
 macro_rules! error_token {
     ($token:expr, $fmt: literal $(, $($arg: tt)+)?) => {

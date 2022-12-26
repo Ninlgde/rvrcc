@@ -1,50 +1,70 @@
 //! C语言的类型实现
 
-use crate::{error_token, Member, Node, NodeKind, NodeLink, Token};
+use crate::error_token;
+use crate::node::{Node, NodeKind, NodeLink};
+use crate::obj::Member;
+use crate::token::Token;
 use std::cell::RefCell;
 use std::rc::Rc;
 
+/// c类型的种类
 #[derive(Clone, PartialEq, Eq)]
 pub enum TypeKind {
+    /// void类型
     Void,
+    /// _Bool布尔类型
     Bool,
+    /// char字符类型
     Char,
+    /// short短整型
     Short,
+    /// int整型
     Int,
+    /// long长整型
     Long,
-    Ptr,
-    Func,
-    Array,
-    Struct,
-    Union,
+    /// enum枚举类型
     Enum,
+    /// 指针
+    Ptr,
+    /// 函数
+    Func,
+    /// 数组
+    Array,
+    /// 结构体
+    Struct,
+    /// 联合体
+    Union,
 }
 
 pub type TypeLink = Rc<RefCell<Type>>;
 
+/// c语言类型
 #[derive(Clone)]
 pub struct Type {
+    /// 种类
     pub(crate) kind: TypeKind,
-    // 名称
+    /// 名称
     pub(crate) name: Token,
+    /// 名称字符串
     pub(crate) name_string: String,
-    // 大小, sizeof返回的值
+    /// 大小, sizeof返回的值
     pub(crate) size: isize,
-    // 对齐
+    /// 对齐
     pub(crate) align: isize,
-    // 指向的类型
+    /// 指向的类型
     pub(crate) base: Option<TypeLink>,
-    // 返回的类型
+    /// 返回的类型
     pub(crate) return_type: Option<TypeLink>,
-    // 形参
+    /// 形参
     pub(crate) params: Vec<TypeLink>,
-    // 数组长度, 元素总个数
+    /// 数组长度, 元素总个数
     pub(crate) len: isize,
-    // 结构体
+    /// 结构体
     pub(crate) members: Vec<Box<Member>>,
 }
 
 impl Type {
+    /// 通过类型`kind`,大小`size`,对齐`align`来创建一个类型
     pub fn new(kind: TypeKind, size: isize, align: isize) -> Self {
         Self {
             kind,
@@ -60,47 +80,56 @@ impl Type {
         }
     }
 
+    /// 创建一个void类型
     pub fn new_void() -> TypeLink {
         let type_ = Self::new(TypeKind::Void, 1, 1);
         Rc::new(RefCell::new(type_))
     }
 
+    /// 创建一个bool类型
     pub fn new_bool() -> TypeLink {
         let type_ = Self::new(TypeKind::Bool, 1, 1);
         Rc::new(RefCell::new(type_))
     }
 
+    /// 创建一个char类型
     pub fn new_char() -> TypeLink {
         let type_ = Self::new(TypeKind::Char, 1, 1);
         Rc::new(RefCell::new(type_))
     }
 
+    /// 创建一个short类型
     pub fn new_short() -> TypeLink {
         let type_ = Self::new(TypeKind::Short, 2, 2);
         Rc::new(RefCell::new(type_))
     }
 
+    /// 创建一个int类型
     pub fn new_int() -> TypeLink {
         let type_ = Self::new(TypeKind::Int, 4, 4);
         Rc::new(RefCell::new(type_))
     }
 
+    /// 创建一个long类型
     pub fn new_long() -> TypeLink {
         let type_ = Self::new(TypeKind::Long, 8, 8);
         Rc::new(RefCell::new(type_))
     }
 
+    /// 创建一个enum类型
     pub fn new_enum() -> TypeLink {
         let type_ = Self::new(TypeKind::Enum, 4, 4);
         Rc::new(RefCell::new(type_))
     }
 
+    /// 创建一个指向`base`的指针类型
     pub fn pointer_to(base: TypeLink) -> TypeLink {
         let mut type_ = Self::new(TypeKind::Ptr, 8, 8);
         type_.base = Some(base);
         Rc::new(RefCell::new(type_))
     }
 
+    /// 创建一个返回值类型为`return_type`,形参列表为`params`的函数类型
     pub fn func_type(return_type: TypeLink, params: Vec<TypeLink>) -> TypeLink {
         let mut type_ = Self::new(TypeKind::Func, 8, 8);
         type_.return_type = Some(return_type);
@@ -108,19 +137,23 @@ impl Type {
         Rc::new(RefCell::new(type_))
     }
 
+    /// 创建一个长度为`len`的`base`类型的数组
     pub fn array_of(base: TypeLink, len: isize) -> TypeLink {
-        let size = base.borrow().get_size() * len;
+        let size = base.borrow().size * len;
         let mut type_ = Self::new(TypeKind::Array, size, base.borrow().align);
         type_.base = Some(base);
         type_.len = len;
         Rc::new(RefCell::new(type_))
     }
 
+    /// 创建一个union/struct类型
+    /// 后续代码中会确定其为union还是struct
     pub fn new_union_struct() -> Type {
         let type_ = Self::new(TypeKind::Struct, 0, 1);
         type_
     }
 
+    /// 是否是整数类型
     pub fn is_int(&self) -> bool {
         self.kind == TypeKind::Char
             || self.kind == TypeKind::Short
@@ -130,43 +163,37 @@ impl Type {
             || self.kind == TypeKind::Enum
     }
 
+    /// 是否含有基础类型
     pub fn has_base(&self) -> bool {
         self.kind == TypeKind::Ptr || self.kind == TypeKind::Array
     }
 
-    pub fn is_func(&self) -> bool {
-        self.kind == TypeKind::Func
-    }
-
+    /// 获取type的名称字符串
     pub fn get_name(&self) -> &str {
         self.name_string.as_str()
     }
 
-    pub fn set_name(&mut self, s: Token) {
-        self.name = s.clone();
-        self.name_string = s.get_name();
+    /// 通过`Token`设置type的`name`和`name_string`
+    pub fn set_name(&mut self, token: Token) {
+        self.name = token.clone();
+        self.name_string = token.get_name();
     }
 
-    pub fn get_size(&self) -> isize {
-        self.size
-    }
-
+    /// 指针和数组类型获取基础类型的size
     pub fn get_base_size(&self) -> isize {
         if self.has_base() {
-            return self.base.as_ref().unwrap().borrow().get_size();
+            return self.base.as_ref().unwrap().borrow().size;
         } else {
             0
         }
     }
 
-    pub fn add_param(&mut self, param: TypeLink) {
-        self.params.insert(0, param);
-    }
-
+    /// 获取函数类型的形参
     pub fn get_params(&self) -> &Vec<TypeLink> {
         &self.params
     }
 
+    /// 根据`typ1`和`typ2`获取容纳左右部的类型
     pub fn get_common_type(typ1: TypeLink, typ2: TypeLink) -> TypeLink {
         if typ1.borrow().has_base() {
             return Self::pointer_to(typ1.borrow().base.as_ref().unwrap().clone());
@@ -179,49 +206,40 @@ impl Type {
     }
 }
 
+/// 进行常规的算术转换
 pub fn usual_arith_conv(lhs: NodeLink, rhs: NodeLink) -> (NodeLink, NodeLink) {
     let typ = Type::get_common_type(
         lhs.type_.as_ref().unwrap().clone(),
         rhs.type_.as_ref().unwrap().clone(),
     );
 
+    // 将左右部转换到兼容的类型
     let lhs = Node::new_cast(lhs, typ.clone());
     let rhs = Node::new_cast(rhs, typ);
-
     (lhs, rhs)
 }
 
+/// 为节点内的所有节点添加类型
 pub fn add_type(node: &mut NodeLink) {
     // 判断 节点类型已经有值，那么就直接返回
     if node.get_type().is_some() {
         return;
     }
 
-    if node.lhs.is_some() {
-        add_type(node.lhs.as_mut().unwrap());
-    }
-    if node.rhs.is_some() {
-        add_type(node.rhs.as_mut().unwrap());
-    }
-    if node.cond.is_some() {
-        add_type(node.cond.as_mut().unwrap());
-    }
-    if node.then.is_some() {
-        add_type(node.then.as_mut().unwrap());
-    }
-    if node.els.is_some() {
-        add_type(node.els.as_mut().unwrap());
-    }
-    if node.init.is_some() {
-        add_type(node.init.as_mut().unwrap());
-    }
-    if node.inc.is_some() {
-        add_type(node.inc.as_mut().unwrap());
-    }
+    // 递归访问所有节点以增加类型
+    add_type_option(node.lhs.as_mut());
+    add_type_option(node.rhs.as_mut());
+    add_type_option(node.cond.as_mut());
+    add_type_option(node.then.as_mut());
+    add_type_option(node.els.as_mut());
+    add_type_option(node.init.as_mut());
+    add_type_option(node.inc.as_mut());
 
+    // 访问body的所有节点以增加类型
     for i in 0..node.body.len() {
         add_type(&mut node.body[i])
     }
+    // 访问所有参数节点`args`以增加类型
     for i in 0..node.args.len() {
         add_type(&mut node.args[i])
     }
@@ -299,6 +317,7 @@ pub fn add_type(node: &mut NodeLink) {
             let vt = var.borrow().get_type().clone();
             node.type_ = Some(vt.clone());
         }
+        // 如果:左或右部为void则为void，否则为二者兼容的类型
         NodeKind::Cond => {
             let then_t = node.then.as_ref().unwrap().type_.as_ref().unwrap().clone();
             let els_t = node.els.as_ref().unwrap().type_.as_ref().unwrap().clone();
@@ -361,5 +380,12 @@ pub fn add_type(node: &mut NodeLink) {
             );
         }
         _ => {}
+    }
+}
+
+/// 为节点内的所有节点添加类型
+fn add_type_option(node: Option<&mut NodeLink>) {
+    if node.is_some() {
+        add_type(node.unwrap());
     }
 }

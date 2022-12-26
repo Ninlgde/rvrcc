@@ -1,5 +1,7 @@
+use crate::ctype::Type;
 use crate::keywords::KEYWORDS;
-use crate::{error_at, read_file, slice_to_string, Token, Type, FILE_NAME, INPUT};
+use crate::token::Token;
+use crate::{error_at, read_file, slice_to_string, FILE_NAME, INPUT};
 
 /// 对文件的终结符解析
 pub fn tokenize_file(path: String) -> Vec<Token> {
@@ -17,9 +19,9 @@ pub fn tokenize(path: String, input: String) -> Vec<Token> {
 
     let mut tokens: Vec<Token> = vec![];
 
+    // 讲输入字符串转为字符vec,方便处理
     let chars = input.into_bytes();
     let mut pos = 0;
-
     let mut line_no = 1usize;
 
     while pos < chars.len() {
@@ -72,6 +74,7 @@ pub fn tokenize(path: String, input: String) -> Vec<Token> {
             continue;
         }
 
+        // 解析数值
         if c.is_digit(10) {
             // 初始化，类似于C++的构造函数
             // 我们不使用Head来存储信息，仅用来表示链表入口，这样每次都是存储在Cur->Next
@@ -105,6 +108,7 @@ pub fn tokenize(path: String, input: String) -> Vec<Token> {
             continue;
         }
 
+        // 解析字符字面量
         if c == '\'' {
             let c = read_char_literal(&chars, &mut pos);
             tokens.push(Token::Num {
@@ -178,6 +182,7 @@ fn strtol(chars: &Vec<u8>, pos: &mut usize, base: u32) -> i64 {
     result
 }
 
+/// 判断chars中pos开头的字符是否与sub字符串匹配
 fn starts_with(chars: &Vec<u8>, pos: usize, sub: &str) -> bool {
     let sub = sub.as_bytes();
     for i in 0..sub.len() {
@@ -188,6 +193,8 @@ fn starts_with(chars: &Vec<u8>, pos: usize, sub: &str) -> bool {
     true
 }
 
+/// 判断chars中pos开头的字符是否与sub字符串匹配
+/// 忽略大小写
 fn starts_with_ignore_case(chars: &Vec<u8>, pos: usize, sub: &str) -> bool {
     let binding = sub.to_ascii_lowercase();
     let sub = binding.as_bytes();
@@ -200,6 +207,7 @@ fn starts_with_ignore_case(chars: &Vec<u8>, pos: usize, sub: &str) -> bool {
     true
 }
 
+/// 读取一个操作符
 fn read_punct(chars: &Vec<u8>, pos: &mut usize) {
     let ops = vec![
         "<<=", ">>=", "==", "!=", "<=", ">=", "->", "+=", "-=", "*=", "/=", "++", "--", "%=", "&=",
@@ -219,6 +227,7 @@ fn read_punct(chars: &Vec<u8>, pos: &mut usize) {
     }
 }
 
+/// 读取一个id
 fn read_ident(chars: &Vec<u8>, pos: &mut usize) {
     let c = chars[*pos] as char;
     if c.is_alphabetic() || c == '_' {
@@ -232,6 +241,7 @@ fn read_ident(chars: &Vec<u8>, pos: &mut usize) {
     }
 }
 
+/// 读取字符串字面量
 fn read_string_literal(chars: &Vec<u8>, pos: &mut usize) -> Vec<u8> {
     let old_pos = *pos; // +1 忽略"
     string_literal_end(chars, pos);
@@ -343,6 +353,7 @@ fn from_hex(c: char) -> u8 {
     return c as u8 - 'A' as u8 + 10;
 }
 
+/// 读取字符字面量
 fn read_char_literal(chars: &Vec<u8>, pos: &mut usize) -> char {
     *pos += 1; // 忽略'
     let mut c = chars[*pos] as char;
@@ -369,6 +380,7 @@ fn read_char_literal(chars: &Vec<u8>, pos: &mut usize) -> char {
     return r;
 }
 
+/// 读取数字的字面量
 fn read_int_literal(chars: &Vec<u8>, pos: &mut usize) -> i64 {
     let c = chars[*pos] as char;
     let cnn = chars[*pos + 2] as char; //0x() or 0b()
@@ -384,11 +396,11 @@ fn read_int_literal(chars: &Vec<u8>, pos: &mut usize) -> i64 {
         radix = 8;
     }
 
-    let r = strtol(chars, pos, radix);
+    let result = strtol(chars, pos, radix);
     let c = chars[*pos] as char;
     if c.is_alphabetic() {
         error_at!(0, *pos, "invalid digit");
     }
 
-    r
+    result
 }

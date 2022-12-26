@@ -1,40 +1,44 @@
 //! 汇编生成器
 
-use crate::{align_to, error_token, NodeKind, NodeLink, Obj, ObjLink, TypeKind, TypeLink};
-use core::fmt;
+use crate::ctype::{TypeKind, TypeLink};
+use crate::node::{NodeKind, NodeLink};
+use crate::obj::{Obj, ObjLink};
+use crate::{align_to, error_token, write_file};
+use std::fmt;
 use std::io::Write;
 
 /// 形参name
 const ARG_NAMES: [&str; 6] = ["a0", "a1", "a2", "a3", "a4", "a5"];
 
-static mut OUT_PUT: Option<Box<dyn Write>> = None;
+/// 输出文件
+static mut OUTPUT: Option<Box<dyn Write>> = None;
 
+/// 汇编代码生成到文件
 pub fn codegen(program: &mut Vec<ObjLink>, write_file: Box<dyn Write>) {
     unsafe {
-        OUT_PUT = Some(write_file);
+        OUTPUT = Some(write_file);
     }
     let mut generator = Generator::new(program);
     generator.generate();
 }
 
-pub fn write_file(args: fmt::Arguments) {
+/// 把args输出到OUTPUT
+pub fn write2output(args: fmt::Arguments) {
     let output = format!("{}", args);
     unsafe {
-        OUT_PUT
-            .as_mut()
-            .expect("no output file")
-            .write(output.as_ref())
-            .expect("write file got error");
+        write_file(OUTPUT.as_mut().expect("no output file"), output.as_ref());
     }
 }
 
+/// 宏: 输出一行字符串到文件
 #[macro_export]
 macro_rules! writeln {
     ($fmt: literal $(, $($arg: tt)+)?) => {
-        $crate::codegen::write_file(format_args!(concat!($fmt, "\n") $(, $($arg)+)?))
+        $crate::codegen::write2output(format_args!(concat!($fmt, "\n") $(, $($arg)+)?))
     };
 }
 
+/// 宏: 输出字符串到文件
 #[macro_export]
 macro_rules! write {
     ($fmt: literal $(, $($arg: tt)+)?) => {
@@ -42,10 +46,15 @@ macro_rules! write {
     };
 }
 
+/// 生成器
 struct Generator<'a> {
+    /// ast
     program: &'a mut Vec<ObjLink>,
+    /// 当前生成的方法名
     current_function_name: String,
+    /// 栈深
     depth: usize,
+    /// 代码段计数
     counter: u32,
 }
 
@@ -59,12 +68,14 @@ impl<'a> Generator<'a> {
         }
     }
 
+    /// 生成
     pub fn generate(&mut self) {
         self.assign_lvar_offsets();
         self.emit_data();
         self.emit_text();
     }
 
+    /// 给local var赋值offset
     fn assign_lvar_offsets(&mut self) {
         for func in self.program.into_iter() {
             let f = &mut *func.borrow_mut();
@@ -78,7 +89,7 @@ impl<'a> Generator<'a> {
                             let cv = var.clone();
                             let v = cv.borrow();
                             let t = v.get_type().borrow();
-                            offset += t.get_size() as isize;
+                            offset += t.size as isize;
                             offset = align_to(offset, t.align as isize);
                         }
                         let mut v = var.borrow_mut();
@@ -92,6 +103,7 @@ impl<'a> Generator<'a> {
         }
     }
 
+    /// 生成数据段
     fn emit_data(&mut self) {
         for var in self.program.to_vec().iter() {
             let var = &*var.borrow();
@@ -122,8 +134,8 @@ impl<'a> Generator<'a> {
                         writeln!("  # 全局段{}", name);
                         writeln!("  .globl {}", name);
                         writeln!("{}:", name);
-                        writeln!("  # 全局变量零填充{}位", type_.borrow().get_size());
-                        writeln!("  .zero {}", type_.borrow().get_size());
+                        writeln!("  # 全局变量零填充{}位", type_.borrow().size);
+                        writeln!("  .zero {}", type_.borrow().size);
                     }
                 }
                 _ => {}
@@ -131,6 +143,7 @@ impl<'a> Generator<'a> {
         }
     }
 
+    /// 生成代码段
     fn emit_text(&mut self) {
         for function in self.program.to_vec().iter().rev() {
             let function = &*function.borrow_mut();
@@ -192,7 +205,7 @@ impl<'a> Generator<'a> {
                     let mut i = 0;
                     for p in params.iter().rev() {
                         let p = p.borrow();
-                        let size = p.get_type().borrow().get_size();
+                        let size = p.get_type().borrow().size;
                         self.store_general(i, p.get_offset(), size);
                         i += 1;
                     }
@@ -225,6 +238,7 @@ impl<'a> Generator<'a> {
         }
     }
 
+    /// 生成语句
     fn gen_stmt(&mut self, node: &NodeLink) {
         writeln!("  .loc 1 {}", node.get_token().get_line_no());
 
@@ -628,6 +642,7 @@ impl<'a> Generator<'a> {
         }
     }
 
+    /// 生成左右节点的表达式
     fn gen_lrhs(&mut self, lhs: &NodeLink, rhs: &NodeLink) {
         // 递归到最右节点
         self.gen_expr(rhs);
@@ -638,6 +653,7 @@ impl<'a> Generator<'a> {
         // 将结果弹栈到a1
         self.pop("a1");
     }
+
     /// 计算给定节点的绝对地址
     /// 如果报错，说明节点不在内存中
     fn gen_addr(&mut self, node: &NodeLink) {
@@ -701,6 +717,7 @@ impl<'a> Generator<'a> {
         self.depth -= 1;
     }
 
+    /// 加载a0指向的值
     fn load(&mut self, type_: TypeLink) {
         if type_.borrow().kind == TypeKind::Array
             || type_.borrow().kind == TypeKind::Struct
@@ -710,7 +727,7 @@ impl<'a> Generator<'a> {
         }
 
         writeln!("  # 读取a0中存放的地址，得到的值存入a0");
-        let size = type_.borrow().get_size();
+        let size = type_.borrow().size;
         match size {
             1 => writeln!("  lb a0, 0(a0)"),
             2 => writeln!("  lh a0, 0(a0)"),
@@ -720,6 +737,7 @@ impl<'a> Generator<'a> {
         }
     }
 
+    /// 将栈顶值(为一个地址)存入a0
     fn store(&mut self, type_: TypeLink) {
         self.pop("a1");
 
@@ -744,7 +762,7 @@ impl<'a> Generator<'a> {
         }
 
         writeln!("  # 将a0的值，写入到a1中存放的地址");
-        let size = type_.borrow().get_size();
+        let size = type_.borrow().size;
         match size {
             1 => writeln!("  sb a0, 0(a1)"),
             2 => writeln!("  sh a0, 0(a1)"),
@@ -754,6 +772,7 @@ impl<'a> Generator<'a> {
         }
     }
 
+    /// 将整形寄存器的值存入栈中
     fn store_general(&mut self, register: usize, offset: isize, size: isize) {
         writeln!(
             "  # 将{}寄存器的值存入{}(fp)的栈地址",
@@ -771,6 +790,7 @@ impl<'a> Generator<'a> {
         }
     }
 
+    /// 类型转换
     fn cast(&mut self, from: TypeLink, to: TypeLink) {
         if to.borrow().kind == TypeKind::Void {
             return;
@@ -791,6 +811,7 @@ impl<'a> Generator<'a> {
         }
     }
 
+    /// 代码段计数
     fn count(&mut self) -> u32 {
         let c = self.counter;
         self.counter += 1;
@@ -798,6 +819,8 @@ impl<'a> Generator<'a> {
     }
 }
 
+// 类型映射表
+// 先逻辑左移N位，再算术右移N位，就实现了将64位有符号数转换为64-N位的有符号数
 // long 64 -> i8
 const L8I1: Option<&str> = Some("  # 转换为i8类型\n  slli a0, a0, 56\n  srai a0, a0, 56");
 // long 64 -> i16
@@ -805,6 +828,7 @@ const L8I2: Option<&str> = Some("  # 转换为i16类型\n  slli a0, a0, 48\n  sr
 // long 64 -> i32
 const L8I4: Option<&str> = Some("  # 转换为i32类型\n  slli a0, a0, 32\n  srai a0, a0, 32");
 
+/// 获取类型对应的index
 fn get_type_id(typ: TypeLink) -> usize {
     match typ.borrow().kind {
         TypeKind::Char => 0,
@@ -814,6 +838,7 @@ fn get_type_id(typ: TypeLink) -> usize {
     }
 }
 
+/// 所有类型转换表
 const CAST_TABLE: [[Option<&str>; 10]; 10] = [
     [None, None, None, None, None, None, None, None, None, None],
     [L8I1, None, None, None, None, None, None, None, None, None],

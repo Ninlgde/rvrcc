@@ -1,30 +1,30 @@
-use rvrcc::{codegen, open_file_for_write, parse, tokenize_file};
+use rvrcc::{codegen, open_file_for_write, parse, tokenize_file, write_file};
 use std::env;
-use std::io::Write;
 use std::process::exit;
 
 fn main() {
+    // 获取命令行参数
     let args: Vec<String> = env::args().collect();
-
+    // 根据病例行参数,获取对应的输入输出文件
     let (input_path, output_path) = parse_args(args);
 
-    let mut file = open_file_for_write(&output_path);
-
+    // tokenize 输入文件
     let tokens = tokenize_file(input_path.to_string());
-
+    // 将token列表解析成ast
     let mut program = parse(&tokens);
 
+    // 打开输出文件
+    let mut file = open_file_for_write(&output_path);
+    // 写入文件名
     write_file(
         &mut file,
         format!(".file 1 \"{}\"\n", input_path.to_string()).as_str(),
     );
+    // 根据ast,向输出文件中写入相关汇编
     codegen(&mut program, file);
 }
 
-fn write_file(f: &mut impl Write, s: &str) {
-    f.write_all(s.as_ref()).unwrap();
-}
-
+/// 解析命令行参数
 fn parse_args(args: Vec<String>) -> (String, String) {
     if args.len() < 2 {
         print_usage(1);

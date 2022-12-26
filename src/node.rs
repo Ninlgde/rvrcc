@@ -2,145 +2,152 @@
 //! 生成AST（抽象语法树），语法解析
 //!
 
-use crate::{add_type, error_token, Member, ObjLink, Token, Type, TypeLink};
+use crate::ctype::{add_type, Type, TypeLink};
+use crate::error_token;
+use crate::obj::{Member, ObjLink};
+use crate::token::Token;
 use std::cell::RefCell;
 use std::rc::Rc;
 
+/// ast节点类型
 #[derive(Clone, Eq, PartialEq)]
 pub enum NodeKind {
-    // 空表达式
+    /// 空表达式
     NullExpr,
-    // +
+    /// +
     Add,
-    // -
+    /// -
     Sub,
-    // *
+    /// *
     Mul,
-    // /
+    /// /
     Div,
-    // 负号-
+    /// 负号-
     Neg,
-    // % 求余
+    /// % 求余
     Mod,
-    // &，按位与
+    /// &，按位与
     BitAnd,
-    // |，按位或
+    /// |，按位或
     BitOr,
-    // ^，按位异或
+    /// ^，按位异或
     BitXor,
-    // <<，左移
+    /// <<，左移
     Shl,
-    // >>，右移
+    /// >>，右移
     Shr,
-    // ==
+    /// ==
     Eq,
-    // !=
+    /// !=
     Ne,
-    // <
+    /// <
     Lt,
-    // <=
+    /// <=
     Le,
-    // 赋值
+    /// 赋值
     Assign,
-    // ?:，条件运算符
+    /// ?:，条件运算符
     Cond,
-    // , 逗号
+    /// , 逗号
     Comma,
-    // . 结构体成员访问
+    /// . 结构体成员访问
     Member,
-    // 取地址 &
+    /// 取地址 &
     Addr,
-    // 解引用 *
+    /// 解引用 *
     DeRef,
-    // !, 非
+    /// !, 非
     Not,
-    // ~, 按位取非
+    /// ~, 按位取非
     BitNot,
-    // &&，与
+    /// &&，与
     LogAnd,
-    // ||，或
+    /// ||，或
     LogOr,
-    // 返回
+    /// 返回
     Return,
-    // "if"，条件判断
+    /// "if"，条件判断
     If,
-    // "for" 或 "while"，循环
+    /// "for" 或 "while"，循环
     For,
-    // "switch"，分支语句
+    /// "switch"，分支语句
     Switch,
-    // "case"
+    /// "case"
     Case,
-    // { ... }，代码块
+    /// { ... }，代码块
     Block,
-    // goto，直接跳转语句
+    /// goto，直接跳转语句
     Goto,
-    // 标签语句
+    /// 标签语句
     Label,
-    // 函数调用
+    /// 函数调用
     FuncCall,
-    // 表达式语句
+    /// 表达式语句
     ExprStmt,
-    // 语句表达式
+    /// 语句表达式
     StmtExpr,
-    // 变量
+    /// 变量
     Var,
-    // 数字
+    /// 数字
     Num,
-    // 类型转换
+    /// 类型转换
     Cast,
-    // 栈中变量清零
+    /// 栈中变量清零
     MemZero,
 }
 
+/// box for node
 pub type NodeLink = Box<Node>;
 
-// AST的节点种类
+/// AST的节点
 #[derive(Clone)]
 pub struct Node {
+    /// 类型
     pub(crate) kind: NodeKind,
 
-    // 对应的token,增加翻译阶段的报错信息
+    /// 对应的token,增加翻译阶段的报错信息
     pub(crate) token: Token,
-    // 类型
+    /// 类型
     pub(crate) type_: Option<TypeLink>,
 
-    // 各种孩子
-    // 左部，left-hand side(单节点)
+    /// 各种孩子
+    /// 左部，left-hand side(单节点)
     pub(crate) lhs: Option<NodeLink>,
-    // 右部，right-hand side
+    /// 右部，right-hand side
     pub(crate) rhs: Option<NodeLink>,
-    // 条件内的表达式
+    /// 条件内的表达式
     pub(crate) cond: Option<NodeLink>,
-    // 符合条件后的语句
+    /// 符合条件后的语句
     pub(crate) then: Option<NodeLink>,
-    // 不符合条件后的语句
+    /// 不符合条件后的语句
     pub(crate) els: Option<NodeLink>,
-    // 初始化语句
+    /// 初始化语句
     pub(crate) init: Option<NodeLink>,
-    // 递增语句
+    /// 递增语句
     pub(crate) inc: Option<NodeLink>,
-    // 代码块
+    /// 代码块
     pub(crate) body: Vec<NodeLink>,
-    // 变量名
+    /// 变量名
     pub(crate) func_name: String,
-    // 函数类型
+    /// 函数类型
     pub(crate) func_type: Option<TypeLink>,
-    // 入参
+    /// 入参
     pub(crate) args: Vec<NodeLink>,
-    // 存储ND_VAR的字符串
+    /// 存储ND_VAR的字符串
     pub(crate) var: Option<ObjLink>,
-    // 存储ND_NUM种类的值
+    /// 存储ND_NUM种类的值
     pub(crate) val: i64,
-    // 结构体成员访问
+    /// 结构体成员访问
     pub(crate) member: Option<Box<Member>>,
-    // goto和标签语句
+    /// goto和标签语句
     pub(crate) label_info: Option<Rc<RefCell<LabelInfo>>>,
-    // "break" 标签
+    /// "break" 标签
     pub(crate) break_label: Option<String>,
-    // "continue" 标签 switch/case 时是case的label
+    /// "continue" 标签 switch/case 时是case的label
     pub(crate) continue_label: Option<String>,
-    // switch和case
+    /// switch和case
     pub(crate) case_next: Vec<NodeLink>,
+    /// switch的default部分
     pub(crate) default_case: Option<NodeLink>,
 }
 
@@ -172,12 +179,14 @@ impl Node {
         })
     }
 
+    /// 创建单节点
     pub fn new_unary(kind: NodeKind, expr: NodeLink, token: Token) -> NodeLink {
         let mut node = Self::new(kind, token);
         node.lhs = Some(expr);
         node
     }
 
+    /// 创建二叉节点
     pub fn new_binary(kind: NodeKind, lhs: NodeLink, rhs: NodeLink, token: Token) -> NodeLink {
         let mut node = Self::new(kind, token);
         node.lhs = Some(lhs);
@@ -185,12 +194,14 @@ impl Node {
         node
     }
 
+    /// 创建一个数值类型的节点
     pub fn new_num(val: i64, token: Token) -> NodeLink {
         let mut node = Self::new(NodeKind::Num, token);
         node.val = val;
         node
     }
 
+    /// 创建一个long类型的节点
     pub fn new_long(val: i64, token: Token) -> NodeLink {
         let mut node = Self::new(NodeKind::Num, token);
         node.val = val;
@@ -198,18 +209,21 @@ impl Node {
         node
     }
 
+    /// 创建一个var类型的节点
     pub fn new_var(val: ObjLink, token: Token) -> NodeLink {
         let mut node = Self::new(NodeKind::Var, token);
         node.var = Some(val);
         node
     }
 
+    /// 创建block节点,内含body数组的孩子节点
     pub fn new_block(kind: NodeKind, body: Vec<NodeLink>, token: Token) -> NodeLink {
         let mut node = Self::new(kind, token);
         node.body = body;
         node
     }
 
+    /// 创建强转类型的节点
     pub fn new_cast(mut expr: NodeLink, typ: TypeLink) -> NodeLink {
         add_type(&mut expr);
         let mut node = Self::new(NodeKind::Cast, expr.token.clone());
@@ -218,18 +232,22 @@ impl Node {
         node
     }
 
+    /// 设置节点c类型
     pub fn set_type(&mut self, type_: TypeLink) {
         self.type_ = Some(type_);
     }
 
+    /// 获取节点所对应的token
     pub fn get_token(&self) -> &Token {
         &self.token
     }
 
+    /// 获取节点的数据c类型
     pub fn get_type(&self) -> &Option<TypeLink> {
         &self.type_
     }
 
+    /// 获取唯一的label值
     pub fn get_unique_label(&self) -> String {
         let label = self.label_info.as_ref().unwrap();
         let x = label.clone();
@@ -308,7 +326,11 @@ pub fn eval(node: &mut Box<Node>) -> i64 {
             return eval(node.rhs.as_mut().unwrap());
         }
         NodeKind::Not => {
-            return eval(node.lhs.as_mut().unwrap()) ^ 1; // 0 ^ 1 = 1; 1 ^ 1 = 0;
+            return if eval(node.lhs.as_mut().unwrap()) != 0 {
+                0
+            } else {
+                1
+            };
         }
         NodeKind::BitNot => {
             return !eval(node.lhs.as_mut().unwrap()); // 按位取反
@@ -352,6 +374,7 @@ pub fn eval(node: &mut Box<Node>) -> i64 {
     0
 }
 
+/// bool转int true=1 false=0
 fn bool_to_i64(result: bool) -> i64 {
     if result {
         1
@@ -360,6 +383,7 @@ fn bool_to_i64(result: bool) -> i64 {
     }
 }
 
+/// int转bool 0=false other=true
 fn i64_to_bool(result: i64) -> bool {
     if result != 0 {
         true
@@ -368,10 +392,13 @@ fn i64_to_bool(result: i64) -> bool {
     }
 }
 
+/// 标签信息
 pub struct LabelInfo {
     // goto和标签语句
     pub label: String,
+    /// 唯一标签,用于汇编内的跳转
     pub unique_label: String,
+    /// 用于报错的token
     pub token: Token,
 }
 
@@ -384,24 +411,28 @@ impl LabelInfo {
         }))
     }
 
+    /// 创建goto标签
     pub fn new_goto(label: String, token: Token) -> Rc<RefCell<Self>> {
         Self::new(label, String::new(), token)
     }
 
+    /// 创建break标签
     pub fn new_break(unique_label: String, token: Token) -> Rc<RefCell<Self>> {
         Self::new(String::new(), unique_label, token)
     }
 
+    /// 设置唯一标签
     pub fn set_unique_label(&mut self, unique_label: String) {
         self.unique_label = unique_label;
     }
 
+    /// 判断标签是否相等
     pub fn equals(&self, other: &Self) -> bool {
         self.label == other.label
     }
 }
 
-// 解析各种type的加法
+/// 解析各种type的加法
 pub fn add_with_type(mut lhs: NodeLink, mut rhs: NodeLink, nt: Token) -> Option<NodeLink> {
     // 为左右部添加类型
     add_type(&mut lhs);
@@ -441,7 +472,7 @@ pub fn add_with_type(mut lhs: NodeLink, mut rhs: NodeLink, nt: Token) -> Option<
     Some(Node::new_binary(NodeKind::Add, n_lhs, f_rhs, nt))
 }
 
-// 解析各种type的减法
+/// 解析各种type的减法
 pub fn sub_with_type(mut lhs: NodeLink, mut rhs: NodeLink, nt: Token) -> Option<NodeLink> {
     // 为左右部添加类型
     add_type(&mut lhs);

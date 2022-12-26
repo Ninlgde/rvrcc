@@ -1,6 +1,6 @@
 //! AST parser
 //!
-//! program = (typedef | function_definition* | global-variable)*
+//! program = (typedef | function_definition* | global_variable)*
 //! function_definition = declspec declarator "(" ")" "{" compound_stmt*
 //! declspec = ("void" | "_Bool" | "char" | "short" | "int" | "long"
 //!            | "typedef" | "static"
@@ -17,9 +17,11 @@
 //! compound_stmt = (typedef | declaration | stmt)* "}"
 //! declaration = declspec (declarator ("=" initializer)?
 //!                         ("," declarator ("=" initializer)?)*)? ";"
-//! initializer = string_initializer | array_initializer | assign
+//! initializer = string_initializer | array_initializer | struct_initializer
+//!             | assign
 //! string_initializer = string_literal
 //! array_initializer = "{" initializer ("," initializer)* "}"
+// struct_initializer = "{" initializer ("," initializer)* "}"
 //! stmt = "return" expr ";"
 //!        | "if" "(" expr ")" stmt ("else" stmt)?
 //!        | "switch" "(" expr ")" stmt
@@ -68,28 +70,31 @@
 //! abstract_declarator = "*"* ("(" abstract_declarator ")")? type_suffix
 //! func_call = ident "(" (assign ("," assign)*)? ")"
 
+use crate::ctype::{add_type, Type, TypeKind, TypeLink};
 use crate::initializer::{create_lvar_init, InitDesig, Initializer};
 use crate::keywords::{
     KW_BOOL, KW_BREAK, KW_CASE, KW_CHAR, KW_CONTINUE, KW_DEFAULT, KW_ELSE, KW_ENUM, KW_FOR,
     KW_GOTO, KW_IF, KW_INT, KW_LONG, KW_RETURN, KW_SHORT, KW_SIZEOF, KW_STATIC, KW_STRUCT,
     KW_SWITCH, KW_TYPEDEF, KW_UNION, KW_VOID, KW_WHILE,
 };
-use crate::{
-    add_type, add_with_type, align_to, error_at, error_token, eval, sub_with_type, LabelInfo,
-    Member, Node, NodeKind, NodeLink, Obj, ObjLink, Scope, Token, Type, TypeKind, TypeLink,
-    VarAttr, VarScope,
-};
+use crate::node::{add_with_type, eval, sub_with_type, LabelInfo, Node, NodeKind, NodeLink};
+use crate::obj::{Member, Obj, ObjLink, Scope, VarAttr, VarScope};
+use crate::token::Token;
+use crate::{align_to, error_at, error_token};
 use std::cell::RefCell;
 use std::cmp;
 use std::rc::Rc;
 
+/// 通过token列表生成ast
 pub fn parse(tokens: &Vec<Token>) -> Vec<ObjLink> {
     let mut parser = Parser::new(tokens);
     parser.parse()
 }
 
 struct Parser<'a> {
+    /// 终结符列表
     tokens: &'a Vec<Token>,
+    /// 游标
     cursor: usize,
     // 本地变量
     locals: Vec<ObjLink>,
@@ -101,10 +106,15 @@ struct Parser<'a> {
     scopes: Vec<Scope>,
     // 当前正在解析的function
     cur_func: Option<ObjLink>,
+    /// goto标签列表
     gotos: Vec<Rc<RefCell<LabelInfo>>>,
+    /// 标签列表
     labels: Vec<Rc<RefCell<LabelInfo>>>,
+    /// 当前的break标签
     brk_label: String,
+    /// 当前的continue标签
     ctn_label: String,
+    /// 当前的switch节点
     cur_switch: Option<NodeLink>,
 }
 
@@ -131,7 +141,7 @@ impl<'a> Parser<'a> {
         (self.cursor, &self.tokens[self.cursor])
     }
 
-    // 指向下一个
+    /// 游标指向下一个
     fn next(&mut self) -> &mut Self {
         self.cursor += 1;
         self
@@ -169,6 +179,7 @@ impl<'a> Parser<'a> {
         self.globals.to_vec()
     }
 
+    /// 全局变量
     fn global_variable(&mut self, base_type: TypeLink) {
         let mut first = true;
 
@@ -250,11 +261,13 @@ impl<'a> Parser<'a> {
         self.labels.clear();
     }
 
+    /// 讲一个名为`name`的变量域压入当前域中
     fn push_scope(&mut self, name: String) -> Rc<RefCell<VarScope>> {
         let vs = self.scopes[0].add_var(name);
         return vs.clone();
     }
 
+    /// 讲一个名为`name`,类型为`type_`的变量标签压入当前域中
     fn push_tag_scope(&mut self, name: String, type_: TypeLink) {
         self.scopes[0].add_tag(name, type_);
     }
@@ -266,6 +279,7 @@ impl<'a> Parser<'a> {
         }
     }
 
+    /// 在域中找token相关的typedef
     fn find_typedef(&self, token: &Token) -> Option<TypeLink> {
         match token {
             Token::Ident { t_str, .. } => {
@@ -296,6 +310,7 @@ impl<'a> Parser<'a> {
         Some(nvar)
     }
 
+    /// 创建新的全局变量
     fn new_gvar(&mut self, name: String, obj: Obj) -> Option<ObjLink> {
         let gvar = Rc::new(RefCell::new(obj));
         self.globals.push(gvar.clone());
@@ -412,7 +427,7 @@ impl<'a> Parser<'a> {
         return type_;
     }
 
-    /// type_suffix = "(" funcParams | "[" array_dimensions | ε
+    /// declarator = "*"* ("(" ident ")" | "(" declarator ")" | ident) type_suffix
     fn declarator(&mut self, mut type_: TypeLink) -> TypeLink {
         // "*"*
         // 构建所有的（多重）指针
@@ -448,7 +463,7 @@ impl<'a> Parser<'a> {
         type_
     }
 
-    /// type_suffix = "(" func_params | "[" const_expr "]" type_suffix | ε
+    /// type_suffix = "(" funcParams | "[" array_dimensions | ε
     fn type_suffix(&mut self, base_type: TypeLink) -> TypeLink {
         let (_, token) = self.current();
         // "(" func_params
@@ -623,14 +638,28 @@ impl<'a> Parser<'a> {
         Some(node)
     }
 
-    fn skip_excess_element(&mut self) {
-        let (_, token) = self.current();
-        if token.equal("{") {
-            self.next().skip_excess_element();
-            self.skip("}");
-        }
+    /// struct_initializer = "{" initializer ("," initializer)* "}"
+    fn struct_initializer(&mut self, init: &mut Box<Initializer>) {
+        let typ = init.typ.as_ref().unwrap().clone();
+        let t = typ.borrow();
+        self.skip("{");
 
-        self.assign();
+        // 项数
+        let mut i = 0;
+        while !self.consume("}") {
+            if i > 0 {
+                self.skip(",");
+            }
+
+            if i < t.members.len() as usize {
+                // 正常解析元素
+                self.initializer0(&mut init.children[i]);
+            } else {
+                // 跳过多余的元素
+                self.skip_excess_element();
+            }
+            i += 1;
+        }
     }
 
     /// string_initializer = string_literal
@@ -645,7 +674,7 @@ impl<'a> Parser<'a> {
         if init.is_flexible {
             let new_type =
                 Type::array_of(t.base.as_ref().unwrap().clone(), token_type.borrow().len);
-            init.set_type(new_type);
+            init.replace_type(new_type);
             init.is_flexible = false;
         }
         let t = init.typ.as_ref().unwrap().clone();
@@ -653,11 +682,22 @@ impl<'a> Parser<'a> {
         let (_, token) = self.current();
         let mut len = token_type.borrow().len;
         len = cmp::min(t.len, len);
-        for i in 0..len {
-            let mut child = &mut init.children[i as usize];
+        for i in 0..len as usize {
+            let mut child = &mut init.children[i];
             child.expr = Some(Node::new_num(chars[i as usize] as i64, token.clone()));
         }
         self.next();
+    }
+
+    /// 跳过多余的元素
+    fn skip_excess_element(&mut self) {
+        let (_, token) = self.current();
+        if token.equal("{") {
+            self.next().skip_excess_element();
+            self.skip("}");
+        }
+
+        self.assign();
     }
 
     /// 计算数组初始化元素个数
@@ -668,11 +708,7 @@ impl<'a> Parser<'a> {
         // 项数
         let mut count = 0;
         // 遍历所有匹配的项
-        loop {
-            let (_, token) = self.current();
-            if token.equal("}") {
-                break;
-            }
+        while !self.consume("}") {
             if count > 0 {
                 self.skip(",");
             }
@@ -695,24 +731,21 @@ impl<'a> Parser<'a> {
             let len = self.count_array_init_elements(typ.clone());
             // 在这里Ty也被重新构造为了数组
             let new_type = Type::array_of(t.base.as_ref().unwrap().clone(), len);
-            init.set_type(new_type);
+            init.replace_type(new_type);
             init.is_flexible = false;
         }
         let typ = init.typ.as_ref().unwrap().clone(); // 可能被替换了,重新取下
 
         // 遍历数组
         let mut i = 0;
-        loop {
-            if self.consume("}") {
-                break;
-            }
+        while !self.consume("}") {
             if i > 0 {
                 self.skip(",");
             }
             let t = typ.borrow();
-            if i < t.len {
+            if i < t.len as usize {
                 // 正常解析元素
-                self.initializer0(&mut init.children[i as usize]);
+                self.initializer0(&mut init.children[i]);
             } else {
                 // 跳过多余的元素
                 self.skip_excess_element();
@@ -735,6 +768,12 @@ impl<'a> Parser<'a> {
         // array_initializer
         if t.kind == TypeKind::Array {
             self.array_initializer(init);
+            return;
+        }
+
+        // struct_initializer
+        if t.kind == TypeKind::Struct {
+            self.struct_initializer(init);
             return;
         }
 
@@ -764,7 +803,7 @@ impl<'a> Parser<'a> {
         let new_type = init.typ.as_ref().unwrap().clone();
         var.borrow_mut().set_type(new_type);
         // 指派初始化
-        let id = InitDesig::new_with_var(var.clone(), 0);
+        let id = InitDesig::new_with_var(var.clone());
         // 我们首先为所有元素赋0，然后有指定值的再进行赋值
         let mut lhs = Node::new(NodeKind::MemZero, nt.clone());
         lhs.var = Some(var.clone());
@@ -1645,6 +1684,7 @@ impl<'a> Parser<'a> {
     fn struct_members(&mut self, type_: &mut Type) {
         let mut members = vec![];
 
+        let mut idx = 0;
         loop {
             let (_, token) = self.current();
             if token.equal("}") {
@@ -1662,7 +1702,8 @@ impl<'a> Parser<'a> {
 
                 let type_ = self.declarator(base_type.clone());
                 let name = type_.borrow().get_name().to_string();
-                let member = Member::new(name.to_string(), Some(type_));
+                let member = Member::new(name.to_string(), Some(type_), idx);
+                idx += 1;
                 members.push(member);
             }
         }
@@ -1803,6 +1844,8 @@ impl<'a> Parser<'a> {
         Some(node)
     }
 
+    /// 转换 A++ 为 `(typeof A)((A += 1) - 1)`
+    /// increase decrease
     fn inc_dec(&mut self, mut node: NodeLink, addend: i64) -> Option<NodeLink> {
         add_type(&mut node);
         let token = &node.token.clone();
@@ -1815,6 +1858,7 @@ impl<'a> Parser<'a> {
         let cast = Node::new_cast(add, typ.clone());
         Some(cast)
     }
+
     /// postfix = primary ("[" expr "]" | "." ident)* | "->" ident | "++" | "--")*
     fn postfix(&mut self) -> Option<NodeLink> {
         // primary
@@ -1913,13 +1957,7 @@ impl<'a> Parser<'a> {
             add_type(node.as_mut().unwrap());
             let (pos, _) = self.current();
             let nt = self.tokens[pos].clone();
-            let size = node
-                .unwrap()
-                .get_type()
-                .as_ref()
-                .unwrap()
-                .borrow()
-                .get_size() as i64;
+            let size = node.unwrap().get_type().as_ref().unwrap().borrow().size as i64;
             return Some(Node::new_num(size, nt));
         }
 
@@ -2104,11 +2142,13 @@ impl<'a> Parser<'a> {
         Some(node)
     }
 
+    /// 进入新的域
     fn enter_scope(&mut self) {
         let scope = Scope::new();
         self.scopes.insert(0, scope);
     }
 
+    /// 结束当前域
     fn leave_scope(&mut self) {
         self.scopes.remove(0);
     }
@@ -2144,6 +2184,7 @@ impl<'a> Parser<'a> {
         self.find_typedef(token).is_some()
     }
 
+    /// 解析类型别名
     fn parse_typedef(&mut self, base_type: TypeLink) {
         let mut first = true;
 
@@ -2161,6 +2202,7 @@ impl<'a> Parser<'a> {
         }
     }
 
+    /// 跳过某个名为`s`的token,如果不是则报错. 功效类似assert
     fn skip(&mut self, s: &str) {
         let (_, token) = self.current();
         if !token.equal(s) {
@@ -2169,6 +2211,7 @@ impl<'a> Parser<'a> {
         self.next();
     }
 
+    /// 消费token,如果与`s`相等,则跳过并返回true,否则不跳过返回false
     fn consume(&mut self, s: &str) -> bool {
         let (_, token) = self.current();
         if token.equal(s) {
@@ -2187,9 +2230,10 @@ impl<'a> Parser<'a> {
         let type_ = self.declarator(Type::new_int());
         // 游标回档
         self.cursor = start;
-        return type_.borrow().is_func();
+        return type_.borrow().kind == TypeKind::Func;
     }
 
+    /// 新增字符串字面量
     fn new_string_literal(&mut self, str_data: Vec<u8>, base_type: TypeLink) -> ObjLink {
         let name = self.new_unique_name();
         let obj = Obj::new_gvar(name.to_string(), base_type, Some(str_data));
@@ -2197,6 +2241,7 @@ impl<'a> Parser<'a> {
         self.new_gvar(name.to_string(), obj).unwrap()
     }
 
+    /// 获取新的唯一名称
     pub fn new_unique_name(&mut self) -> String {
         let name = format!(".L..{}", self.unique_idx);
         self.unique_idx += 1;
