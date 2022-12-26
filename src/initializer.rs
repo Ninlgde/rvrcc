@@ -238,6 +238,18 @@ pub fn write_gvar_data(init: Box<Initializer>, typ: &TypeLink, chars: &mut Vec<i
         return;
     }
 
+    if t.kind == TypeKind::Struct {
+        for member in t.members.iter() {
+            write_gvar_data(
+                init.children[member.idx].clone(),
+                member.type_.as_ref().unwrap(),
+                chars,
+                offset + member.offset as usize,
+            )
+        }
+        return;
+    }
+
     if init.expr.is_some() {
         let mut expr = init.expr.as_ref().unwrap().clone();
         write_buf(chars, offset, eval(&mut expr), t.size);
