@@ -119,15 +119,29 @@ impl<'a> Generator<'a> {
                     // 判断是否有初始值
                     if init_data.is_some() {
                         writeln!("{}:", name);
-                        // 打印出字符串的内容，包括转义字符
-                        writeln!("  # 字符串字面量");
+                        let mut rel = var.get_relocation();
+                        let mut pos = 0;
                         let chars = init_data.as_ref().unwrap();
-                        for i in chars {
-                            let c = *i as u8 as char;
-                            if c.is_ascii() && !c.is_ascii_control() {
-                                writeln!("  .byte {}\t# {}", i, c);
-                            } else {
-                                writeln!("  .byte {}", i);
+                        while pos < var.get_type().borrow().size {
+                            unsafe {
+                                if !rel.is_null() && (*rel).offset == pos {
+                                    // 使用其他变量进行初始化
+                                    writeln!("  # {}全局变量", var.get_name());
+                                    writeln!("  .quad {}{:+}", &(*rel).label, (*rel).added);
+                                    rel = (*rel).next;
+                                    pos += 8;
+                                } else {
+                                    // 打印出字符串的内容，包括转义字符
+                                    writeln!("  # 字符串字面量");
+                                    let i = chars[pos as usize];
+                                    let c = i as u8 as char;
+                                    if c.is_ascii() && !c.is_ascii_control() {
+                                        writeln!("  .byte {}\t# {}", i, c);
+                                    } else {
+                                        writeln!("  .byte {}", i);
+                                    }
+                                    pos += 1;
+                                }
                             }
                         }
                     } else {

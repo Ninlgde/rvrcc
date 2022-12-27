@@ -2,7 +2,7 @@
 //! 生成AST（抽象语法树），语法解析
 //!
 
-use crate::ctype::{add_type, Type, TypeLink};
+use crate::ctype::{add_type, Type, TypeKind, TypeLink};
 use crate::error_token;
 use crate::obj::{Member, ObjLink};
 use crate::token::Token;
@@ -258,14 +258,20 @@ impl Node {
 
 /// 计算给定节点的常量表达式计算
 pub fn eval(node: &mut Box<Node>) -> i64 {
+    eval0(node, &mut None)
+}
+
+/// 计算给定节点的常量表达式计算
+/// 常量表达式可以是数字或者是 ptr±n，ptr是指向全局变量的指针，n是偏移量。
+pub fn eval0(node: &mut Box<Node>, label: &mut Option<String>) -> i64 {
     add_type(node);
 
     match node.kind {
         NodeKind::Add => {
-            return eval(node.lhs.as_mut().unwrap()) + eval(node.rhs.as_mut().unwrap());
+            return eval0(node.lhs.as_mut().unwrap(), label) + eval(node.rhs.as_mut().unwrap());
         }
         NodeKind::Sub => {
-            return eval(node.lhs.as_mut().unwrap()) - eval(node.rhs.as_mut().unwrap());
+            return eval0(node.lhs.as_mut().unwrap(), label) - eval(node.rhs.as_mut().unwrap());
         }
         NodeKind::Mul => {
             return eval(node.lhs.as_mut().unwrap()) * eval(node.rhs.as_mut().unwrap());
@@ -317,13 +323,13 @@ pub fn eval(node: &mut Box<Node>) -> i64 {
         NodeKind::Cond => {
             let cond = eval(node.cond.as_mut().unwrap());
             return if cond == 1 {
-                eval(node.then.as_mut().unwrap())
+                eval0(node.then.as_mut().unwrap(), label)
             } else {
-                eval(node.els.as_mut().unwrap())
+                eval0(node.els.as_mut().unwrap(), label)
             };
         }
         NodeKind::Comma => {
-            return eval(node.rhs.as_mut().unwrap());
+            return eval0(node.rhs.as_mut().unwrap(), label);
         }
         NodeKind::Not => {
             return if eval(node.lhs.as_mut().unwrap()) != 0 {
@@ -349,7 +355,7 @@ pub fn eval(node: &mut Box<Node>) -> i64 {
         }
         NodeKind::Cast => {
             let t = node.type_.as_ref().unwrap().borrow();
-            let r = eval(node.lhs.as_mut().unwrap());
+            let r = eval0(node.lhs.as_mut().unwrap(), label);
             if t.is_int() {
                 match t.size {
                     1 => {
@@ -366,12 +372,69 @@ pub fn eval(node: &mut Box<Node>) -> i64 {
             }
             return r;
         }
+        NodeKind::Addr => {
+            return eval_rval(node.lhs.as_mut().unwrap(), label);
+        }
+        NodeKind::Member => {
+            // 未开辟Label的地址，则表明不是表达式常量
+            if label.is_some() {
+                error_token!(&node.token, "not a compile-time constant");
+            }
+            if node.type_.as_ref().unwrap().borrow().kind != TypeKind::Array {
+                error_token!(&node.token, "invalid initializer");
+            }
+            return eval_rval(node.lhs.as_mut().unwrap(), label)
+                + node.member.as_ref().unwrap().offset as i64;
+        }
+        NodeKind::Var => {
+            // 未开辟Label的地址，则表明不是表达式常量
+            if label.is_some() {
+                error_token!(&node.token, "not a compile-time constant");
+            }
+            let typ = node.type_.as_ref().unwrap().borrow();
+            if typ.kind != TypeKind::Array && typ.kind != TypeKind::Func {
+                error_token!(&node.token, "invalid initializer");
+            }
+            let var = node.var.as_ref().unwrap().borrow();
+            *label = Some(var.get_name().clone());
+            return 0;
+        }
         NodeKind::Num => {
             return node.val;
         }
-        _ => {}
+        _ => {
+            error_token!(&node.token, "invalid initializer");
+            return -1;
+        }
     }
-    0
+}
+
+/// 计算重定位变量
+fn eval_rval(node: &mut Box<Node>, label: &mut Option<String>) -> i64 {
+    return match node.kind {
+        NodeKind::Var => {
+            // 局部变量不能参与全局变量的初始化
+            let var = node.var.as_ref().unwrap().borrow();
+            if var.is_local() {
+                error_token!(&node.token, "not a compile-time constant");
+            }
+            *label = Some(var.get_name().clone());
+            0
+        }
+        NodeKind::DeRef => {
+            // 直接进入到解引用的地址
+            eval0(node.lhs.as_mut().unwrap(), label)
+        }
+        NodeKind::Member => {
+            // 加上成员变量的偏移量
+            eval_rval(node.lhs.as_mut().unwrap(), label)
+                + node.member.as_ref().unwrap().offset as i64
+        }
+        _ => {
+            error_token!(&node.token, "invalid initializer");
+            -1
+        }
+    };
 }
 
 /// bool转int true=1 false=0

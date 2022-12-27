@@ -72,7 +72,7 @@
 //! func_call = ident "(" (assign ("," assign)*)? ")"
 
 use crate::ctype::{add_type, Type, TypeKind, TypeLink};
-use crate::initializer::{create_lvar_init, write_gvar_data, InitDesig, Initializer};
+use crate::initializer::{create_lvar_init, write_gvar_data, InitDesig, Initializer, Relocation};
 use crate::keywords::{
     KW_BOOL, KW_BREAK, KW_CASE, KW_CHAR, KW_CONTINUE, KW_DEFAULT, KW_ELSE, KW_ENUM, KW_FOR,
     KW_GOTO, KW_IF, KW_INT, KW_LONG, KW_RETURN, KW_SHORT, KW_SIZEOF, KW_STATIC, KW_STRUCT,
@@ -860,8 +860,10 @@ impl<'a> Parser<'a> {
             buf.push(0);
         }
         {
-            write_gvar_data(init, typ, &mut buf, 0);
+            let head = Relocation::head();
+            write_gvar_data(head, init, typ, &mut buf, 0);
             binding.set_init_data(buf);
+            unsafe { binding.set_relocation((*head).next) }
         }
     }
 

@@ -1,9 +1,10 @@
 //! 初始化器
 
 use crate::ctype::{TypeKind, TypeLink};
-use crate::node::{add_with_type, eval, Node, NodeKind, NodeLink};
+use crate::node::{add_with_type, eval0, Node, NodeKind, NodeLink};
 use crate::obj::{Member, ObjLink};
 use crate::token::Token;
+use std::ptr;
 
 /// 可变的初始化器。此处为树状结构。
 /// 因为初始化器可以是嵌套的，
@@ -125,6 +126,37 @@ impl InitDesig {
     }
 }
 
+/// 全局变量可被 常量表达式 或者 指向其他全局变量的指针 初始化。
+/// 此结构体用于 指向其他全局变量的指针 的情况。
+#[derive(Clone)]
+pub struct Relocation {
+    /// 下一个
+    pub(crate) next: *mut Relocation,
+    /// 偏移量
+    pub(crate) offset: isize,
+    /// 标签名
+    pub(crate) label: String,
+    /// 加数
+    pub(crate) added: i64,
+}
+
+impl Relocation {
+    /// 新建链表节点
+    pub fn new(offset: isize, label: String, added: i64) -> *mut Self {
+        Box::into_raw(Box::new(Relocation {
+            next: ptr::null_mut(),
+            offset,
+            label,
+            added,
+        }))
+    }
+
+    /// 创建头指针
+    pub fn head() -> *mut Self {
+        Self::new(0, String::new(), 0)
+    }
+}
+
 /// 创建局部变量的初始化
 pub fn create_lvar_init(
     init: Box<Initializer>,
@@ -222,37 +254,76 @@ pub fn init_desig_expr(desig: Box<InitDesig>, token: Token) -> Option<NodeLink> 
 }
 
 /// 对全局变量的初始化器写入数据
-pub fn write_gvar_data(init: Box<Initializer>, typ: &TypeLink, chars: &mut Vec<i8>, offset: usize) {
+pub fn write_gvar_data(
+    mut cur: *mut Relocation,
+    init: Box<Initializer>,
+    typ: &TypeLink,
+    chars: &mut Vec<i8>,
+    offset: usize,
+) -> *mut Relocation {
     let t = typ.borrow();
+    // 处理数组
     if t.kind == TypeKind::Array {
         let tb = t.base.as_ref().unwrap();
         let size = tb.borrow().size;
         for i in 0..t.len as usize {
-            write_gvar_data(
+            cur = write_gvar_data(
+                cur,
                 init.children[i].clone(),
                 tb,
                 chars,
                 offset + i * size as usize,
             );
         }
-        return;
+        return cur;
     }
 
+    // 处理结构体
     if t.kind == TypeKind::Struct {
         for member in t.members.iter() {
-            write_gvar_data(
+            cur = write_gvar_data(
+                cur,
                 init.children[member.idx].clone(),
                 member.type_.as_ref().unwrap(),
                 chars,
                 offset + member.offset as usize,
             )
         }
-        return;
+        return cur;
     }
 
-    if init.expr.is_some() {
-        let mut expr = init.expr.as_ref().unwrap().clone();
-        write_buf(chars, offset, eval(&mut expr), t.size);
+    // 处理联合体
+    if t.kind == TypeKind::Union {
+        return write_gvar_data(
+            cur,
+            init.children[0].clone(),
+            t.members[0].type_.as_ref().unwrap(),
+            chars,
+            offset,
+        );
+    }
+
+    // 这里返回，则会使Buf值为0
+    if init.expr.is_none() {
+        return cur;
+    }
+
+    // 预设使用到的 其他全局变量的名称
+    let mut label = None;
+    let mut expr = init.expr.as_ref().unwrap().clone();
+    let val = eval0(&mut expr, &mut label);
+
+    // 如果不存在Label，说明可以直接计算常量表达式的值
+    if label.is_none() {
+        write_buf(chars, offset, val, t.size);
+        return cur;
+    }
+
+    // 存在Label，则表示使用了其他全局变量
+    let rel = Relocation::new(offset as isize, label.as_ref().unwrap().clone(), val);
+    unsafe {
+        (*cur).next = rel;
+        return (*cur).next;
     }
 }
 

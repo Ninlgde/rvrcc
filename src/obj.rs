@@ -1,7 +1,9 @@
 use crate::ctype::{Type, TypeLink};
+use crate::initializer::Relocation;
 use crate::node::NodeLink;
 use crate::token::Token;
 use std::cell::RefCell;
+use std::ptr;
 use std::rc::Rc;
 
 /// rc refcell for object
@@ -24,6 +26,8 @@ pub enum Obj {
         init_data: Option<Vec<i8>>,
         /// 是否为文件域内的
         is_static: bool,
+        /// 指向其他全局变量的指针
+        relocation: *mut Relocation,
     },
     /// 函数
     Func {
@@ -110,6 +114,14 @@ impl Obj {
         }
     }
 
+    /// 是否是本地变量
+    pub fn is_local(&self) -> bool {
+        match self {
+            Self::Var { is_local, .. } => *is_local,
+            _ => false,
+        }
+    }
+
     /// 创建变量对象
     pub fn new_var(
         name: String,
@@ -124,6 +136,7 @@ impl Obj {
             init_data,
             offset: 0,
             is_static: false,
+            relocation: ptr::null_mut(),
         }
     }
 
@@ -143,6 +156,22 @@ impl Obj {
                 *init_data = Some(buf);
             }
             _ => (),
+        }
+    }
+
+    pub fn set_relocation(&mut self, rel: *mut Relocation) {
+        match self {
+            Self::Var { relocation, .. } => {
+                *relocation = rel;
+            }
+            _ => {}
+        }
+    }
+
+    pub fn get_relocation(&self) -> *mut Relocation {
+        match self {
+            Self::Var { relocation, .. } => *relocation,
+            _ => ptr::null_mut(),
         }
     }
 
