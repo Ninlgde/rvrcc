@@ -116,6 +116,11 @@ impl<'a> Generator<'a> {
                 } => {
                     writeln!("\n  # 全局段{}", var.get_name());
                     writeln!("  .globl {}", var.get_name());
+                    writeln!("  # 对齐全局变量");
+                    if var.get_type().borrow().align == 0 {
+                        panic!("Align can not be 0!");
+                    }
+                    writeln!("  .align {}", simple_log2(var.get_type().borrow().align));
                     // 判断是否有初始值
                     if init_data.is_some() {
                         writeln!("\n  # 数据段标签");
@@ -869,3 +874,17 @@ const CAST_TABLE: [[Option<&str>; 10]; 10] = [
     [None, None, None, None, None, None, None, None, None, None],
     [None, None, None, None, None, None, None, None, None, None],
 ];
+
+/// 返回2^N的N值
+fn simple_log2(num: isize) -> isize {
+    let mut e = 0;
+    let mut n = num;
+    while n > 1 {
+        if n % 2 == 1 {
+            panic!("Wrong value {}", num);
+        }
+        n /= 2;
+        e += 1;
+    }
+    e
+}
