@@ -154,9 +154,9 @@ impl Obj {
     }
 
     /// 创建全局变量对象
-    pub fn new_gvar(name: String, type_: TypeLink, init_data: Option<Vec<i8>>) -> Self {
+    pub fn new_gvar(name: String, type_: TypeLink) -> Self {
         let align = type_.borrow().align;
-        Self::new_var(name, type_, false, init_data, align)
+        Self::new_var(name, type_, false, None, align)
     }
 
     /// 设置字面数据

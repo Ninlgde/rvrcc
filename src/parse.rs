@@ -196,7 +196,7 @@ impl<'a> Parser<'a> {
 
             let type_ = self.declarator(base_type.clone());
             let name = type_.borrow().get_name().to_string();
-            let obj = Obj::new_gvar(name.to_string(), type_, None);
+            let obj = Obj::new_gvar(name.to_string(), type_);
             let mut var = self.new_gvar(name.to_string(), obj);
             var.as_mut()
                 .unwrap()
@@ -665,6 +665,21 @@ impl<'a> Parser<'a> {
                 let (_, token) = self.current();
                 error_token!(token, "variable declared void");
                 unreachable!()
+            }
+
+            if attr.is_some() && attr.as_ref().unwrap().is_static {
+                let gvar = self.new_anon_gvar(type_.clone());
+                let name = type_.borrow().get_name().to_string();
+                let vs = self.push_scope(name);
+                {
+                    let mut vsm = vs.as_ref().borrow_mut();
+                    vsm.set_var(gvar.clone());
+                }
+                let (_, token) = self.current();
+                if token.equal("=") {
+                    self.next().gvar_initializer(gvar);
+                }
+                continue;
             }
 
             let nvar = self.new_lvar(type_).unwrap();
@@ -2491,12 +2506,17 @@ impl<'a> Parser<'a> {
         return type_.borrow().kind == TypeKind::Func;
     }
 
+    fn new_anon_gvar(&mut self, base_type: TypeLink) -> ObjLink {
+        let name = self.new_unique_name();
+        let obj = Obj::new_gvar(name.to_string(), base_type);
+        self.new_gvar(name, obj).unwrap()
+    }
+
     /// 新增字符串字面量
     fn new_string_literal(&mut self, str_data: Vec<i8>, base_type: TypeLink) -> ObjLink {
-        let name = self.new_unique_name();
-        let obj = Obj::new_gvar(name.to_string(), base_type, Some(str_data));
-        // 加入globals
-        self.new_gvar(name.to_string(), obj).unwrap()
+        let gvar = self.new_anon_gvar(base_type);
+        gvar.borrow_mut().set_init_data(str_data);
+        gvar
     }
 
     /// 获取新的唯一名称
