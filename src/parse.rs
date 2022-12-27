@@ -877,6 +877,12 @@ impl<'a> Parser<'a> {
             return;
         }
 
+        if token.equal("{") {
+            self.next().initializer0(init);
+            self.skip("}");
+            return;
+        }
+
         // assign
         // 为节点存储对应的表达式
         init.expr = self.assign()
