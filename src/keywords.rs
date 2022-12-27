@@ -25,19 +25,20 @@ pub const KEYWORDS: [&str; KW_COUNT] = [
     KW_SWITCH,
     KW_CASE,
     KW_DEFAULT,
+    KW_EXTERN,
 ];
 
 /// 关键字数量
-const KW_COUNT: usize = 23;
+const KW_COUNT: usize = 24;
 
 /// 类型名称列表
 pub const KW_TYPENAME: [&str; KW_TYPENAME_COUNT] = [
     KW_CHAR, KW_SHORT, KW_INT, KW_LONG, KW_STRUCT, KW_UNION, KW_VOID, KW_TYPEDEF, KW_BOOL, KW_ENUM,
-    KW_STATIC,
+    KW_STATIC, KW_EXTERN,
 ];
 
 /// 类型名称数量
-const KW_TYPENAME_COUNT: usize = 11;
+const KW_TYPENAME_COUNT: usize = 12;
 
 /// 关键字: 返回
 pub const KW_RETURN: &str = "return";
@@ -85,3 +86,5 @@ pub const KW_SWITCH: &str = "switch";
 pub const KW_CASE: &str = "case";
 /// 关键字: default
 pub const KW_DEFAULT: &str = "default";
+/// 关键字: extern
+pub const KW_EXTERN: &str = "extern";

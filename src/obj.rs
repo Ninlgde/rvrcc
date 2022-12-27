@@ -28,6 +28,8 @@ pub enum Obj {
         is_static: bool,
         /// 指向其他全局变量的指针
         relocation: *mut Relocation,
+        /// 是否为函数定义
+        is_definition: bool,
     },
     /// 函数
     Func {
@@ -137,6 +139,7 @@ impl Obj {
             offset: 0,
             is_static: false,
             relocation: ptr::null_mut(),
+            is_definition: false,
         }
     }
 
@@ -172,6 +175,20 @@ impl Obj {
         match self {
             Self::Var { relocation, .. } => *relocation,
             _ => ptr::null_mut(),
+        }
+    }
+
+    pub fn set_definition(&mut self, is_def: bool) {
+        match self {
+            Self::Var { is_definition, .. } | Self::Func { is_definition, .. } => {
+                *is_definition = is_def;
+            }
+        }
+    }
+
+    pub fn is_definition(&self) -> bool {
+        match self {
+            Self::Var { is_definition, .. } | Self::Func { is_definition, .. } => *is_definition,
         }
     }
 
@@ -273,10 +290,22 @@ pub struct TagScope {
 // 变量属性
 #[derive(Clone)]
 pub struct VarAttr {
-    // 是否为类型别名
+    /// 是否为类型别名
     pub(crate) is_typedef: bool,
-    // 是否为文件域内的
+    /// 是否为文件域内的
     pub(crate) is_static: bool,
+    /// 是否为外部变量
+    pub(crate) is_extern: bool,
+}
+
+impl VarAttr {
+    pub fn new() -> Self {
+        Self {
+            is_typedef: false,
+            is_static: false,
+            is_extern: false,
+        }
+    }
 }
 
 // C有两个域：变量（或类型别名）域，结构体（或联合体，枚举）标签域

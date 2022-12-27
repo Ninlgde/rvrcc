@@ -107,6 +107,10 @@ impl<'a> Generator<'a> {
     fn emit_data(&mut self) {
         for var in self.program.to_vec().iter() {
             let var = &*var.borrow();
+            // 跳过无定义的变量
+            if !var.is_definition() {
+                continue;
+            }
             match var {
                 Obj::Var {
                     name,

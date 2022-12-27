@@ -3,7 +3,7 @@
 //! program = (typedef | function_definition* | global_variable)*
 //! function_definition = declspec declarator "(" ")" "{" compound_stmt*
 //! declspec = ("void" | "_Bool" | "char" | "short" | "int" | "long"
-//!            | "typedef" | "static"
+//!            | "typedef" | "static" | "extern"
 //!            | struct_declare | union_declare | typedef_name
 //!            | enum_specifier)+
 //! enum_specifier = ident? "{" enum_list? "}"
@@ -78,8 +78,8 @@
 use crate::ctype::{add_type, Type, TypeKind, TypeLink};
 use crate::initializer::{create_lvar_init, write_gvar_data, InitDesig, Initializer, Relocation};
 use crate::keywords::{
-    KW_BOOL, KW_BREAK, KW_CASE, KW_CHAR, KW_CONTINUE, KW_DEFAULT, KW_ELSE, KW_ENUM, KW_FOR,
-    KW_GOTO, KW_IF, KW_INT, KW_LONG, KW_RETURN, KW_SHORT, KW_SIZEOF, KW_STATIC, KW_STRUCT,
+    KW_BOOL, KW_BREAK, KW_CASE, KW_CHAR, KW_CONTINUE, KW_DEFAULT, KW_ELSE, KW_ENUM, KW_EXTERN,
+    KW_FOR, KW_GOTO, KW_IF, KW_INT, KW_LONG, KW_RETURN, KW_SHORT, KW_SIZEOF, KW_STATIC, KW_STRUCT,
     KW_SWITCH, KW_TYPEDEF, KW_UNION, KW_VOID, KW_WHILE,
 };
 use crate::node::{add_with_type, eval, sub_with_type, LabelInfo, Node, NodeKind, NodeLink};
@@ -161,10 +161,7 @@ impl<'a> Parser<'a> {
             if token.at_eof() {
                 break;
             }
-            let mut va = Some(VarAttr {
-                is_typedef: false,
-                is_static: false,
-            });
+            let mut va = Some(VarAttr::new());
             // declspec
             let base_type = self.declspec(&mut va);
 
@@ -178,14 +175,14 @@ impl<'a> Parser<'a> {
                 continue;
             }
 
-            self.global_variable(base_type)
+            self.global_variable(base_type, va);
         }
 
         self.globals.to_vec()
     }
 
     /// 全局变量
-    fn global_variable(&mut self, base_type: TypeLink) {
+    fn global_variable(&mut self, base_type: TypeLink, var_attr: VarAttr) {
         let mut first = true;
 
         while !self.consume(";") {
@@ -197,7 +194,11 @@ impl<'a> Parser<'a> {
             let type_ = self.declarator(base_type.clone());
             let name = type_.borrow().get_name().to_string();
             let obj = Obj::new_gvar(name.to_string(), type_, None);
-            let var = self.new_gvar(name.to_string(), obj);
+            let mut var = self.new_gvar(name.to_string(), obj);
+            var.as_mut()
+                .unwrap()
+                .borrow_mut()
+                .set_definition(!var_attr.is_extern);
             let (_, token) = self.current();
             if token.equal("=") {
                 self.next().gvar_initializer(var.unwrap());
@@ -322,6 +323,8 @@ impl<'a> Parser<'a> {
     /// 创建新的全局变量
     fn new_gvar(&mut self, name: String, obj: Obj) -> Option<ObjLink> {
         let gvar = Rc::new(RefCell::new(obj));
+        // 存在定义
+        gvar.borrow_mut().set_definition(true);
         self.globals.insert(0, gvar.clone());
         let vs = self.push_scope(name);
         {
@@ -332,7 +335,7 @@ impl<'a> Parser<'a> {
     }
 
     /// declspec = ("void" | "_Bool" | "char" | "short" | "int" | "long"
-    ///            | "typedef" | "static"
+    ///            | "typedef" | "static" | "extern"
     ///            | struct_declare | union_declare | typedef_name
     ///            | enum_specifier)+
     /// declarator specifier
@@ -361,17 +364,23 @@ impl<'a> Parser<'a> {
                 break;
             }
 
-            if token.equal(KW_TYPEDEF) || token.equal(KW_STATIC) {
+            if token.equal(KW_TYPEDEF) || token.equal(KW_STATIC) || token.equal(KW_EXTERN) {
                 if attr.is_none() {
                     error_token!(
                         token,
                         "storage class specifier is not allowed in this context"
                     );
                 }
-                let is_t = token.equal(KW_TYPEDEF);
-                attr.as_mut().unwrap().is_typedef = is_t;
-                attr.as_mut().unwrap().is_static = !is_t;
-                if is_t && token.equal(KW_STATIC) {
+                if token.equal(KW_TYPEDEF) {
+                    attr.as_mut().unwrap().is_typedef = true;
+                } else if token.equal(KW_STATIC) {
+                    attr.as_mut().unwrap().is_static = true;
+                } else {
+                    attr.as_mut().unwrap().is_extern = true;
+                }
+                // typedef不应与static/extern一起使用
+                let a = attr.as_ref().unwrap();
+                if a.is_typedef && (a.is_static || a.is_extern) {
                     error_token!(token, "typedef and static may not be used together");
                 }
                 self.next();
@@ -565,10 +574,7 @@ impl<'a> Parser<'a> {
             }
             let mut node;
             if self.is_typename(token) && !self.tokens[pos + 1].equal(":") {
-                let mut va = Some(VarAttr {
-                    is_typedef: false,
-                    is_static: false,
-                });
+                let mut va = Some(VarAttr::new());
                 let base_type = self.declspec(&mut va);
 
                 // 解析typedef的语句
