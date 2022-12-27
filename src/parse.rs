@@ -165,7 +165,7 @@ impl<'a> Parser<'a> {
             // declspec
             let base_type = self.declspec(&mut va);
 
-            let va = va.unwrap();
+            let va = va.as_ref().unwrap();
             if va.is_typedef {
                 self.parse_typedef(base_type);
                 continue;
@@ -182,7 +182,7 @@ impl<'a> Parser<'a> {
     }
 
     /// 全局变量
-    fn global_variable(&mut self, base_type: TypeLink, var_attr: VarAttr) {
+    fn global_variable(&mut self, base_type: TypeLink, var_attr: &VarAttr) {
         let mut first = true;
 
         while !self.consume(";") {
@@ -207,7 +207,7 @@ impl<'a> Parser<'a> {
     }
 
     /// function_definition = declspec declarator "(" ")" "{" compound_stmt*
-    fn function_definition(&mut self, base_type: TypeLink, var_attr: VarAttr) {
+    fn function_definition(&mut self, base_type: TypeLink, var_attr: &VarAttr) {
         // declarator
         // 声明获取到变量类型，包括变量名
         let type_ = self.declarator(base_type);
@@ -578,11 +578,25 @@ impl<'a> Parser<'a> {
                 let base_type = self.declspec(&mut va);
 
                 // 解析typedef的语句
-                if va.unwrap().is_typedef {
+                let va = va.as_ref().unwrap();
+                if va.is_typedef {
                     self.parse_typedef(base_type);
                     continue;
                 }
-                // declaration
+
+                // 解析函数
+                if self.is_function() {
+                    self.function_definition(base_type, va);
+                    continue;
+                }
+
+                // 解析外部全局变量
+                if va.is_extern {
+                    self.global_variable(base_type, va);
+                    continue;
+                }
+
+                // declaration 解析变量声明语句
                 node = self.declaration(base_type).unwrap();
             } else {
                 // stmt

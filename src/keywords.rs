@@ -26,10 +26,12 @@ pub const KEYWORDS: [&str; KW_COUNT] = [
     KW_CASE,
     KW_DEFAULT,
     KW_EXTERN,
+    KW_ALIGNOF,
+    KW_ALIGNAS,
 ];
 
 /// 关键字数量
-const KW_COUNT: usize = 24;
+const KW_COUNT: usize = 26;
 
 /// 类型名称列表
 pub const KW_TYPENAME: [&str; KW_TYPENAME_COUNT] = [
@@ -88,3 +90,7 @@ pub const KW_CASE: &str = "case";
 pub const KW_DEFAULT: &str = "default";
 /// 关键字: extern
 pub const KW_EXTERN: &str = "extern";
+/// 关键字: _Alignof
+pub const KW_ALIGNOF: &str = "_Alignof";
+/// 关键字: _Alignas
+pub const KW_ALIGNAS: &str = "_Alignas";
