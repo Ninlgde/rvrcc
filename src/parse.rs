@@ -70,6 +70,7 @@
 //!         | "sizeof" "(" typename ")"
 //!         | "sizeof" unary
 //!         | "_Alignof" "(" typename ")"
+//!         | "_Alignof" unary
 //!         | ident funcArgs?
 //!         | str
 //!         | num
@@ -2130,6 +2131,7 @@ impl<'a> Parser<'a> {
     ///         | "sizeof" "(" typename ")"
     ///         | "sizeof" unary
     ///         | "_Alignof" "(" typename ")"
+    ///         | "_Alignof" unary
     ///         | ident funcArgs?
     ///         | str
     ///         | num
@@ -2168,21 +2170,26 @@ impl<'a> Parser<'a> {
         if token.equal(KW_SIZEOF) {
             let mut node = self.next().unary();
             add_type(node.as_mut().unwrap());
-            let (pos, _) = self.current();
-            let nt = self.tokens[pos].clone();
             let size = node.unwrap().get_type().as_ref().unwrap().borrow().size as i64;
             return Some(Node::new_num(size, nt));
         }
 
         // "_Alignof" "(" typename ")"
         // 读取类型的对齐值
-        if token.equal(KW_ALIGNOF) {
-            self.next().skip("(");
-            let (_, token) = self.current();
-            let t = token.clone();
-            let typ = self.typename();
+        if token.equal(KW_ALIGNOF) && next.equal("(") && self.is_typename(next_next) {
+            let typ = self.next().next().typename();
             self.skip(")");
-            return Some(Node::new_num(typ.borrow().align as i64, t));
+            return Some(Node::new_num(typ.borrow().align as i64, nt));
+        }
+
+        // "_Alignof" unary
+        if token.equal(KW_ALIGNOF) {
+            let mut node = self.next().unary();
+            add_type(node.as_mut().unwrap());
+            let (pos, _) = self.current();
+            let nt = self.tokens[pos].clone();
+            let align = node.unwrap().get_type().as_ref().unwrap().borrow().align as i64;
+            return Some(Node::new_num(align, nt));
         }
 
         // ident args?
