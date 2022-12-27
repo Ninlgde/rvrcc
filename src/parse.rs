@@ -12,7 +12,7 @@
 //! declarator = "*"* ("(" ident ")" | "(" declarator ")" | ident) type_suffix
 //! type_suffix = "(" funcParams | "[" array_dimensions | ε
 //! array_dimensions = const_expr? "]" typeSuffix
-//! func_params = (param ("," param)*)? ")"
+//! func_params = ("void" | param ("," param)*)? ")"
 //! param = declspec declarator
 //! compound_stmt = (typedef | declaration | stmt)* "}"
 //! declaration = declspec (declarator ("=" initializer)?
@@ -507,6 +507,14 @@ impl<'a> Parser<'a> {
     /// func_params = (param ("," param)*)? ")"
     /// param = declspec declarator
     fn func_params(&mut self, type_: TypeLink) -> TypeLink {
+        // "void"
+        let (pos, token) = self.current();
+        let next = &self.tokens[pos + 1];
+        if token.equal(KW_VOID) && next.equal(")") {
+            self.next().next();
+            return Type::func_type(type_, vec![]);
+        }
+
         let mut params = vec![];
         loop {
             let (_, token) = self.current();
