@@ -4,6 +4,7 @@
 //! function_definition = declspec declarator "(" ")" "{" compound_stmt*
 //! declspec = ("void" | "_Bool" | "char" | "short" | "int" | "long"
 //!            | "typedef" | "static" | "extern"
+//!            | "_Alignas" ("(" typename | const_expr ")")
 //!            | struct_declare | union_declare | typedef_name
 //!            | enum_specifier)+
 //! enum_specifier = ident? "{" enum_list? "}"
@@ -68,6 +69,7 @@
 //!         | "(" expr ")"
 //!         | "sizeof" "(" typename ")"
 //!         | "sizeof" unary
+//!         | "_Alignof" "(" typename ")"
 //!         | ident funcArgs?
 //!         | str
 //!         | num
@@ -78,9 +80,9 @@
 use crate::ctype::{add_type, Type, TypeKind, TypeLink};
 use crate::initializer::{create_lvar_init, write_gvar_data, InitDesig, Initializer, Relocation};
 use crate::keywords::{
-    KW_BOOL, KW_BREAK, KW_CASE, KW_CHAR, KW_CONTINUE, KW_DEFAULT, KW_ELSE, KW_ENUM, KW_EXTERN,
-    KW_FOR, KW_GOTO, KW_IF, KW_INT, KW_LONG, KW_RETURN, KW_SHORT, KW_SIZEOF, KW_STATIC, KW_STRUCT,
-    KW_SWITCH, KW_TYPEDEF, KW_UNION, KW_VOID, KW_WHILE,
+    KW_ALIGNAS, KW_ALIGNOF, KW_BOOL, KW_BREAK, KW_CASE, KW_CHAR, KW_CONTINUE, KW_DEFAULT, KW_ELSE,
+    KW_ENUM, KW_EXTERN, KW_FOR, KW_GOTO, KW_IF, KW_INT, KW_LONG, KW_RETURN, KW_SHORT, KW_SIZEOF,
+    KW_STATIC, KW_STRUCT, KW_SWITCH, KW_TYPEDEF, KW_UNION, KW_VOID, KW_WHILE,
 };
 use crate::node::{add_with_type, eval, sub_with_type, LabelInfo, Node, NodeKind, NodeLink};
 use crate::obj::{Member, Obj, ObjLink, Scope, VarAttr, VarScope};
@@ -199,6 +201,10 @@ impl<'a> Parser<'a> {
                 .unwrap()
                 .borrow_mut()
                 .set_definition(!var_attr.is_extern);
+            // 若有设置，则覆盖全局变量的对齐值
+            if var_attr.align != 0 {
+                var.as_mut().unwrap().borrow_mut().set_align(var_attr.align);
+            }
             let (_, token) = self.current();
             if token.equal("=") {
                 self.next().gvar_initializer(var.unwrap());
@@ -336,6 +342,7 @@ impl<'a> Parser<'a> {
 
     /// declspec = ("void" | "_Bool" | "char" | "short" | "int" | "long"
     ///            | "typedef" | "static" | "extern"
+    ///            | "_Alignas" ("(" typename | const_expr ")")
     ///            | struct_declare | union_declare | typedef_name
     ///            | enum_specifier)+
     /// declarator specifier
@@ -384,6 +391,23 @@ impl<'a> Parser<'a> {
                     error_token!(token, "typedef and static may not be used together");
                 }
                 self.next();
+                continue;
+            }
+
+            // "_Alignas" ("(" typename | const_expr ")")
+            if token.equal(KW_ALIGNAS) {
+                if attr.is_none() {
+                    error_token!(token, "_Alignas is not allowed in this context")
+                }
+                self.next().skip("(");
+
+                let (_, token) = self.current();
+                if self.is_typename(token) {
+                    attr.as_mut().unwrap().align = self.typename().borrow().align;
+                } else {
+                    attr.as_mut().unwrap().align = self.const_expr() as isize;
+                }
+                self.skip(")");
                 continue;
             }
 
@@ -574,11 +598,11 @@ impl<'a> Parser<'a> {
             }
             let mut node;
             if self.is_typename(token) && !self.tokens[pos + 1].equal(":") {
-                let mut va = Some(VarAttr::new());
-                let base_type = self.declspec(&mut va);
+                let mut attr = Some(VarAttr::new());
+                let base_type = self.declspec(&mut attr);
 
                 // 解析typedef的语句
-                let va = va.as_ref().unwrap();
+                let va = attr.as_ref().unwrap();
                 if va.is_typedef {
                     self.parse_typedef(base_type);
                     continue;
@@ -597,7 +621,7 @@ impl<'a> Parser<'a> {
                 }
 
                 // declaration 解析变量声明语句
-                node = self.declaration(base_type).unwrap();
+                node = self.declaration(base_type, &mut attr).unwrap();
             } else {
                 // stmt
                 node = self.stmt().unwrap();
@@ -617,7 +641,7 @@ impl<'a> Parser<'a> {
 
     /// declaration = declspec (declarator ("=" initializer)?
     ///                        ("," declarator ("=" initializer)?)*)? ";"
-    fn declaration(&mut self, base_type: TypeLink) -> Option<NodeLink> {
+    fn declaration(&mut self, base_type: TypeLink, attr: &mut Option<VarAttr>) -> Option<NodeLink> {
         let mut nodes = vec![];
         let mut i = 0;
 
@@ -643,6 +667,10 @@ impl<'a> Parser<'a> {
             }
 
             let nvar = self.new_lvar(type_).unwrap();
+            // 读取是否存在变量的对齐值
+            if attr.is_some() && attr.as_ref().unwrap().align != 0 {
+                nvar.borrow_mut().set_align(attr.as_ref().unwrap().align);
+            }
 
             let (pos, token) = self.current();
             let nt = self.tokens[pos].clone();
@@ -1139,7 +1167,7 @@ impl<'a> Parser<'a> {
             let init;
             if self.is_typename(token) {
                 let base_type = self.declspec(&mut None);
-                init = Some(self.declaration(base_type).unwrap());
+                init = Some(self.declaration(base_type, &mut None).unwrap());
             } else {
                 init = Some(self.expr_stmt().unwrap());
             }
@@ -1856,7 +1884,8 @@ impl<'a> Parser<'a> {
                 break;
             }
 
-            let base_type = self.declspec(&mut None);
+            let mut attr = Some(VarAttr::new());
+            let base_type = self.declspec(&mut attr);
             let mut is_first = true;
 
             while !self.consume(";") {
@@ -1867,8 +1896,14 @@ impl<'a> Parser<'a> {
 
                 let type_ = self.declarator(base_type.clone());
                 let name = type_.borrow().get_name().to_string();
-                let member = Member::new(name.to_string(), Some(type_), idx);
+                let mut member = Member::new(name.to_string(), Some(type_), idx);
                 idx += 1;
+                let va = attr.as_ref().unwrap();
+                if va.align != 0 {
+                    member.align = va.align;
+                } else {
+                    member.align = member.type_.as_ref().unwrap().borrow().align;
+                }
                 members.push(member);
             }
         }
@@ -1904,7 +1939,7 @@ impl<'a> Parser<'a> {
 
         for i in 0..tm.members.len() {
             let member = &mut tm.members[i];
-            let align = member.type_.as_ref().unwrap().borrow().align;
+            let align = member.align;
             offset = align_to(offset, align);
             member.set_offset(offset);
             offset += member.type_.as_ref().unwrap().borrow().size;
@@ -1927,7 +1962,7 @@ impl<'a> Parser<'a> {
         // 联合体需要设置为最大的对齐量与大小，变量偏移量都默认为0
         for i in 0..tm.members.len() {
             let member = &mut tm.members[i];
-            let align = member.type_.as_ref().unwrap().borrow().align;
+            let align = member.align;
             let size = member.type_.as_ref().unwrap().borrow().size;
             if tm.align < align {
                 tm.align = align;
@@ -2094,6 +2129,7 @@ impl<'a> Parser<'a> {
     ///         | "(" expr ")"
     ///         | "sizeof" "(" typename ")"
     ///         | "sizeof" unary
+    ///         | "_Alignof" "(" typename ")"
     ///         | ident funcArgs?
     ///         | str
     ///         | num
@@ -2136,6 +2172,17 @@ impl<'a> Parser<'a> {
             let nt = self.tokens[pos].clone();
             let size = node.unwrap().get_type().as_ref().unwrap().borrow().size as i64;
             return Some(Node::new_num(size, nt));
+        }
+
+        // "_Alignof" "(" typename ")"
+        // 读取类型的对齐值
+        if token.equal(KW_ALIGNOF) {
+            self.next().skip("(");
+            let (_, token) = self.current();
+            let t = token.clone();
+            let typ = self.typename();
+            self.skip(")");
+            return Some(Node::new_num(typ.borrow().align as i64, t));
         }
 
         // ident args?

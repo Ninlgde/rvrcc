@@ -30,6 +30,8 @@ pub enum Obj {
         relocation: *mut Relocation,
         /// 是否为函数定义
         is_definition: bool,
+        /// 对齐量
+        align: isize,
     },
     /// 函数
     Func {
@@ -130,6 +132,7 @@ impl Obj {
         type_: TypeLink,
         is_local: bool,
         init_data: Option<Vec<i8>>,
+        align: isize,
     ) -> Self {
         Self::Var {
             name,
@@ -140,19 +143,23 @@ impl Obj {
             is_static: false,
             relocation: ptr::null_mut(),
             is_definition: false,
+            align,
         }
     }
 
     /// 创建本地变量对象
     pub fn new_lvar(name: String, type_: TypeLink) -> Self {
-        Self::new_var(name, type_, true, None)
+        let align = type_.borrow().align;
+        Self::new_var(name, type_, true, None, align)
     }
 
     /// 创建全局变量对象
     pub fn new_gvar(name: String, type_: TypeLink, init_data: Option<Vec<i8>>) -> Self {
-        Self::new_var(name, type_, false, init_data)
+        let align = type_.borrow().align;
+        Self::new_var(name, type_, false, init_data, align)
     }
 
+    /// 设置字面数据
     pub fn set_init_data(&mut self, buf: Vec<i8>) {
         match self {
             Self::Var { init_data, .. } => {
@@ -162,6 +169,7 @@ impl Obj {
         }
     }
 
+    /// 设置变量的relocation
     pub fn set_relocation(&mut self, rel: *mut Relocation) {
         match self {
             Self::Var { relocation, .. } => {
@@ -171,6 +179,7 @@ impl Obj {
         }
     }
 
+    /// 获取变量的relocation
     pub fn get_relocation(&self) -> *mut Relocation {
         match self {
             Self::Var { relocation, .. } => *relocation,
@@ -178,6 +187,7 @@ impl Obj {
         }
     }
 
+    /// 设置是否是定义
     pub fn set_definition(&mut self, is_def: bool) {
         match self {
             Self::Var { is_definition, .. } | Self::Func { is_definition, .. } => {
@@ -186,9 +196,28 @@ impl Obj {
         }
     }
 
+    /// 获取是否是定义
     pub fn is_definition(&self) -> bool {
         match self {
             Self::Var { is_definition, .. } | Self::Func { is_definition, .. } => *is_definition,
+        }
+    }
+
+    /// 设置变量的对齐量
+    pub fn set_align(&mut self, align_: isize) {
+        match self {
+            Self::Var { align, .. } => {
+                *align = align_;
+            }
+            _ => {}
+        }
+    }
+
+    /// 获取变量的对齐量
+    pub fn get_align(&self) -> isize {
+        match self {
+            Self::Var { align, .. } => *align,
+            _ => 0,
         }
     }
 
@@ -296,6 +325,8 @@ pub struct VarAttr {
     pub(crate) is_static: bool,
     /// 是否为外部变量
     pub(crate) is_extern: bool,
+    /// 对齐量
+    pub(crate) align: isize,
 }
 
 impl VarAttr {
@@ -304,6 +335,7 @@ impl VarAttr {
             is_typedef: false,
             is_static: false,
             is_extern: false,
+            align: 0,
         }
     }
 }
@@ -326,6 +358,7 @@ impl Scope {
 
     /// 添加一个var
     pub fn add_var(&mut self, name: String) -> Rc<RefCell<VarScope>> {
+        // 设置变量默认的对齐量为类型的对齐量
         let vs = Rc::new(RefCell::new(VarScope::new(name)));
         self.vars.insert(0, vs.clone());
         vs
@@ -333,6 +366,7 @@ impl Scope {
 
     /// 找到对应的var
     pub fn get_var(&self, name: &str) -> Option<Rc<RefCell<VarScope>>> {
+        // 设置变量默认的对齐量为类型的对齐量
         for scope in self.vars.iter() {
             if name.eq(scope.borrow().name.as_str()) {
                 return Some(scope.clone());
@@ -383,6 +417,8 @@ pub struct Member {
     pub(crate) token: Option<Token>,
     // 索引值
     pub(crate) idx: usize,
+    /// 对齐量
+    pub(crate) align: isize,
 }
 
 impl Member {
@@ -393,6 +429,7 @@ impl Member {
             offset: 0,
             token: None,
             idx,
+            align: 0,
         })
     }
 

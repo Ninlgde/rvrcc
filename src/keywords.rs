@@ -36,11 +36,11 @@ const KW_COUNT: usize = 26;
 /// 类型名称列表
 pub const KW_TYPENAME: [&str; KW_TYPENAME_COUNT] = [
     KW_CHAR, KW_SHORT, KW_INT, KW_LONG, KW_STRUCT, KW_UNION, KW_VOID, KW_TYPEDEF, KW_BOOL, KW_ENUM,
-    KW_STATIC, KW_EXTERN,
+    KW_STATIC, KW_EXTERN, KW_ALIGNAS,
 ];
 
 /// 类型名称数量
-const KW_TYPENAME_COUNT: usize = 12;
+const KW_TYPENAME_COUNT: usize = 13;
 
 /// 关键字: 返回
 pub const KW_RETURN: &str = "return";

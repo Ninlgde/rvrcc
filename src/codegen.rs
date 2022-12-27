@@ -90,7 +90,7 @@ impl<'a> Generator<'a> {
                             let v = cv.borrow();
                             let t = v.get_type().borrow();
                             offset += t.size as isize;
-                            offset = align_to(offset, t.align as isize);
+                            offset = align_to(offset, v.get_align());
                         }
                         let mut v = var.borrow_mut();
                         v.set_offset(-offset);
@@ -124,7 +124,7 @@ impl<'a> Generator<'a> {
                     if var.get_type().borrow().align == 0 {
                         panic!("Align can not be 0!");
                     }
-                    writeln!("  .align {}", simple_log2(var.get_type().borrow().align));
+                    writeln!("  .align {}", simple_log2(var.get_align()));
                     // 判断是否有初始值
                     if init_data.is_some() {
                         writeln!("\n  # 数据段标签");
