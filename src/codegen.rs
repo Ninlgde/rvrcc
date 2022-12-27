@@ -114,10 +114,12 @@ impl<'a> Generator<'a> {
                     init_data,
                     ..
                 } => {
-                    writeln!("\n  # 数据段标签");
-                    writeln!("  .data");
+                    writeln!("\n  # 全局段{}", var.get_name());
+                    writeln!("  .globl {}", var.get_name());
                     // 判断是否有初始值
                     if init_data.is_some() {
+                        writeln!("\n  # 数据段标签");
+                        writeln!("  .data");
                         writeln!("{}:", name);
                         let mut rel = var.get_relocation();
                         let mut pos = 0;
@@ -144,13 +146,15 @@ impl<'a> Generator<'a> {
                                 }
                             }
                         }
-                    } else {
-                        writeln!("  # 全局段{}", name);
-                        writeln!("  .globl {}", name);
-                        writeln!("{}:", name);
-                        writeln!("  # 全局变量零填充{}位", type_.borrow().size);
-                        writeln!("  .zero {}", type_.borrow().size);
+                        continue;
                     }
+
+                    // bss段未给数据分配空间，只记录数据所需空间的大小
+                    writeln!("  # 未初始化的全局变量");
+                    writeln!("  .bss");
+                    writeln!("{}:", name);
+                    writeln!("  # 全局变量零填充{}位", type_.borrow().size);
+                    writeln!("  .zero {}", type_.borrow().size);
                 }
                 _ => {}
             }
