@@ -20,8 +20,12 @@
 //! initializer = string_initializer | array_initializer | struct_initializer
 //!             | union_initializer | assign
 //! string_initializer = string_literal
-//! array_initializer = "{" initializer ("," initializer)* "}"
-//! struct_initializer = "{" initializer ("," initializer)* "}"
+//! array_initializer = array_initializer1 | array_initializer2
+//! array_initializer1 = "{" initializer ("," initializer)* "}"
+//! array_initializer2 = initializer ("," initializer)*
+//! struct_initializer = struct_initializer1 | struct_initializer2
+//! struct_initializer1 = "{" initializer ("," initializer)* "}"
+//! struct_initializer2 = initializer ("," initializer)*
 //! union_initializer = "{" initializer "}"
 //! stmt = "return" expr ";"
 //!        | "if" "(" expr ")" stmt ("else" stmt)?
@@ -646,13 +650,19 @@ impl<'a> Parser<'a> {
     /// union_initializer = "{" initializer "}"
     fn union_initializer(&mut self, init: &mut Box<Initializer>) {
         // 联合体只接受第一个成员用来初始化
-        self.skip("{");
-        self.initializer0(&mut init.children[0]);
-        self.skip("}");
+        let (_, token) = self.current();
+        if token.equal("{") {
+            // 存在括号的情况
+            self.next().initializer0(&mut init.children[0]);
+            self.skip("}");
+        } else {
+            // 不存在括号的情况
+            self.initializer0(&mut init.children[0]);
+        }
     }
 
-    /// struct_initializer = "{" initializer ("," initializer)* "}"
-    fn struct_initializer(&mut self, init: &mut Box<Initializer>) {
+    /// struct_initializer1 = "{" initializer ("," initializer)* "}"
+    fn struct_initializer1(&mut self, init: &mut Box<Initializer>) {
         let typ = init.typ.as_ref().unwrap().clone();
         let t = typ.borrow();
         self.skip("{");
@@ -671,6 +681,26 @@ impl<'a> Parser<'a> {
                 // 跳过多余的元素
                 self.skip_excess_element();
             }
+            i += 1;
+        }
+    }
+
+    /// struct_initializer2 = initializer ("," initializer)*
+    fn struct_initializer2(&mut self, init: &mut Box<Initializer>) {
+        let typ = init.typ.as_ref().unwrap().clone();
+        let t = typ.borrow();
+
+        // 项数
+        let mut i = 0;
+        loop {
+            let (_, token) = self.current();
+            if i >= t.members.len() as usize || token.equal("}") {
+                break;
+            }
+            if i > 0 {
+                self.skip(",");
+            }
+            self.initializer0(&mut init.children[i]);
             i += 1;
         }
     }
@@ -734,8 +764,8 @@ impl<'a> Parser<'a> {
         return count;
     }
 
-    /// array_initializer = "{" initializer ("," initializer)* "}"
-    fn array_initializer(&mut self, init: &mut Box<Initializer>) {
+    /// array_initializer1 = "{" initializer ("," initializer)* "}"
+    fn array_initializer1(&mut self, init: &mut Box<Initializer>) {
         let typ = init.typ.as_ref().unwrap().clone();
         let t = typ.borrow();
         self.skip("{");
@@ -748,6 +778,7 @@ impl<'a> Parser<'a> {
             init.is_flexible = false;
         }
         let typ = init.typ.as_ref().unwrap().clone(); // 可能被替换了,重新取下
+        let t = typ.borrow();
 
         // 遍历数组
         let mut i = 0;
@@ -755,7 +786,6 @@ impl<'a> Parser<'a> {
             if i > 0 {
                 self.skip(",");
             }
-            let t = typ.borrow();
             if i < t.len as usize {
                 // 正常解析元素
                 self.initializer0(&mut init.children[i]);
@@ -763,6 +793,36 @@ impl<'a> Parser<'a> {
                 // 跳过多余的元素
                 self.skip_excess_element();
             }
+            i += 1;
+        }
+    }
+
+    /// array_initializer2 = initializer ("," initializer)*
+    fn array_initializer2(&mut self, init: &mut Box<Initializer>) {
+        let typ = init.typ.as_ref().unwrap().clone();
+        let t = typ.borrow();
+        // 如果数组是可调整的，那么就计算数组的元素数，然后进行初始化器的构造
+        if init.is_flexible {
+            let len = self.count_array_init_elements(typ.clone());
+            // 在这里Ty也被重新构造为了数组
+            let new_type = Type::array_of(t.base.as_ref().unwrap().clone(), len);
+            init.replace_type(new_type);
+            init.is_flexible = false;
+        }
+        let typ = init.typ.as_ref().unwrap().clone(); // 可能被替换了,重新取下
+        let t = typ.borrow();
+
+        // 遍历数组
+        let mut i = 0;
+        loop {
+            let (_, token) = self.current();
+            if i >= t.len as usize || token.equal("}") {
+                break;
+            }
+            if i > 0 {
+                self.skip(",");
+            }
+            self.initializer0(&mut init.children[i]);
             i += 1;
         }
     }
@@ -781,22 +841,33 @@ impl<'a> Parser<'a> {
 
         // array_initializer
         if t.kind == TypeKind::Array {
-            self.array_initializer(init);
+            if token.equal("{") {
+                self.array_initializer1(init);
+            } else {
+                self.array_initializer2(init);
+            }
             return;
         }
 
         // struct_initializer
         if t.kind == TypeKind::Struct {
             // 匹配使用其他结构体来赋值，其他结构体需要先被解析过
-            if !token.equal("{") {
-                let mut expr = self.assign().unwrap();
-                add_type(&mut expr);
-                if expr.type_.as_ref().unwrap().borrow().kind == TypeKind::Struct {
-                    init.expr = Some(expr);
-                    return;
-                }
+            // 存在括号的情况
+            if token.equal("{") {
+                self.struct_initializer1(init);
+                return;
             }
-            self.struct_initializer(init);
+            // 不存在括号的情况
+            let (start_pos, _) = self.current();
+            let mut expr = self.assign().unwrap();
+            add_type(&mut expr);
+            if expr.type_.as_ref().unwrap().borrow().kind == TypeKind::Struct {
+                init.expr = Some(expr);
+                return;
+            }
+            // 如果通过assign 读到的不是struct,则回档,使用struct_initializer2来读
+            self.cursor = start_pos;
+            self.struct_initializer2(init);
             return;
         }
 
