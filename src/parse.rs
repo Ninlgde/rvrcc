@@ -8,7 +8,7 @@
 //!            | enum_specifier)+
 //! enum_specifier = ident? "{" enum_list? "}"
 //!                 | ident ("{" enum_list? "}")?
-//! enum_list = ident ("=" const_expr)? ("," ident ("=" const_expr)?)*
+//! enum_list = ident ("=" const_expr)? ("," ident ("=" const_expr)?)* ","?
 //! declarator = "*"* ("(" ident ")" | "(" declarator ")" | ident) type_suffix
 //! type_suffix = "(" funcParams | "[" array_dimensions | ε
 //! array_dimensions = const_expr? "]" typeSuffix
@@ -21,11 +21,11 @@
 //!             | union_initializer | assign
 //! string_initializer = string_literal
 //! array_initializer = array_initializer1 | array_initializer2
-//! array_initializer1 = "{" initializer ("," initializer)* "}"
-//! array_initializer2 = initializer ("," initializer)*
+//! array_initializer1 = "{" initializer ("," initializer)* ","? "}"
+//! array_initializer2 = initializer ("," initializer)* ","?
 //! struct_initializer = struct_initializer1 | struct_initializer2
-//! struct_initializer1 = "{" initializer ("," initializer)* "}"
-//! struct_initializer2 = initializer ("," initializer)*
+//! struct_initializer1 = "{" initializer ("," initializer)* ","? "}"
+//! struct_initializer2 = initializer ("," initializer)* ","?
 //! union_initializer = "{" initializer "}"
 //! stmt = "return" expr ";"
 //!        | "if" "(" expr ")" stmt ("else" stmt)?
@@ -654,6 +654,7 @@ impl<'a> Parser<'a> {
         if token.equal("{") {
             // 存在括号的情况
             self.next().initializer0(&mut init.children[0]);
+            self.consume(",");
             self.skip("}");
         } else {
             // 不存在括号的情况
@@ -661,7 +662,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    /// struct_initializer1 = "{" initializer ("," initializer)* "}"
+    /// struct_initializer1 = "{" initializer ("," initializer)* ","? "}"
     fn struct_initializer1(&mut self, init: &mut Box<Initializer>) {
         let typ = init.typ.as_ref().unwrap().clone();
         let t = typ.borrow();
@@ -669,7 +670,7 @@ impl<'a> Parser<'a> {
 
         // 项数
         let mut i = 0;
-        while !self.consume("}") {
+        while !self.consume_end() {
             if i > 0 {
                 self.skip(",");
             }
@@ -685,7 +686,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    /// struct_initializer2 = initializer ("," initializer)*
+    /// struct_initializer2 = initializer ("," initializer)* ","?
     fn struct_initializer2(&mut self, init: &mut Box<Initializer>) {
         let typ = init.typ.as_ref().unwrap().clone();
         let t = typ.borrow();
@@ -693,8 +694,7 @@ impl<'a> Parser<'a> {
         // 项数
         let mut i = 0;
         loop {
-            let (_, token) = self.current();
-            if i >= t.members.len() as usize || token.equal("}") {
+            if i >= t.members.len() as usize || self.is_end() {
                 break;
             }
             if i > 0 {
@@ -751,7 +751,7 @@ impl<'a> Parser<'a> {
         // 项数
         let mut count = 0;
         // 遍历所有匹配的项
-        while !self.consume("}") {
+        while !self.consume_end() {
             if count > 0 {
                 self.skip(",");
             }
@@ -764,7 +764,7 @@ impl<'a> Parser<'a> {
         return count;
     }
 
-    /// array_initializer1 = "{" initializer ("," initializer)* "}"
+    /// array_initializer1 = "{" initializer ("," initializer)* ","? "}"
     fn array_initializer1(&mut self, init: &mut Box<Initializer>) {
         let typ = init.typ.as_ref().unwrap().clone();
         let t = typ.borrow();
@@ -782,7 +782,7 @@ impl<'a> Parser<'a> {
 
         // 遍历数组
         let mut i = 0;
-        while !self.consume("}") {
+        while !self.consume_end() {
             if i > 0 {
                 self.skip(",");
             }
@@ -797,7 +797,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    /// array_initializer2 = initializer ("," initializer)*
+    /// array_initializer2 = initializer ("," initializer)* ","?
     fn array_initializer2(&mut self, init: &mut Box<Initializer>) {
         let typ = init.typ.as_ref().unwrap().clone();
         let t = typ.borrow();
@@ -815,8 +815,7 @@ impl<'a> Parser<'a> {
         // 遍历数组
         let mut i = 0;
         loop {
-            let (_, token) = self.current();
-            if i >= t.len as usize || token.equal("}") {
+            if i >= t.len as usize || self.is_end() {
                 break;
             }
             if i > 0 {
@@ -1742,7 +1741,7 @@ impl<'a> Parser<'a> {
     /// 获取枚举类型信息
     /// enumSpecifier = ident? "{" enum_list? "}"
     ///               | ident ("{" enum_list? "}")?
-    /// enum_list     = ident ("=" const_expr)? ("," ident ("=" const_expr)?)*
+    /// enum_list     = ident ("=" const_expr)? ("," ident ("=" const_expr)?)* ","?
     fn enum_specifier(&mut self) -> TypeLink {
         let typ = Type::new_enum();
 
@@ -1772,11 +1771,7 @@ impl<'a> Parser<'a> {
 
         let mut i = 0;
         let mut val = 0;
-        loop {
-            let (_, token) = self.current();
-            if token.equal("}") {
-                break;
-            }
+        while !self.consume_end() {
             if i > 0 {
                 self.skip(",");
             }
@@ -1798,8 +1793,6 @@ impl<'a> Parser<'a> {
             }
             val += 1;
         }
-
-        self.next();
 
         if tag.is_some() {
             let tag_name = tag.unwrap().get_name();
@@ -2345,6 +2338,33 @@ impl<'a> Parser<'a> {
         let (_, token) = self.current();
         if token.equal(s) {
             self.next();
+            return true;
+        }
+        return false;
+    }
+
+    /// 判断是否终结符匹配到了结尾
+    fn is_end(&mut self) -> bool {
+        let (pos, token) = self.current();
+        let next = &self.tokens[pos + 1];
+        // "}" | ",}"
+        return token.equal("}") || (token.equal(",") && next.equal("}"));
+    }
+
+    /// 消耗掉结尾的终结符
+    /// "}" | ",}"
+    fn consume_end(&mut self) -> bool {
+        let (pos, token) = self.current();
+        // "}"
+        if token.equal("}") {
+            self.next();
+            return true;
+        }
+
+        // ",}"
+        let next = &self.tokens[pos + 1];
+        if token.equal(",") && next.equal("}") {
+            self.next().next();
             return true;
         }
         return false;
