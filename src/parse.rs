@@ -1830,6 +1830,16 @@ impl<'a> Parser<'a> {
             }
         }
 
+        // 解析灵活数组成员，数组大小设为0
+        if members.len() > 0 {
+            let last = members.len() - 1;
+            let mut t = members[last].type_.as_ref().unwrap().borrow_mut();
+            if t.kind == TypeKind::Array && t.len < 0 {
+                let new_type = Type::array_of0(t.base.as_ref().unwrap().clone(), 0);
+                *t = new_type;
+            }
+        }
+
         self.next();
         type_.members = members;
     }

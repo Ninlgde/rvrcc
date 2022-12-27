@@ -139,11 +139,16 @@ impl Type {
 
     /// 创建一个长度为`len`的`base`类型的数组
     pub fn array_of(base: TypeLink, len: isize) -> TypeLink {
+        let type_ = Self::array_of0(base, len);
+        Rc::new(RefCell::new(type_))
+    }
+
+    pub fn array_of0(base: TypeLink, len: isize) -> Type {
         let size = base.borrow().size * len;
         let mut type_ = Self::new(TypeKind::Array, size, base.borrow().align);
         type_.base = Some(base);
         type_.len = len;
-        Rc::new(RefCell::new(type_))
+        type_
     }
 
     /// 创建一个union/struct类型

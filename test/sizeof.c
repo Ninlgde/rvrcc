@@ -39,6 +39,9 @@ int main() {
     ASSERT(8, sizeof(int(*)[10]));
     ASSERT(8, sizeof(int(*)[][10]));
 
+    // [112] 支持灵活数组成员
+    ASSERT(4, sizeof(struct { int x, y[]; }));
+
     printf("\033[32mOK\033[0m\n");
     return 0;
 }
