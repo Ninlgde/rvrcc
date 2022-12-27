@@ -54,11 +54,24 @@ impl<'a> Initializer<'a> {
         // 处理结构体和联合体
         if t.kind == TypeKind::Struct || t.kind == TypeKind::Union {
             // 遍历子项进行赋值
+            let mut i = 0;
             for member in t.members.iter() {
-                init.children.push(Initializer::new(
-                    member.type_.as_ref().unwrap().clone(),
-                    false,
-                ))
+                i += 1;
+                // 判断结构体是否是灵活的，同时成员也是灵活的并且是最后一个
+                // 在这里直接构造，避免对于灵活数组的解析
+                let child;
+                if is_flexible && t.is_flexible && i == t.members.len() {
+                    child = Box::new(Initializer {
+                        typ: Some(member.type_.as_ref().unwrap().clone()),
+                        token: None,
+                        expr: None,
+                        children: vec![],
+                        is_flexible: true,
+                    });
+                } else {
+                    child = Initializer::new(member.type_.as_ref().unwrap().clone(), false);
+                }
+                init.children.push(child)
             }
         }
 
@@ -66,12 +79,14 @@ impl<'a> Initializer<'a> {
     }
 
     /// 修改init的type
+    #[allow(dead_code)]
     pub fn replace_type(&mut self, typ: TypeLink) {
         typ.borrow_mut()
             .set_name(self.typ.as_ref().unwrap().borrow().clone().name);
         self.typ = Some(typ.clone());
 
         // 根据新类型判断是否重新添加children
+        self.children.clear();
         let t = typ.borrow();
         if t.kind == TypeKind::Array {
             for _ in 0..t.len {

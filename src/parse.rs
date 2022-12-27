@@ -717,8 +717,7 @@ impl<'a> Parser<'a> {
         if init.is_flexible {
             let new_type =
                 Type::array_of(t.base.as_ref().unwrap().clone(), token_type.borrow().len);
-            init.replace_type(new_type);
-            init.is_flexible = false;
+            *init = Initializer::new(new_type, false);
         }
         let t = init.typ.as_ref().unwrap().clone();
         let t = t.borrow();
@@ -774,8 +773,7 @@ impl<'a> Parser<'a> {
             let len = self.count_array_init_elements(typ.clone());
             // 在这里Ty也被重新构造为了数组
             let new_type = Type::array_of(t.base.as_ref().unwrap().clone(), len);
-            init.replace_type(new_type);
-            init.is_flexible = false;
+            *init = Initializer::new(new_type, false);
         }
         let typ = init.typ.as_ref().unwrap().clone(); // 可能被替换了,重新取下
         let t = typ.borrow();
@@ -806,8 +804,7 @@ impl<'a> Parser<'a> {
             let len = self.count_array_init_elements(typ.clone());
             // 在这里Ty也被重新构造为了数组
             let new_type = Type::array_of(t.base.as_ref().unwrap().clone(), len);
-            init.replace_type(new_type);
-            init.is_flexible = false;
+            *init = Initializer::new(new_type, false);
         }
         let typ = init.typ.as_ref().unwrap().clone(); // 可能被替换了,重新取下
         let t = typ.borrow();
@@ -888,14 +885,34 @@ impl<'a> Parser<'a> {
     }
 
     /// 初始化器
-    fn initializer(&mut self, var: ObjLink) -> Option<Box<Initializer>> {
+    fn initializer(&mut self, var: ObjLink) -> (Option<Box<Initializer>>, TypeLink) {
         let binding = var.borrow();
         let typ = binding.get_type();
         // 新建一个解析了类型的初始化器
         let mut init = Initializer::new(typ.clone(), true);
         // 解析需要赋值到Init中
         self.initializer0(&mut init);
-        Some(init)
+
+        let t = typ.borrow();
+        if (t.kind == TypeKind::Struct || t.kind == TypeKind::Union) && t.is_flexible {
+            // 复制结构体类型
+            let new_type = Type::copy_struct_type(typ);
+            let mut t = new_type.borrow_mut();
+            // 取最后一个成员
+            let last = t.members.last_mut().unwrap();
+            let lt = last.type_.as_mut().unwrap();
+            let idx = last.idx;
+            // 灵活数组类型替换为实际的数组类型
+            *lt = init.children[idx].typ.as_ref().unwrap().clone();
+            let size = lt.borrow().size;
+            // 增加结构体的类型大小
+            t.size += size;
+
+            return (Some(init), new_type.clone());
+        }
+
+        let new_type = init.typ.as_ref().unwrap().clone();
+        (Some(init), new_type)
     }
 
     /// 局部变量初始化器
@@ -904,8 +921,7 @@ impl<'a> Parser<'a> {
         let nt = self.tokens[pos].clone();
 
         // 获取初始化器，将值与数据结构一一对应
-        let init = self.initializer(var.clone()).unwrap();
-        let new_type = init.typ.as_ref().unwrap().clone();
+        let (init, new_type) = self.initializer(var.clone());
         var.borrow_mut().set_type(new_type);
         // 指派初始化
         let id = InitDesig::new_with_var(var.clone());
@@ -915,7 +931,7 @@ impl<'a> Parser<'a> {
         // 创建局部变量的初始化
         let binding = var.borrow();
         let typ = binding.get_type();
-        let rhs = create_lvar_init(init, typ.clone(), id, nt.clone()).unwrap();
+        let rhs = create_lvar_init(init.unwrap(), typ.clone(), id, nt.clone()).unwrap();
         // 左部为全部清零，右部为需要赋值的部分
         return Some(Node::new_binary(NodeKind::Comma, lhs, rhs, nt.clone()));
     }
@@ -923,8 +939,7 @@ impl<'a> Parser<'a> {
     /// 全局变量在编译时需计算出初始化的值，然后写入.data段。
     fn gvar_initializer(&mut self, var: ObjLink) {
         // 获取到初始化器
-        let init = self.initializer(var.clone()).unwrap();
-        let new_type = init.typ.as_ref().unwrap().clone();
+        let (init, new_type) = self.initializer(var.clone());
         let mut binding = var.borrow_mut();
         binding.set_type(new_type);
 
@@ -937,7 +952,7 @@ impl<'a> Parser<'a> {
         }
         {
             let head = Relocation::head();
-            write_gvar_data(head, init, typ, &mut buf, 0);
+            write_gvar_data(head, init.unwrap(), &typ, &mut buf, 0);
             binding.set_init_data(buf);
             unsafe { binding.set_relocation((*head).next) }
         }
@@ -1837,6 +1852,8 @@ impl<'a> Parser<'a> {
             if t.kind == TypeKind::Array && t.len < 0 {
                 let new_type = Type::array_of0(t.base.as_ref().unwrap().clone(), 0);
                 *t = new_type;
+                // 设置类型为灵活的
+                type_.is_flexible = true;
             }
         }
 

@@ -61,6 +61,8 @@ pub struct Type {
     pub(crate) len: isize,
     /// 结构体
     pub(crate) members: Vec<Box<Member>>,
+    /// 是否为灵活的，表示需要重新构造
+    pub(crate) is_flexible: bool,
 }
 
 impl Type {
@@ -77,6 +79,7 @@ impl Type {
             params: vec![],
             len: 0,
             members: vec![],
+            is_flexible: false,
         }
     }
 
@@ -208,6 +211,21 @@ impl Type {
         }
 
         Self::new_int()
+    }
+
+    /// 复制结构体的类型
+    pub fn copy_struct_type(src: &TypeLink) -> TypeLink {
+        let st = src.borrow().kind.clone();
+        let size = src.borrow().size;
+        let align = src.borrow().align;
+        let mut dst = Type::new(st, size, align);
+        let mut members = vec![];
+        for member in src.borrow().members.iter() {
+            members.push(member.clone());
+        }
+        dst.members = members;
+        dst.is_flexible = src.borrow().is_flexible;
+        Rc::new(RefCell::new(dst))
     }
 }
 
