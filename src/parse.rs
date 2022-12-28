@@ -16,7 +16,7 @@
 //! declarator = pointers ("(" ident ")" | "(" declarator ")" | ident) type_suffix
 //! pointers = ("*" ("const" | "volatile" | "restrict")*)*
 //! type_suffix = "(" funcParams | "[" array_dimensions | ε
-//! array_dimensions = const_expr? "]" typeSuffix
+//! array_dimensions = ("static" | "restrict")* const_expr? "]" typeSuffix
 //! func_params = ("void" | param ("," param)* ("," "...")?)? ")"
 //! param = declspec declarator
 //! compound_stmt = (typedef | declaration | stmt)* "}"
@@ -636,8 +636,18 @@ impl<'a> Parser<'a> {
         return base_type;
     }
 
-    /// array_dimensions = const_expr? "]" typeSuffix
+    /// array_dimensions = ("static" | "restrict")* const_expr? "]" typeSuffix
     fn array_dimensions(&mut self, mut base_type: TypeLink) -> TypeLink {
+        // ("static" | "restrict")*
+        loop {
+            let (_, token) = self.current();
+            if token.equal(KW_STATIC) || token.equal(KW_RESTRICT) {
+                self.next();
+            } else {
+                break;
+            }
+        }
+
         let (_, token) = self.current();
         // "]" 无数组维数的 "[]"
         if token.equal("]") {
