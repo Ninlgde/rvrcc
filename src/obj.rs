@@ -19,7 +19,7 @@ pub enum Obj {
         /// fp的偏移量
         offset: isize,
         /// 类型
-        type_: TypeLink,
+        typ: TypeLink,
         /// 是 局部或全局 变量
         is_local: bool,
         /// 全局变量
@@ -38,7 +38,7 @@ pub enum Obj {
         /// 函数名
         name: String,
         /// 类型
-        type_: TypeLink,
+        typ: TypeLink,
         /// 方法参数
         params: Vec<ObjLink>,
         /// 函数体
@@ -84,15 +84,15 @@ impl Obj {
     /// 获取类型
     pub fn get_type(&self) -> &TypeLink {
         match self {
-            Self::Var { type_, .. } | Self::Func { type_, .. } => type_,
+            Self::Var { typ, .. } | Self::Func { typ, .. } => typ,
         }
     }
 
     /// 设置type
     pub fn set_type(&mut self, t: TypeLink) {
         match self {
-            Self::Var { type_, .. } | Self::Func { type_, .. } => {
-                *type_ = t;
+            Self::Var { typ, .. } | Self::Func { typ, .. } => {
+                *typ = t;
             }
         }
     }
@@ -100,8 +100,8 @@ impl Obj {
     /// 获取函数返回值类型
     pub fn get_func_return_type(&self) -> Option<TypeLink> {
         match self {
-            Self::Func { type_, .. } => {
-                let t = type_.borrow();
+            Self::Func { typ, .. } => {
+                let t = typ.borrow();
                 Some(t.return_type.as_ref().unwrap().clone())
             }
             _ => None,
@@ -138,14 +138,14 @@ impl Obj {
     /// 创建变量对象
     pub fn new_var(
         name: String,
-        type_: TypeLink,
+        typ: TypeLink,
         is_local: bool,
         init_data: Option<Vec<i8>>,
         align: isize,
     ) -> Self {
         Self::Var {
             name,
-            type_,
+            typ,
             is_local,
             init_data,
             offset: 0,
@@ -157,15 +157,15 @@ impl Obj {
     }
 
     /// 创建本地变量对象
-    pub fn new_lvar(name: String, type_: TypeLink) -> Self {
-        let align = type_.borrow().align;
-        Self::new_var(name, type_, true, None, align)
+    pub fn new_lvar(name: String, typ: TypeLink) -> Self {
+        let align = typ.borrow().align;
+        Self::new_var(name, typ, true, None, align)
     }
 
     /// 创建全局变量对象
-    pub fn new_gvar(name: String, type_: TypeLink) -> Self {
-        let align = type_.borrow().align;
-        Self::new_var(name, type_, false, None, align)
+    pub fn new_gvar(name: String, typ: TypeLink) -> Self {
+        let align = typ.borrow().align;
+        Self::new_var(name, typ, false, None, align)
     }
 
     /// 设置字面数据
@@ -262,13 +262,13 @@ impl Obj {
     }
 
     /// 函数对象
-    pub fn new_func(name: String, type_: TypeLink) -> Self {
+    pub fn new_func(name: String, typ: TypeLink) -> Self {
         Self::Func {
             name,
             params: vec![],
             locals: vec![],
             body: None,
-            type_,
+            typ,
             stack_size: 0,
             is_definition: false,
             is_static: false,
@@ -422,7 +422,7 @@ pub struct Member {
     // 名称
     pub(crate) name: String,
     // 类型
-    pub(crate) type_: Option<TypeLink>,
+    pub(crate) typ: Option<TypeLink>,
     // 偏移量
     pub(crate) offset: isize,
     // 用于报错信息
@@ -435,10 +435,10 @@ pub struct Member {
 }
 
 impl Member {
-    pub fn new(name: String, type_: Option<TypeLink>, idx: usize) -> Box<Self> {
+    pub fn new(name: String, typ: Option<TypeLink>, idx: usize) -> Box<Self> {
         Box::new(Self {
             name,
-            type_,
+            typ,
             offset: 0,
             token: None,
             idx,

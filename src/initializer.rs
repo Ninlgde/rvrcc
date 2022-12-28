@@ -62,14 +62,14 @@ impl<'a> Initializer<'a> {
                 let child;
                 if is_flexible && t.is_flexible && i == t.members.len() {
                     child = Box::new(Initializer {
-                        typ: Some(member.type_.as_ref().unwrap().clone()),
+                        typ: Some(member.typ.as_ref().unwrap().clone()),
                         token: None,
                         expr: None,
                         children: vec![],
                         is_flexible: true,
                     });
                 } else {
-                    child = Initializer::new(member.type_.as_ref().unwrap().clone(), false);
+                    child = Initializer::new(member.typ.as_ref().unwrap().clone(), false);
                 }
                 init.children.push(child)
             }
@@ -208,7 +208,7 @@ pub fn create_lvar_init(
             let id = InitDesig::new_with_next(desig.clone(), member.idx, Some(member.clone()));
             let rhs = create_lvar_init(
                 init.children[member.idx].clone(),
-                member.type_.as_ref().unwrap().clone(),
+                member.typ.as_ref().unwrap().clone(),
                 id,
                 token.clone(),
             )
@@ -224,7 +224,7 @@ pub fn create_lvar_init(
         let id = InitDesig::new_with_next(desig.clone(), 0, Some(member.clone()));
         return create_lvar_init(
             init.children[0].clone(),
-            member.type_.as_ref().unwrap().clone(),
+            member.typ.as_ref().unwrap().clone(),
             id,
             token.clone(),
         );
@@ -299,7 +299,7 @@ pub fn write_gvar_data(
             cur = write_gvar_data(
                 cur,
                 init.children[member.idx].clone(),
-                member.type_.as_ref().unwrap(),
+                member.typ.as_ref().unwrap(),
                 chars,
                 offset + member.offset as usize,
             )
@@ -312,7 +312,7 @@ pub fn write_gvar_data(
         return write_gvar_data(
             cur,
             init.children[0].clone(),
-            t.members[0].type_.as_ref().unwrap(),
+            t.members[0].typ.as_ref().unwrap(),
             chars,
             offset,
         );

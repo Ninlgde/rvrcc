@@ -114,7 +114,7 @@ impl<'a> Generator<'a> {
             match var {
                 Obj::Var {
                     name,
-                    type_,
+                    typ,
                     init_data,
                     ..
                 } => {
@@ -167,8 +167,8 @@ impl<'a> Generator<'a> {
                     writeln!("  # 未初始化的全局变量");
                     writeln!("  .bss");
                     writeln!("{}:", name);
-                    writeln!("  # 全局变量零填充{}位", type_.borrow().size);
-                    writeln!("  .zero {}", type_.borrow().size);
+                    writeln!("  # 全局变量零填充{}位", typ.borrow().size);
+                    writeln!("  .zero {}", typ.borrow().size);
                 }
                 _ => {}
             }
@@ -483,13 +483,13 @@ impl<'a> Generator<'a> {
             NodeKind::Var | NodeKind::Member => {
                 // 计算出变量的地址，然后存入a0
                 self.gen_addr(node);
-                self.load(node.type_.as_ref().unwrap().clone());
+                self.load(node.typ.as_ref().unwrap().clone());
                 return;
             }
             // 解引用
             NodeKind::DeRef => {
                 self.gen_expr(node.lhs.as_ref().unwrap());
-                self.load(node.type_.as_ref().unwrap().clone());
+                self.load(node.typ.as_ref().unwrap().clone());
                 return;
             }
             // 取地址
@@ -504,7 +504,7 @@ impl<'a> Generator<'a> {
                 self.push();
                 // 右部是右值，为表达式的值
                 self.gen_expr(node.rhs.as_ref().unwrap());
-                self.store(node.type_.as_ref().unwrap().clone());
+                self.store(node.typ.as_ref().unwrap().clone());
                 return;
             }
             // 语句表达式
@@ -523,8 +523,8 @@ impl<'a> Generator<'a> {
             NodeKind::Cast => {
                 let lhs = node.lhs.as_ref().unwrap();
                 self.gen_expr(lhs);
-                let f_typ = lhs.type_.as_ref().unwrap().clone();
-                let t_typ = node.type_.as_ref().unwrap().clone();
+                let f_typ = lhs.typ.as_ref().unwrap().clone();
+                let t_typ = node.typ.as_ref().unwrap().clone();
                 self.cast(f_typ, t_typ);
                 return;
             }
@@ -632,7 +632,7 @@ impl<'a> Generator<'a> {
                 }
 
                 // 清除寄存器中高位无关的数据
-                match node.type_.as_ref().unwrap().borrow().kind {
+                match node.typ.as_ref().unwrap().borrow().kind {
                     TypeKind::Bool => {
                         writeln!("  # 清除bool类型的高位");
                         writeln!("  slli a0, a0, 63");
@@ -640,7 +640,7 @@ impl<'a> Generator<'a> {
                     }
                     TypeKind::Char => {
                         writeln!("  # 清除char类型的高位");
-                        let is_unsigned = node.type_.as_ref().unwrap().borrow().is_unsigned;
+                        let is_unsigned = node.typ.as_ref().unwrap().borrow().is_unsigned;
                         if is_unsigned {
                             writeln!("  slli a0, a0, 56");
                             writeln!("  srli a0, a0, 56");
@@ -651,7 +651,7 @@ impl<'a> Generator<'a> {
                     }
                     TypeKind::Short => {
                         writeln!("  # 清除short类型的高位");
-                        let is_unsigned = node.type_.as_ref().unwrap().borrow().is_unsigned;
+                        let is_unsigned = node.typ.as_ref().unwrap().borrow().is_unsigned;
                         if is_unsigned {
                             writeln!("  slli a0, a0, 48");
                             writeln!("  srli a0, a0, 48");
@@ -669,7 +669,7 @@ impl<'a> Generator<'a> {
 
         self.gen_lrhs(node.lhs.as_ref().unwrap(), node.rhs.as_ref().unwrap());
 
-        let typ = node.lhs.as_ref().unwrap().type_.as_ref().unwrap().clone();
+        let typ = node.lhs.as_ref().unwrap().typ.as_ref().unwrap().clone();
         let typ = typ.borrow();
         let suffix = if typ.kind == TypeKind::Long || typ.has_base() {
             ""
@@ -695,7 +695,7 @@ impl<'a> Generator<'a> {
             NodeKind::Div => {
                 // / a0=a0/a1
                 writeln!("  # a0÷a1，结果写入a0");
-                let is_unsigned = node.type_.as_ref().unwrap().borrow().is_unsigned;
+                let is_unsigned = node.typ.as_ref().unwrap().borrow().is_unsigned;
                 if is_unsigned {
                     writeln!("  divu{} a0, a0, a1", suffix);
                 } else {
@@ -705,7 +705,7 @@ impl<'a> Generator<'a> {
             NodeKind::Mod => {
                 // % a0=a0%a1
                 writeln!("  # a0%%a1，结果写入a0");
-                let is_unsigned = node.type_.as_ref().unwrap().borrow().is_unsigned;
+                let is_unsigned = node.typ.as_ref().unwrap().borrow().is_unsigned;
                 if is_unsigned {
                     writeln!("  remu{} a0, a0, a1", suffix);
                 } else {
@@ -772,7 +772,7 @@ impl<'a> Generator<'a> {
             }
             NodeKind::Shr => {
                 writeln!("  # a0算术右移a1位");
-                let is_unsigned = node.type_.as_ref().unwrap().borrow().is_unsigned;
+                let is_unsigned = node.typ.as_ref().unwrap().borrow().is_unsigned;
                 if is_unsigned {
                     writeln!("  srl{} a0, a0, a1", suffix);
                 } else {
@@ -859,17 +859,17 @@ impl<'a> Generator<'a> {
     }
 
     /// 加载a0指向的值
-    fn load(&mut self, type_: TypeLink) {
-        if type_.borrow().kind == TypeKind::Array
-            || type_.borrow().kind == TypeKind::Struct
-            || type_.borrow().kind == TypeKind::Union
+    fn load(&mut self, typ: TypeLink) {
+        if typ.borrow().kind == TypeKind::Array
+            || typ.borrow().kind == TypeKind::Struct
+            || typ.borrow().kind == TypeKind::Union
         {
             return;
         }
 
         writeln!("  # 读取a0中存放的地址，得到的值存入a0");
-        let size = type_.borrow().size;
-        let suffix = if type_.borrow().is_unsigned { "u" } else { "" };
+        let size = typ.borrow().size;
+        let suffix = if typ.borrow().is_unsigned { "u" } else { "" };
         match size {
             1 => writeln!("  lb{} a0, 0(a0)", suffix),
             2 => writeln!("  lh{} a0, 0(a0)", suffix),
@@ -880,10 +880,10 @@ impl<'a> Generator<'a> {
     }
 
     /// 将栈顶值(为一个地址)存入a0
-    fn store(&mut self, type_: TypeLink) {
+    fn store(&mut self, typ: TypeLink) {
         self.pop("a1");
 
-        let kind = &type_.borrow().kind;
+        let kind = &typ.borrow().kind;
         if *kind == TypeKind::Struct || *kind == TypeKind::Union {
             let k = if *kind == TypeKind::Struct {
                 "结构体"
@@ -891,7 +891,7 @@ impl<'a> Generator<'a> {
                 "联合体"
             };
             writeln!("  # 对{}进行赋值", k);
-            for i in 0..type_.borrow().size {
+            for i in 0..typ.borrow().size {
                 writeln!("  li t0, {}", i);
                 writeln!("  add t0, a0, t0");
                 writeln!("  lb t1, 0(t0)");
@@ -904,7 +904,7 @@ impl<'a> Generator<'a> {
         }
 
         writeln!("  # 将a0的值，写入到a1中存放的地址");
-        let size = type_.borrow().size;
+        let size = typ.borrow().size;
         match size {
             1 => writeln!("  sb a0, 0(a1)"),
             2 => writeln!("  sh a0, 0(a1)"),

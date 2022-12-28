@@ -1,4 +1,4 @@
-use crate::ctype::Type;
+use crate::ctype::{Type, TypeLink};
 use crate::keywords::KEYWORDS;
 use crate::token::Token;
 use crate::{error_at, read_file, slice_to_string, FILE_NAME, INPUT};
@@ -79,13 +79,14 @@ pub fn tokenize(path: String, input: String) -> Vec<Token> {
             // 初始化，类似于C++的构造函数
             // 我们不使用Head来存储信息，仅用来表示链表入口，这样每次都是存储在Cur->Next
             // 否则下述操作将使第一个Token的地址不在Head中。
-            let val = read_int_literal(&chars, &mut pos);
+            let (val, typ) = read_int_literal(&chars, &mut pos);
             let t_str = slice_to_string(&chars, old_pos, pos);
             let t = Token::Num {
                 val,
                 t_str,
                 offset: old_pos,
                 line_no,
+                typ,
             };
             tokens.push(t);
             continue;
@@ -96,10 +97,10 @@ pub fn tokenize(path: String, input: String) -> Vec<Token> {
             let mut val = read_string_literal(&chars, &mut pos);
             val.push('\0' as u8);
             let len = val.len();
-            let type_ = Type::array_of(Type::new_char(), len as isize);
+            let typ = Type::array_of(Type::new_char(), len as isize);
             let t = Token::Str {
                 val,
-                type_,
+                typ,
                 offset: old_pos,
                 line_no,
             };
@@ -116,6 +117,7 @@ pub fn tokenize(path: String, input: String) -> Vec<Token> {
                 t_str: "".to_string(),
                 offset: old_pos,
                 line_no,
+                typ: Type::new_int(),
             });
             continue;
         }
@@ -169,11 +171,11 @@ pub fn tokenize(path: String, input: String) -> Vec<Token> {
 /// strtol为“string to long”，
 /// 参数为：被转换的str，str除去数字后的剩余部分，进制
 /// 传入&p，即char**, 是为了修改P的值
-fn strtol(chars: &Vec<u8>, pos: &mut usize, base: u32) -> i64 {
-    let mut result: i64 = 0;
+fn strtol(chars: &Vec<u8>, pos: &mut usize, base: u32) -> u64 {
+    let mut result: u64 = 0;
     while *pos < chars.len() {
         if let Some(i) = (chars[*pos] as char).to_digit(base) {
-            result = result * base as i64 + i as i64;
+            result = result * base as u64 + i as u64;
             *pos += 1;
         } else {
             break;
@@ -381,26 +383,111 @@ fn read_char_literal(chars: &Vec<u8>, pos: &mut usize) -> char {
 }
 
 /// 读取数字的字面量
-fn read_int_literal(chars: &Vec<u8>, pos: &mut usize) -> i64 {
+fn read_int_literal(chars: &Vec<u8>, pos: &mut usize) -> (i64, TypeLink) {
     let c = chars[*pos] as char;
     let cnn = chars[*pos + 2] as char; //0x() or 0b()
 
+    // 读取二、八、十、十六进制
+    // 默认为十进制
     let mut radix = 10;
+    // 比较两个字符串前2个字符，忽略大小写，并判断是否为数字
     if starts_with_ignore_case(chars, *pos, "0x") && cnn.is_digit(16) {
+        // 十六进制
         radix = 16;
         *pos += 2;
     } else if starts_with_ignore_case(chars, *pos, "0b") && cnn.is_digit(2) {
+        // 二进制
         radix = 2;
         *pos += 2;
     } else if c == '0' {
+        // 八进制
         radix = 8;
     }
 
+    // 将字符串转换为Base进制的数字
     let result = strtol(chars, pos, radix);
+
+    // 读取U L LL后缀
+    let mut u = false;
+    let mut l = false;
+
+    if starts_with_ignore_case(chars, *pos, "llu") || starts_with_ignore_case(chars, *pos, "ull") {
+        // LLU
+        *pos += 3;
+        u = true;
+        l = true;
+    } else if starts_with_ignore_case(chars, *pos, "lu")
+        || starts_with_ignore_case(chars, *pos, "ul")
+    {
+        // LU
+        *pos += 2;
+        u = true;
+        l = true;
+    } else if starts_with_ignore_case(chars, *pos, "ll") {
+        // LL
+        *pos += 2;
+        l = true;
+    } else if starts_with_ignore_case(chars, *pos, "l") {
+        // L
+        *pos += 1;
+        l = true;
+    } else if starts_with_ignore_case(chars, *pos, "u") {
+        // U
+        *pos += 1;
+        u = true;
+    }
+
+    // 匹配完成后不应该还有数字
     let c = chars[*pos] as char;
     if c.is_alphabetic() {
         error_at!(0, *pos, "invalid digit");
     }
 
-    result
+    // 推断出类型，采用能存下当前数值的类型
+    let typ;
+    if radix == 10 {
+        if l && u {
+            typ = Type::new_unsigned_long()
+        } else if l {
+            typ = Type::new_long()
+        } else if u {
+            typ = if (result >> 32) > 0 {
+                Type::new_unsigned_long()
+            } else {
+                Type::new_unsigned_int()
+            }
+        } else {
+            typ = if (result >> 31) > 0 {
+                Type::new_long()
+            } else {
+                Type::new_int()
+            }
+        }
+    } else {
+        if l && u {
+            typ = Type::new_unsigned_long()
+        } else if l {
+            typ = if (result >> 63) > 0 {
+                Type::new_unsigned_long()
+            } else {
+                Type::new_long()
+            }
+        } else if u {
+            typ = if (result >> 32) > 0 {
+                Type::new_unsigned_long()
+            } else {
+                Type::new_unsigned_int()
+            }
+        } else if (result >> 63) > 0 {
+            typ = Type::new_unsigned_long()
+        } else if (result >> 32) > 0 {
+            typ = Type::new_long();
+        } else if (result >> 31) > 0 {
+            typ = Type::new_unsigned_int();
+        } else {
+            typ = Type::new_int();
+        }
+    }
+
+    (result as i64, typ)
 }

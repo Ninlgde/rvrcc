@@ -37,6 +37,8 @@ pub enum Token {
     Num {
         /// 值
         val: i64,
+        /// 类型
+        typ: TypeLink,
         /// token 名
         t_str: String,
         /// 在解析的字符串内的位置
@@ -49,7 +51,7 @@ pub enum Token {
         /// 值
         val: Vec<u8>,
         /// 类型
-        type_: TypeLink,
+        typ: TypeLink,
         /// 在解析的字符串内的位置
         offset: usize,
         /// 行号
@@ -108,7 +110,7 @@ impl Token {
     /// 获取字符串
     pub fn get_string(&self) -> (Vec<u8>, TypeLink) {
         match self {
-            Self::Str { val, type_, .. } => return (val.to_vec(), type_.clone()),
+            Self::Str { val, typ, .. } => return (val.to_vec(), typ.clone()),
             _ => (vec![], Type::new_char()),
         }
     }

@@ -90,112 +90,112 @@ impl Type {
     }
 
     fn new_unsigned(kind: TypeKind, size: isize, align: isize) -> Self {
-        let mut type_ = Self::new(kind, size, align);
-        type_.is_unsigned = true;
-        type_
+        let mut typ = Self::new(kind, size, align);
+        typ.is_unsigned = true;
+        typ
     }
 
     /// 创建一个void类型
     pub fn new_void() -> TypeLink {
-        let type_ = Self::new(TypeKind::Void, 1, 1);
-        Rc::new(RefCell::new(type_))
+        let typ = Self::new(TypeKind::Void, 1, 1);
+        Rc::new(RefCell::new(typ))
     }
 
     /// 创建一个bool类型
     pub fn new_bool() -> TypeLink {
-        let type_ = Self::new(TypeKind::Bool, 1, 1);
-        Rc::new(RefCell::new(type_))
+        let typ = Self::new(TypeKind::Bool, 1, 1);
+        Rc::new(RefCell::new(typ))
     }
 
     /// 创建一个char类型
     pub fn new_char() -> TypeLink {
-        let type_ = Self::new(TypeKind::Char, 1, 1);
-        Rc::new(RefCell::new(type_))
+        let typ = Self::new(TypeKind::Char, 1, 1);
+        Rc::new(RefCell::new(typ))
     }
 
     /// 创建一个short类型
     pub fn new_short() -> TypeLink {
-        let type_ = Self::new(TypeKind::Short, 2, 2);
-        Rc::new(RefCell::new(type_))
+        let typ = Self::new(TypeKind::Short, 2, 2);
+        Rc::new(RefCell::new(typ))
     }
 
     /// 创建一个int类型
     pub fn new_int() -> TypeLink {
-        let type_ = Self::new(TypeKind::Int, 4, 4);
-        Rc::new(RefCell::new(type_))
+        let typ = Self::new(TypeKind::Int, 4, 4);
+        Rc::new(RefCell::new(typ))
     }
 
     /// 创建一个long类型
     pub fn new_long() -> TypeLink {
-        let type_ = Self::new(TypeKind::Long, 8, 8);
-        Rc::new(RefCell::new(type_))
+        let typ = Self::new(TypeKind::Long, 8, 8);
+        Rc::new(RefCell::new(typ))
     }
 
     /// 创建一个char类型
     pub fn new_unsigned_char() -> TypeLink {
-        let type_ = Self::new_unsigned(TypeKind::Char, 1, 1);
-        Rc::new(RefCell::new(type_))
+        let typ = Self::new_unsigned(TypeKind::Char, 1, 1);
+        Rc::new(RefCell::new(typ))
     }
 
     /// 创建一个short类型
     pub fn new_unsigned_short() -> TypeLink {
-        let type_ = Self::new_unsigned(TypeKind::Short, 2, 2);
-        Rc::new(RefCell::new(type_))
+        let typ = Self::new_unsigned(TypeKind::Short, 2, 2);
+        Rc::new(RefCell::new(typ))
     }
 
     /// 创建一个int类型
     pub fn new_unsigned_int() -> TypeLink {
-        let type_ = Self::new_unsigned(TypeKind::Int, 4, 4);
-        Rc::new(RefCell::new(type_))
+        let typ = Self::new_unsigned(TypeKind::Int, 4, 4);
+        Rc::new(RefCell::new(typ))
     }
 
     /// 创建一个long类型
     pub fn new_unsigned_long() -> TypeLink {
-        let type_ = Self::new_unsigned(TypeKind::Long, 8, 8);
-        Rc::new(RefCell::new(type_))
+        let typ = Self::new_unsigned(TypeKind::Long, 8, 8);
+        Rc::new(RefCell::new(typ))
     }
 
     /// 创建一个enum类型
     pub fn new_enum() -> TypeLink {
-        let type_ = Self::new(TypeKind::Enum, 4, 4);
-        Rc::new(RefCell::new(type_))
+        let typ = Self::new(TypeKind::Enum, 4, 4);
+        Rc::new(RefCell::new(typ))
     }
 
     /// 创建一个指向`base`的指针类型
     pub fn pointer_to(base: TypeLink) -> TypeLink {
-        let mut type_ = Self::new(TypeKind::Ptr, 8, 8);
-        type_.base = Some(base);
-        Rc::new(RefCell::new(type_))
+        let mut typ = Self::new(TypeKind::Ptr, 8, 8);
+        typ.base = Some(base);
+        Rc::new(RefCell::new(typ))
     }
 
     /// 创建一个返回值类型为`return_type`,形参列表为`params`的函数类型
     pub fn func_type(return_type: TypeLink, params: Vec<TypeLink>, is_variadic: bool) -> TypeLink {
-        let mut type_ = Self::new(TypeKind::Func, 8, 8);
-        type_.return_type = Some(return_type);
-        type_.params = params;
-        type_.is_variadic = is_variadic;
-        Rc::new(RefCell::new(type_))
+        let mut typ = Self::new(TypeKind::Func, 8, 8);
+        typ.return_type = Some(return_type);
+        typ.params = params;
+        typ.is_variadic = is_variadic;
+        Rc::new(RefCell::new(typ))
     }
 
     /// 创建一个长度为`len`的`base`类型的数组
     pub fn array_of(base: TypeLink, len: isize) -> TypeLink {
-        let type_ = Self::array_of0(base, len);
-        Rc::new(RefCell::new(type_))
+        let typ = Self::array_of0(base, len);
+        Rc::new(RefCell::new(typ))
     }
 
     pub fn array_of0(base: TypeLink, len: isize) -> Type {
         let size = base.borrow().size * len;
-        let mut type_ = Self::new(TypeKind::Array, size, base.borrow().align);
-        type_.base = Some(base);
-        type_.len = len;
-        type_
+        let mut typ = Self::new(TypeKind::Array, size, base.borrow().align);
+        typ.base = Some(base);
+        typ.len = len;
+        typ
     }
 
     /// 创建一个union/struct类型
     /// 后续代码中会确定其为union还是struct
     pub fn new_union_struct() -> Type {
-        let type_ = Self::new(TypeKind::Struct, 0, 1);
-        type_
+        let typ = Self::new(TypeKind::Struct, 0, 1);
+        typ
     }
 
     /// 是否是整数类型
@@ -286,8 +286,8 @@ impl Type {
 /// 进行常规的算术转换
 pub fn usual_arith_conv(lhs: NodeLink, rhs: NodeLink) -> (NodeLink, NodeLink) {
     let typ = Type::get_common_type(
-        lhs.type_.as_ref().unwrap().clone(),
-        rhs.type_.as_ref().unwrap().clone(),
+        lhs.typ.as_ref().unwrap().clone(),
+        rhs.typ.as_ref().unwrap().clone(),
     );
 
     // 将左右部转换到兼容的类型
@@ -322,14 +322,9 @@ pub fn add_type(node: &mut NodeLink) {
     }
 
     match node.kind {
-        // 判断是否Val强制转换为int后依然完整，完整则用int否则用long
+        // 将节点类型设为 int
         NodeKind::Num => {
-            let val = node.val;
-            if val < i32::MIN as i64 || val > i32::MAX as i64 {
-                node.type_ = Some(Type::new_long())
-            } else {
-                node.type_ = Some(Type::new_int())
-            }
+            node.typ = Some(Type::new_int());
         }
         // 将节点类型设为 节点左部的类型
         NodeKind::Add
@@ -344,21 +339,21 @@ pub fn add_type(node: &mut NodeLink) {
             let (lhs, rhs) = usual_arith_conv(node.lhs.take().unwrap(), node.rhs.take().unwrap());
             node.lhs = Some(lhs);
             node.rhs = Some(rhs);
-            node.type_ = node.lhs.as_ref().unwrap().type_.clone();
+            node.typ = node.lhs.as_ref().unwrap().typ.clone();
         }
         NodeKind::Neg => {
             // 对左部转换
             let typ = Type::get_common_type(
                 Type::new_int(),
-                node.lhs.as_ref().unwrap().type_.as_ref().unwrap().clone(),
+                node.lhs.as_ref().unwrap().typ.as_ref().unwrap().clone(),
             );
             node.lhs = Some(Node::new_cast(node.lhs.take().unwrap(), typ.clone()));
-            node.type_ = Some(typ);
+            node.typ = Some(typ);
         }
         // 将节点类型设为 节点左部的类型
         // 左部不能是数组节点
         NodeKind::Assign => {
-            let t = node.lhs.as_ref().unwrap().type_.as_ref().unwrap().clone();
+            let t = node.lhs.as_ref().unwrap().typ.as_ref().unwrap().clone();
             if t.borrow().kind == TypeKind::Array {
                 let token = &node.token;
                 error_token!(token, "not an lvalue");
@@ -367,7 +362,7 @@ pub fn add_type(node: &mut NodeLink) {
             if t.borrow().kind != TypeKind::Struct {
                 node.rhs = Some(Node::new_cast(node.rhs.take().unwrap(), t.clone()))
             }
-            node.type_ = Some(t);
+            node.typ = Some(t);
         }
         // 将节点类型设为 int
         NodeKind::Eq | NodeKind::Ne | NodeKind::Lt | NodeKind::Le => {
@@ -375,68 +370,68 @@ pub fn add_type(node: &mut NodeLink) {
             let (lhs, rhs) = usual_arith_conv(node.lhs.take().unwrap(), node.rhs.take().unwrap());
             node.lhs = Some(lhs);
             node.rhs = Some(rhs);
-            node.type_ = Some(Type::new_int());
+            node.typ = Some(Type::new_int());
         }
         NodeKind::FuncCall => {
-            node.type_ = Some(Type::new_long());
+            node.typ = Some(Type::new_long());
         }
         // 将节点类型设为 int
         NodeKind::Not | NodeKind::LogAnd | NodeKind::LogOr => {
-            node.type_ = Some(Type::new_int());
+            node.typ = Some(Type::new_int());
         }
         // 将节点类型设为 左部的类型
         NodeKind::BitNot | NodeKind::Shl | NodeKind::Shr => {
-            node.type_ = node.lhs.as_ref().unwrap().type_.clone();
+            node.typ = node.lhs.as_ref().unwrap().typ.clone();
         }
         // 将节点类型设为 变量的类型
         NodeKind::Var => {
             let var = &*node.var.as_ref().unwrap().clone();
             let vt = var.borrow().get_type().clone();
-            node.type_ = Some(vt.clone());
+            node.typ = Some(vt.clone());
         }
         // 如果:左或右部为void则为void，否则为二者兼容的类型
         NodeKind::Cond => {
-            let then_t = node.then.as_ref().unwrap().type_.as_ref().unwrap().clone();
-            let els_t = node.els.as_ref().unwrap().type_.as_ref().unwrap().clone();
+            let then_t = node.then.as_ref().unwrap().typ.as_ref().unwrap().clone();
+            let els_t = node.els.as_ref().unwrap().typ.as_ref().unwrap().clone();
             if then_t.borrow().kind == TypeKind::Void || els_t.borrow().kind == TypeKind::Void {
-                node.type_ = Some(Type::new_void());
+                node.typ = Some(Type::new_void());
             } else {
                 // 对左右部转换
                 let (lhs, rhs) =
                     usual_arith_conv(node.then.take().unwrap(), node.els.take().unwrap());
                 node.then = Some(lhs);
                 node.els = Some(rhs);
-                node.type_ = node.then.as_ref().unwrap().type_.clone();
+                node.typ = node.then.as_ref().unwrap().typ.clone();
             }
         }
         // 将节点类型设为 右部的类型
         NodeKind::Comma => {
-            node.type_ = node.rhs.as_ref().unwrap().type_.clone();
+            node.typ = node.rhs.as_ref().unwrap().typ.clone();
         }
         // 将节点类型设为 成员的类型
         NodeKind::Member => {
-            node.type_ = node.member.as_ref().unwrap().type_.clone();
+            node.typ = node.member.as_ref().unwrap().typ.clone();
         }
         // 将节点类型设为 指针，并指向左部的类型
         NodeKind::Addr => {
-            let t = node.lhs.as_ref().unwrap().type_.as_ref().unwrap().clone();
+            let t = node.lhs.as_ref().unwrap().typ.as_ref().unwrap().clone();
             if t.borrow().kind == TypeKind::Array {
-                node.type_ = Some(Type::pointer_to(t.borrow().base.as_ref().unwrap().clone()));
+                node.typ = Some(Type::pointer_to(t.borrow().base.as_ref().unwrap().clone()));
             } else {
-                node.type_ = Some(Type::pointer_to(t.clone()));
+                node.typ = Some(Type::pointer_to(t.clone()));
             }
         }
         // 节点类型：如果解引用指向的是指针，则为指针指向的类型；否则报错
         NodeKind::DeRef => {
             let lhs = node.lhs.as_ref().unwrap();
-            let t = lhs.type_.as_ref().unwrap().clone();
+            let t = lhs.typ.as_ref().unwrap().clone();
             if t.borrow().has_base() {
                 if t.borrow().kind == TypeKind::Void {
                     let token = node.lhs.as_ref().unwrap().get_token();
                     error_token!(token, "dereferencing a void pointer");
                     return;
                 }
-                node.type_ = Some(t.borrow().base.as_ref().unwrap().clone());
+                node.typ = Some(t.borrow().base.as_ref().unwrap().clone());
             } else {
                 let token = node.lhs.as_ref().unwrap().get_token();
                 error_token!(token, "invalid pointer dereference");
@@ -447,7 +442,7 @@ pub fn add_type(node: &mut NodeLink) {
             if node.body.len() > 0 {
                 let last = node.body.last().unwrap();
                 if last.kind == NodeKind::ExprStmt {
-                    node.type_ = last.lhs.as_ref().unwrap().type_.clone();
+                    node.typ = last.lhs.as_ref().unwrap().typ.clone();
                     return;
                 }
             }

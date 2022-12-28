@@ -198,9 +198,9 @@ impl<'a> Parser<'a> {
             }
             first = false;
 
-            let type_ = self.declarator(base_type.clone());
-            let name = type_.borrow().get_name().to_string();
-            let obj = Obj::new_gvar(name.to_string(), type_);
+            let typ = self.declarator(base_type.clone());
+            let name = typ.borrow().get_name().to_string();
+            let obj = Obj::new_gvar(name.to_string(), typ);
             let mut var = self.new_gvar(name.to_string(), obj);
             {
                 // 包起来防止重复borrow_mut
@@ -223,11 +223,11 @@ impl<'a> Parser<'a> {
     fn function_definition(&mut self, base_type: TypeLink, var_attr: &VarAttr) {
         // declarator
         // 声明获取到变量类型，包括变量名
-        let type_ = self.declarator(base_type);
-        let ct = type_.borrow();
+        let typ = self.declarator(base_type);
+        let ct = typ.borrow();
         let name = ct.get_name().clone();
 
-        let obj = Obj::new_func(name.to_string(), type_.clone());
+        let obj = Obj::new_func(name.to_string(), typ.clone());
 
         let gvar = self.new_gvar(name.to_string(), obj);
 
@@ -244,10 +244,10 @@ impl<'a> Parser<'a> {
             self.locals.clear();
             // 进入新的域
             self.enter_scope();
-            self.create_param_lvars(type_.borrow().get_params());
+            self.create_param_lvars(typ.borrow().get_params());
             params = self.locals.to_vec();
 
-            if type_.borrow().is_variadic {
+            if typ.borrow().is_variadic {
                 va_area = self.new_lvar(
                     "__va_area__".to_string(),
                     Type::array_of(Type::new_char(), 64),
@@ -305,9 +305,9 @@ impl<'a> Parser<'a> {
         return vs.clone();
     }
 
-    /// 讲一个名为`name`,类型为`type_`的变量标签压入当前域中
-    fn push_tag_scope(&mut self, name: String, type_: TypeLink) {
-        self.scopes[0].add_tag(name, type_);
+    /// 讲一个名为`name`,类型为`typ`的变量标签压入当前域中
+    fn push_tag_scope(&mut self, name: String, typ: TypeLink) {
+        self.scopes[0].add_tag(name, typ);
     }
 
     /// 将形参添加到locals
@@ -383,7 +383,7 @@ impl<'a> Parser<'a> {
         const SIGNED: i32 = 1 << 13;
         const UNSIGNED: i32 = 1 << 14;
 
-        let mut type_ = Type::new_int();
+        let mut typ = Type::new_int();
         let mut counter = 0; // 记录类型相加的数值
 
         // 遍历所有类型名的Tok
@@ -444,13 +444,13 @@ impl<'a> Parser<'a> {
                     break;
                 }
                 if token.equal(KW_STRUCT) {
-                    type_ = self.next().struct_declare();
+                    typ = self.next().struct_declare();
                 } else if token.equal(KW_UNION) {
-                    type_ = self.next().union_declare();
+                    typ = self.next().union_declare();
                 } else if token.equal(KW_ENUM) {
-                    type_ = self.next().enum_specifier();
+                    typ = self.next().enum_specifier();
                 } else {
-                    type_ = typ2.unwrap();
+                    typ = typ2.unwrap();
                     self.next();
                 }
                 counter += OTHER;
@@ -490,24 +490,24 @@ impl<'a> Parser<'a> {
             };
 
             if eq(counter, vec![VOID]) {
-                type_ = Type::new_void()
+                typ = Type::new_void()
             } else if eq(counter, vec![BOOL]) {
-                type_ = Type::new_bool()
+                typ = Type::new_bool()
             } else if eq(counter, vec![SIGNED + CHAR]) {
-                type_ = Type::new_char()
+                typ = Type::new_char()
             } else if eq(counter, vec![CHAR, UNSIGNED + CHAR]) {
-                type_ = Type::new_unsigned_char()
+                typ = Type::new_unsigned_char()
             } else if eq(
                 counter,
                 vec![SHORT, SHORT + INT, SIGNED + SHORT, SIGNED + SHORT + INT],
             ) {
-                type_ = Type::new_short()
+                typ = Type::new_short()
             } else if eq(counter, vec![UNSIGNED + SHORT, UNSIGNED + SHORT + INT]) {
-                type_ = Type::new_unsigned_short()
+                typ = Type::new_unsigned_short()
             } else if eq(counter, vec![INT, SIGNED, SIGNED + INT]) {
-                type_ = Type::new_int()
+                typ = Type::new_int()
             } else if eq(counter, vec![UNSIGNED, UNSIGNED + INT]) {
-                type_ = Type::new_unsigned_int()
+                typ = Type::new_unsigned_int()
             } else if eq(
                 counter,
                 vec![
@@ -521,7 +521,7 @@ impl<'a> Parser<'a> {
                     SIGNED + LONG + LONG + INT,
                 ],
             ) {
-                type_ = Type::new_long()
+                typ = Type::new_long()
             } else if eq(
                 counter,
                 vec![
@@ -531,7 +531,7 @@ impl<'a> Parser<'a> {
                     UNSIGNED + LONG + LONG + INT,
                 ],
             ) {
-                type_ = Type::new_unsigned_long()
+                typ = Type::new_unsigned_long()
             } else {
                 error_token!(token, "invalid type")
             }
@@ -539,15 +539,15 @@ impl<'a> Parser<'a> {
             self.next();
         }
 
-        return type_;
+        return typ;
     }
 
     /// declarator = "*"* ("(" ident ")" | "(" declarator ")" | ident) type_suffix
-    fn declarator(&mut self, mut type_: TypeLink) -> TypeLink {
+    fn declarator(&mut self, mut typ: TypeLink) -> TypeLink {
         // "*"*
         // 构建所有的（多重）指针
         while self.consume("*") {
-            type_ = Type::pointer_to(type_);
+            typ = Type::pointer_to(typ);
         }
 
         let (start_pos, token) = self.current();
@@ -557,25 +557,25 @@ impl<'a> Parser<'a> {
             self.next().declarator(Type::new_int());
             self.skip(")");
             // 获取到括号后面的类型后缀，type_为解析完的类型，pos为分号
-            type_ = self.type_suffix(type_);
+            typ = self.type_suffix(typ);
             // 记录分号位置
             let (end_pos, _) = self.current();
             // 返回最开始
             self.cursor = start_pos;
             // 解析Ty整体作为Base去构造，返回Type的值
-            let type_ = self.next().declarator(type_);
+            let typ = self.next().declarator(typ);
             // 等整体标记完,返回分号位置
             self.cursor = end_pos;
-            return type_;
+            return typ;
         }
 
         let name = token.clone();
         // type_suffix
-        type_ = self.next().type_suffix(type_);
+        typ = self.next().type_suffix(typ);
         // ident
         // 变量名 或 函数名
-        type_.borrow_mut().set_name(name);
-        type_
+        typ.borrow_mut().set_name(name);
+        typ
     }
 
     /// type_suffix = "(" funcParams | "[" array_dimensions | ε
@@ -612,13 +612,13 @@ impl<'a> Parser<'a> {
 
     /// func_params = (param ("," param)* ("," "...")?)? ")"
     /// param = declspec declarator
-    fn func_params(&mut self, type_: TypeLink) -> TypeLink {
+    fn func_params(&mut self, typ: TypeLink) -> TypeLink {
         // "void"
         let (pos, token) = self.current();
         let next = &self.tokens[pos + 1];
         if token.equal(KW_VOID) && next.equal(")") {
             self.next().next();
-            return Type::func_type(type_, vec![], false);
+            return Type::func_type(typ, vec![], false);
         }
 
         let mut params = vec![];
@@ -663,7 +663,7 @@ impl<'a> Parser<'a> {
             is_variadic = true;
         }
 
-        return Type::func_type(type_, params, is_variadic);
+        return Type::func_type(typ, params, is_variadic);
     }
 
     /// 解析复合语句
@@ -746,16 +746,16 @@ impl<'a> Parser<'a> {
 
             // declarator
             // 声明获取到变量类型，包括变量名
-            let type_ = self.declarator(base_type.clone());
-            if type_.borrow().kind == TypeKind::Void {
+            let typ = self.declarator(base_type.clone());
+            if typ.borrow().kind == TypeKind::Void {
                 let (_, token) = self.current();
                 error_token!(token, "variable declared void");
                 unreachable!()
             }
 
             if attr.is_some() && attr.as_ref().unwrap().is_static {
-                let gvar = self.new_anon_gvar(type_.clone());
-                let name = type_.borrow().get_name().to_string();
+                let gvar = self.new_anon_gvar(typ.clone());
+                let name = typ.borrow().get_name().to_string();
                 let vs = self.push_scope(name);
                 {
                     let mut vsm = vs.as_ref().borrow_mut();
@@ -768,8 +768,8 @@ impl<'a> Parser<'a> {
                 continue;
             }
 
-            let name = type_.borrow().get_name().to_string();
-            let nvar = self.new_lvar(name, type_).unwrap();
+            let name = typ.borrow().get_name().to_string();
+            let nvar = self.new_lvar(name, typ).unwrap();
             // 读取是否存在变量的对齐值
             if attr.is_some() && attr.as_ref().unwrap().align != 0 {
                 nvar.borrow_mut().set_align(attr.as_ref().unwrap().align);
@@ -1016,7 +1016,7 @@ impl<'a> Parser<'a> {
             let (start_pos, _) = self.current();
             let mut expr = self.assign().unwrap();
             add_type(&mut expr);
-            if expr.type_.as_ref().unwrap().borrow().kind == TypeKind::Struct {
+            if expr.typ.as_ref().unwrap().borrow().kind == TypeKind::Struct {
                 init.expr = Some(expr);
                 return;
             }
@@ -1059,7 +1059,7 @@ impl<'a> Parser<'a> {
             let mut t = new_type.borrow_mut();
             // 取最后一个成员
             let last = t.members.last_mut().unwrap();
-            let lt = last.type_.as_mut().unwrap();
+            let lt = last.typ.as_mut().unwrap();
             let idx = last.idx;
             // 灵活数组类型替换为实际的数组类型
             *lt = init.children[idx].typ.as_ref().unwrap().clone();
@@ -1493,7 +1493,7 @@ impl<'a> Parser<'a> {
         let var = self
             .new_lvar(
                 "".to_string(),
-                Type::pointer_to(binary.lhs.as_ref().unwrap().type_.as_ref().unwrap().clone()),
+                Type::pointer_to(binary.lhs.as_ref().unwrap().typ.as_ref().unwrap().clone()),
             )
             .unwrap();
         // TMP = &A
@@ -1978,17 +1978,17 @@ impl<'a> Parser<'a> {
 
         let (_, token) = self.current();
         if tag.is_some() && !token.equal("{") {
-            let type_ = self.find_tag(&tag.as_ref().unwrap().get_name().to_string());
-            if type_.is_none() {
+            let typ = self.find_tag(&tag.as_ref().unwrap().get_name().to_string());
+            if typ.is_none() {
                 error_token!(&tag.unwrap(), "unknown enum type");
                 unreachable!()
             }
-            let type_ = type_.unwrap();
-            if type_.borrow().kind != TypeKind::Enum {
+            let typ = typ.unwrap();
+            if typ.borrow().kind != TypeKind::Enum {
                 error_token!(&tag.unwrap(), "not an enum tag");
                 unreachable!()
             }
-            return type_;
+            return typ;
         }
 
         self.skip("{");
@@ -2027,7 +2027,7 @@ impl<'a> Parser<'a> {
     }
 
     /// struct_members = (declspec declarator (","  declarator)* ";")*
-    fn struct_members(&mut self, type_: &mut Type) {
+    fn struct_members(&mut self, typ: &mut Type) {
         let mut members = vec![];
 
         let mut idx = 0;
@@ -2047,15 +2047,15 @@ impl<'a> Parser<'a> {
                 }
                 is_first = false;
 
-                let type_ = self.declarator(base_type.clone());
-                let name = type_.borrow().get_name().to_string();
-                let mut member = Member::new(name.to_string(), Some(type_), idx);
+                let typ = self.declarator(base_type.clone());
+                let name = typ.borrow().get_name().to_string();
+                let mut member = Member::new(name.to_string(), Some(typ), idx);
                 idx += 1;
                 let va = attr.as_ref().unwrap();
                 if va.align != 0 {
                     member.align = va.align;
                 } else {
-                    member.align = member.type_.as_ref().unwrap().borrow().align;
+                    member.align = member.typ.as_ref().unwrap().borrow().align;
                 }
                 members.push(member);
             }
@@ -2064,28 +2064,28 @@ impl<'a> Parser<'a> {
         // 解析灵活数组成员，数组大小设为0
         if members.len() > 0 {
             let last = members.len() - 1;
-            let mut t = members[last].type_.as_ref().unwrap().borrow_mut();
+            let mut t = members[last].typ.as_ref().unwrap().borrow_mut();
             if t.kind == TypeKind::Array && t.len < 0 {
                 let new_type = Type::array_of0(t.base.as_ref().unwrap().clone(), 0);
                 *t = new_type;
                 // 设置类型为灵活的
-                type_.is_flexible = true;
+                typ.is_flexible = true;
             }
         }
 
         self.next();
-        type_.members = members;
+        typ.members = members;
     }
 
     /// struct_declare = struct_union_declare
     fn struct_declare(&mut self) -> TypeLink {
-        let type_ = self.struct_union_declare();
-        let mut tm = type_.borrow_mut();
+        let typ = self.struct_union_declare();
+        let mut tm = typ.borrow_mut();
         tm.kind = TypeKind::Struct;
 
         // 不完整结构体
         if tm.size < 0 {
-            return type_.clone();
+            return typ.clone();
         }
 
         let mut offset: isize = 0;
@@ -2095,7 +2095,7 @@ impl<'a> Parser<'a> {
             let align = member.align;
             offset = align_to(offset, align);
             member.set_offset(offset);
-            offset += member.type_.as_ref().unwrap().borrow().size;
+            offset += member.typ.as_ref().unwrap().borrow().size;
 
             if tm.align < align {
                 tm.align = align;
@@ -2103,20 +2103,20 @@ impl<'a> Parser<'a> {
         }
         tm.size = align_to(offset, tm.align);
 
-        type_.clone()
+        typ.clone()
     }
 
     /// union_declare = struct_union_declare
     fn union_declare(&mut self) -> TypeLink {
-        let type_ = self.struct_union_declare();
-        let mut tm = type_.borrow_mut();
+        let typ = self.struct_union_declare();
+        let mut tm = typ.borrow_mut();
         tm.kind = TypeKind::Union;
 
         // 联合体需要设置为最大的对齐量与大小，变量偏移量都默认为0
         for i in 0..tm.members.len() {
             let member = &mut tm.members[i];
             let align = member.align;
-            let size = member.type_.as_ref().unwrap().borrow().size;
+            let size = member.typ.as_ref().unwrap().borrow().size;
             if tm.align < align {
                 tm.align = align;
             }
@@ -2126,7 +2126,7 @@ impl<'a> Parser<'a> {
         }
         tm.size = align_to(tm.size, tm.align);
 
-        type_.clone()
+        typ.clone()
     }
 
     /// struct_union_declare = ident? ("{" struct_members)?
@@ -2143,46 +2143,46 @@ impl<'a> Parser<'a> {
         // 构造不完整结构体
         let (_, token) = self.current();
         if tag.is_some() && !token.equal("{") {
-            let type_ = self.find_tag(name.as_ref().unwrap());
-            if type_.is_some() {
-                return type_.unwrap();
+            let typ = self.find_tag(name.as_ref().unwrap());
+            if typ.is_some() {
+                return typ.unwrap();
             }
 
-            let mut type_ = Type::new_union_struct();
-            type_.size = -1;
-            type_.name = tag.unwrap().clone();
-            let type_ = Rc::new(RefCell::new(type_));
-            self.push_tag_scope(name.unwrap(), type_.clone());
-            return type_;
+            let mut typ = Type::new_union_struct();
+            typ.size = -1;
+            typ.name = tag.unwrap().clone();
+            let typ = Rc::new(RefCell::new(typ));
+            self.push_tag_scope(name.unwrap(), typ.clone());
+            return typ;
         }
 
         // ("{" structMembers)?
         self.skip("{");
 
-        let mut type_ = Type::new_union_struct();
-        self.struct_members(&mut type_);
-        type_.align = 1;
+        let mut typ = Type::new_union_struct();
+        self.struct_members(&mut typ);
+        typ.align = 1;
 
         // 如果是重复定义，就覆盖之前的定义。否则有名称就注册结构体类型
         if tag.is_some() {
             // 当前域里找
             let s = &mut self.scopes[0];
-            let t = s.replace_tag(name.as_ref().unwrap(), type_.clone());
+            let t = s.replace_tag(name.as_ref().unwrap(), typ.clone());
             if t.is_some() {
                 return t.unwrap();
             }
 
-            let type_ = Rc::new(RefCell::new(type_.clone()));
-            self.push_tag_scope(name.unwrap(), type_);
+            let typ = Rc::new(RefCell::new(typ.clone()));
+            self.push_tag_scope(name.unwrap(), typ);
         }
 
-        let type_ = Rc::new(RefCell::new(type_.clone()));
-        type_
+        let typ = Rc::new(RefCell::new(typ.clone()));
+        typ
     }
 
     // 获取结构体成员
-    fn get_struct_member(&mut self, type_: &TypeLink, token: &Token) -> Option<Box<Member>> {
-        for member in type_.borrow().members.iter() {
+    fn get_struct_member(&mut self, typ: &TypeLink, token: &Token) -> Option<Box<Member>> {
+        for member in typ.borrow().members.iter() {
             if token.equal(member.name.as_str()) {
                 return Some(member.clone());
             }
@@ -2195,12 +2195,12 @@ impl<'a> Parser<'a> {
     fn struct_ref(&mut self, mut lhs: NodeLink) -> Option<NodeLink> {
         add_type(&mut lhs);
 
-        let lhs_t = lhs.type_.as_ref().unwrap().clone();
+        let lhs_t = lhs.typ.as_ref().unwrap().clone();
         if lhs_t.borrow().kind != TypeKind::Struct && lhs_t.borrow().kind != TypeKind::Union {
             error_token!(&lhs.token, "not a struct nor a union");
         }
 
-        let lhs_t = lhs.type_.as_ref().unwrap().clone();
+        let lhs_t = lhs.typ.as_ref().unwrap().clone();
         let (pos, _) = self.current();
         let nt = self.tokens[pos].clone();
         let mut node = Node::new_unary(NodeKind::Member, lhs, nt.clone());
@@ -2214,7 +2214,7 @@ impl<'a> Parser<'a> {
     fn inc_dec(&mut self, mut node: NodeLink, addend: i64) -> Option<NodeLink> {
         add_type(&mut node);
         let token = &node.token.clone();
-        let typ = &node.type_.as_ref().unwrap().clone();
+        let typ = &node.typ.as_ref().unwrap().clone();
         let num = Node::new_num(addend, token.clone());
         let num_neg = Node::new_num(-addend, token.clone());
         let add = add_with_type(node, num, token.clone()).unwrap();
@@ -2412,19 +2412,22 @@ impl<'a> Parser<'a> {
                 error_at!(*line_no, *offset, "undefined variable");
                 return None;
             }
-            Token::Str { val, type_, .. } => {
-                let var = self.new_string_literal(vec_u8_into_i8(val.to_vec()), type_.clone());
+            Token::Str { val, typ, .. } => {
+                let var = self.new_string_literal(vec_u8_into_i8(val.to_vec()), typ.clone());
                 let node = Node::new_var(var, nt);
                 self.next();
                 return Some(node);
             }
             Token::Num {
                 val,
+                typ,
                 t_str: _t_str,
                 offset: _offset,
                 ..
             } => {
-                let node = Node::new_num(*val, nt);
+                let mut node = Node::new_num(*val, nt);
+                // 设置类型为终结符的类型
+                node.typ = Some(typ.clone());
                 self.next();
                 return Some(node);
             }
@@ -2551,7 +2554,7 @@ impl<'a> Parser<'a> {
         node.func_name = func_name;
         node.func_type = Some(t.clone());
         let tb = t.borrow();
-        node.type_ = Some(tb.return_type.as_ref().unwrap().clone());
+        node.typ = Some(tb.return_type.as_ref().unwrap().clone());
         node.args = nodes;
         Some(node)
     }
@@ -2668,10 +2671,10 @@ impl<'a> Parser<'a> {
         if token.equal(";") {
             return false;
         }
-        let type_ = self.declarator(Type::new_int());
+        let typ = self.declarator(Type::new_int());
         // 游标回档
         self.cursor = start;
-        return type_.borrow().kind == TypeKind::Func;
+        return typ.borrow().kind == TypeKind::Func;
     }
 
     fn new_anon_gvar(&mut self, base_type: TypeLink) -> ObjLink {

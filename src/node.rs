@@ -110,7 +110,7 @@ pub struct Node {
     /// 对应的token,增加翻译阶段的报错信息
     pub(crate) token: Token,
     /// 类型
-    pub(crate) type_: Option<TypeLink>,
+    pub(crate) typ: Option<TypeLink>,
 
     /// 各种孩子
     /// 左部，left-hand side(单节点)
@@ -158,7 +158,7 @@ impl Node {
         Box::new(Self {
             kind,
             token,
-            type_: None,
+            typ: None,
             lhs: None,
             rhs: None,
             cond: None,
@@ -207,7 +207,7 @@ impl Node {
     pub fn new_long(val: i64, token: Token) -> NodeLink {
         let mut node = Self::new(NodeKind::Num, token);
         node.val = val;
-        node.type_ = Some(Type::new_long());
+        node.typ = Some(Type::new_long());
         node
     }
 
@@ -230,13 +230,13 @@ impl Node {
         add_type(&mut expr);
         let mut node = Self::new(NodeKind::Cast, expr.token.clone());
         node.lhs = Some(expr);
-        node.type_ = Some(typ);
+        node.typ = Some(typ);
         node
     }
 
     /// 设置节点c类型
-    pub fn set_type(&mut self, type_: TypeLink) {
-        self.type_ = Some(type_);
+    pub fn set_type(&mut self, typ: TypeLink) {
+        self.typ = Some(typ);
     }
 
     /// 获取节点所对应的token
@@ -246,7 +246,7 @@ impl Node {
 
     /// 获取节点的数据c类型
     pub fn get_type(&self) -> &Option<TypeLink> {
-        &self.type_
+        &self.typ
     }
 
     /// 获取唯一的label值
@@ -356,7 +356,7 @@ pub fn eval0(node: &mut Box<Node>, label: &mut Option<String>) -> i64 {
             )
         }
         NodeKind::Cast => {
-            let t = node.type_.as_ref().unwrap().borrow();
+            let t = node.typ.as_ref().unwrap().borrow();
             let r = eval0(node.lhs.as_mut().unwrap(), label);
             if t.is_int() {
                 match t.size {
@@ -382,7 +382,7 @@ pub fn eval0(node: &mut Box<Node>, label: &mut Option<String>) -> i64 {
             if label.is_some() {
                 error_token!(&node.token, "not a compile-time constant");
             }
-            if node.type_.as_ref().unwrap().borrow().kind != TypeKind::Array {
+            if node.typ.as_ref().unwrap().borrow().kind != TypeKind::Array {
                 error_token!(&node.token, "invalid initializer");
             }
             return eval_rval(node.lhs.as_mut().unwrap(), label)
@@ -393,7 +393,7 @@ pub fn eval0(node: &mut Box<Node>, label: &mut Option<String>) -> i64 {
             if label.is_some() {
                 error_token!(&node.token, "not a compile-time constant");
             }
-            let typ = node.type_.as_ref().unwrap().borrow();
+            let typ = node.typ.as_ref().unwrap().borrow();
             if typ.kind != TypeKind::Array && typ.kind != TypeKind::Func {
                 error_token!(&node.token, "invalid initializer");
             }
