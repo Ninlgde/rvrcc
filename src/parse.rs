@@ -199,10 +199,12 @@ impl<'a> Parser<'a> {
             let name = type_.borrow().get_name().to_string();
             let obj = Obj::new_gvar(name.to_string(), type_);
             let mut var = self.new_gvar(name.to_string(), obj);
-            var.as_mut()
-                .unwrap()
-                .borrow_mut()
-                .set_definition(!var_attr.is_extern);
+            {
+                // 包起来防止重复borrow_mut
+                let mut var_mut = var.as_mut().unwrap().borrow_mut();
+                var_mut.set_definition(!var_attr.is_extern);
+                var_mut.set_static(var_attr.is_static);
+            }
             // 若有设置，则覆盖全局变量的对齐值
             if var_attr.align != 0 {
                 var.as_mut().unwrap().borrow_mut().set_align(var_attr.align);
@@ -333,6 +335,7 @@ impl<'a> Parser<'a> {
         let gvar = Rc::new(RefCell::new(obj));
         // 存在定义
         gvar.borrow_mut().set_definition(true);
+        gvar.borrow_mut().set_static(true);
         self.globals.insert(0, gvar.clone());
         let vs = self.push_scope(name);
         {

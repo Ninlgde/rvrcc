@@ -118,8 +118,13 @@ impl<'a> Generator<'a> {
                     init_data,
                     ..
                 } => {
-                    writeln!("\n  # 全局段{}", var.get_name());
-                    writeln!("  .globl {}", var.get_name());
+                    if var.is_static() {
+                        writeln!("\n  # static全局变量{}", var.get_name());
+                        writeln!("  .local {}", var.get_name());
+                    } else {
+                        writeln!("\n  # 全局变量{}", var.get_name());
+                        writeln!("  .globl {}", var.get_name());
+                    }
                     writeln!("  # 对齐全局变量");
                     if var.get_type().borrow().align == 0 {
                         panic!("Align can not be 0!");

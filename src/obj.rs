@@ -118,6 +118,13 @@ impl Obj {
         }
     }
 
+    /// 设置文件内对象
+    pub fn set_static(&mut self, is_static_: bool) {
+        match self {
+            Self::Var { is_static, .. } | Self::Func { is_static, .. } => *is_static = is_static_,
+        }
+    }
+
     /// 是否是本地变量
     pub fn is_local(&self) -> bool {
         match self {
