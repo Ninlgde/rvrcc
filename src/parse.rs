@@ -606,6 +606,11 @@ impl<'a> Parser<'a> {
         }
         self.skip(")");
 
+        // 设置空参函数调用为可变的
+        if params.len() == 0 {
+            is_variadic = true;
+        }
+
         return Type::func_type(type_, params, is_variadic);
     }
 
