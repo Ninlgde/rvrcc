@@ -57,6 +57,8 @@ pub struct Type {
     pub(crate) return_type: Option<TypeLink>,
     /// 形参
     pub(crate) params: Vec<TypeLink>,
+    /// 是否为可变参数
+    pub(crate) is_variadic: bool,
     /// 数组长度, 元素总个数
     pub(crate) len: isize,
     /// 结构体
@@ -77,6 +79,7 @@ impl Type {
             base: None,
             return_type: None,
             params: vec![],
+            is_variadic: false,
             len: 0,
             members: vec![],
             is_flexible: false,
@@ -133,10 +136,11 @@ impl Type {
     }
 
     /// 创建一个返回值类型为`return_type`,形参列表为`params`的函数类型
-    pub fn func_type(return_type: TypeLink, params: Vec<TypeLink>) -> TypeLink {
+    pub fn func_type(return_type: TypeLink, params: Vec<TypeLink>, is_variadic: bool) -> TypeLink {
         let mut type_ = Self::new(TypeKind::Func, 8, 8);
         type_.return_type = Some(return_type);
         type_.params = params;
+        type_.is_variadic = is_variadic;
         Rc::new(RefCell::new(type_))
     }
 

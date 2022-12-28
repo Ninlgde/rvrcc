@@ -13,7 +13,7 @@
 //! declarator = "*"* ("(" ident ")" | "(" declarator ")" | ident) type_suffix
 //! type_suffix = "(" funcParams | "[" array_dimensions | ε
 //! array_dimensions = const_expr? "]" typeSuffix
-//! func_params = ("void" | param ("," param)*)? ")"
+//! func_params = ("void" | param ("," param)* ("," "...")?)? ")"
 //! param = declspec declarator
 //! compound_stmt = (typedef | declaration | stmt)* "}"
 //! declaration = declspec (declarator ("=" initializer)?
@@ -543,7 +543,7 @@ impl<'a> Parser<'a> {
         Type::array_of(base_type, size as isize)
     }
 
-    /// func_params = (param ("," param)*)? ")"
+    /// func_params = (param ("," param)* ("," "...")?)? ")"
     /// param = declspec declarator
     fn func_params(&mut self, type_: TypeLink) -> TypeLink {
         // "void"
@@ -551,10 +551,11 @@ impl<'a> Parser<'a> {
         let next = &self.tokens[pos + 1];
         if token.equal(KW_VOID) && next.equal(")") {
             self.next().next();
-            return Type::func_type(type_, vec![]);
+            return Type::func_type(type_, vec![], false);
         }
 
         let mut params = vec![];
+        let mut is_variadic = false;
         loop {
             let (_, token) = self.current();
             if token.equal(")") {
@@ -564,6 +565,14 @@ impl<'a> Parser<'a> {
             // param = declspec declarator
             if params.len() > 0 {
                 self.skip(",");
+            }
+
+            // ("," "...")?
+            let (_, token) = self.current();
+            if token.equal("...") {
+                is_variadic = true;
+                self.next();
+                break;
             }
 
             let mut t = self.declspec(&mut None);
@@ -582,7 +591,7 @@ impl<'a> Parser<'a> {
         }
         self.skip(")");
 
-        return Type::func_type(type_, params);
+        return Type::func_type(type_, params, is_variadic);
     }
 
     /// 解析复合语句
