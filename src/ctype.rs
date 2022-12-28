@@ -165,6 +165,8 @@ impl Type {
     pub fn pointer_to(base: TypeLink) -> TypeLink {
         let mut typ = Self::new(TypeKind::Ptr, 8, 8);
         typ.base = Some(base);
+        // 将指针作为无符号类型进行比较
+        typ.is_unsigned = true;
         Rc::new(RefCell::new(typ))
     }
 

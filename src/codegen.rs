@@ -874,8 +874,7 @@ impl<'a> Generator<'a> {
             1 => writeln!("  lb{} a0, 0(a0)", suffix),
             2 => writeln!("  lh{} a0, 0(a0)", suffix),
             4 => writeln!("  lw{} a0, 0(a0)", suffix),
-            8 => writeln!("  ld{} a0, 0(a0)", suffix),
-            _ => {}
+            _ => writeln!("  ld a0, 0(a0)"),
         }
     }
 
