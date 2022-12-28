@@ -317,6 +317,28 @@ impl<'a> Generator<'a> {
                 writeln!("\n# 循环{}的{}段标签", c, brk);
                 writeln!("{}:", brk);
             }
+            NodeKind::Do => {
+                // 代码段计数
+                let c: u32 = self.count();
+                let brk = node.break_label.as_ref().unwrap();
+                let ctn = node.continue_label.as_ref().unwrap();
+                writeln!("\n# =====do while语句语句{}===============", c);
+                writeln!("\n# begin语句{}", c);
+                writeln!(".L.begin.{}:", c);
+                // 生成循环体语句
+                writeln!("\n# then语句{}", c);
+                self.gen_stmt(node.then.as_ref().unwrap());
+                // 处理循环条件语句
+                writeln!("\n# Cond语句{}", c);
+                writeln!("{}:", ctn);
+                self.gen_expr(node.cond.as_ref().unwrap());
+                // 跳转到循环头部
+                writeln!("  # 跳转到循环{}的.L.begin.{}段", c, c);
+                writeln!("  bnez a0, .L.begin.{}", c);
+                // 输出循环尾部标签
+                writeln!("\n# 循环{}的{}段标签", c, brk);
+                writeln!("{}:", brk);
+            }
             // 生成if语句
             NodeKind::If => {
                 // 代码段计数

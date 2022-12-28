@@ -28,10 +28,11 @@ pub const KEYWORDS: [&str; KW_COUNT] = [
     KW_EXTERN,
     KW_ALIGNOF,
     KW_ALIGNAS,
+    KW_DO,
 ];
 
 /// 关键字数量
-const KW_COUNT: usize = 26;
+const KW_COUNT: usize = 27;
 
 /// 类型名称列表
 pub const KW_TYPENAME: [&str; KW_TYPENAME_COUNT] = [
@@ -94,3 +95,5 @@ pub const KW_EXTERN: &str = "extern";
 pub const KW_ALIGNOF: &str = "_Alignof";
 /// 关键字: _Alignas
 pub const KW_ALIGNAS: &str = "_Alignas";
+/// 关键字: do while
+pub const KW_DO: &str = "do";

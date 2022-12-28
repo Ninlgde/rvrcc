@@ -35,6 +35,7 @@
 //!        | "default" ":" stmt
 //!        | "for" "(" exprStmt expr? ";" expr? ")" stmt
 //!        | "while" "(" expr ")" stmt
+//!        | "do" stmt "while" "(" expr ")" ";"
 //!        | "goto" ident ";"
 //!        | "break" ";"
 //!        | ident ":" stmt
@@ -82,9 +83,9 @@
 use crate::ctype::{add_type, Type, TypeKind, TypeLink};
 use crate::initializer::{create_lvar_init, write_gvar_data, InitDesig, Initializer, Relocation};
 use crate::keywords::{
-    KW_ALIGNAS, KW_ALIGNOF, KW_BOOL, KW_BREAK, KW_CASE, KW_CHAR, KW_CONTINUE, KW_DEFAULT, KW_ELSE,
-    KW_ENUM, KW_EXTERN, KW_FOR, KW_GOTO, KW_IF, KW_INT, KW_LONG, KW_RETURN, KW_SHORT, KW_SIZEOF,
-    KW_STATIC, KW_STRUCT, KW_SWITCH, KW_TYPEDEF, KW_UNION, KW_VOID, KW_WHILE,
+    KW_ALIGNAS, KW_ALIGNOF, KW_BOOL, KW_BREAK, KW_CASE, KW_CHAR, KW_CONTINUE, KW_DEFAULT, KW_DO,
+    KW_ELSE, KW_ENUM, KW_EXTERN, KW_FOR, KW_GOTO, KW_IF, KW_INT, KW_LONG, KW_RETURN, KW_SHORT,
+    KW_SIZEOF, KW_STATIC, KW_STRUCT, KW_SWITCH, KW_TYPEDEF, KW_UNION, KW_VOID, KW_WHILE,
 };
 use crate::node::{add_with_type, eval, sub_with_type, LabelInfo, Node, NodeKind, NodeLink};
 use crate::obj::{Member, Obj, ObjLink, Scope, VarAttr, VarScope};
@@ -1042,6 +1043,7 @@ impl<'a> Parser<'a> {
     ///        | "default" ":" stmt
     ///        | "for" "(" exprStmt expr? ";" expr? ")" stmt
     ///        | "while" "(" expr ")" stmt
+    ///        | "do" stmt "while" "(" expr ")" ";"
     ///        | "goto" ident ";"
     ///        | "break" ";"
     ///        | "continue" ";"
@@ -1261,6 +1263,38 @@ impl<'a> Parser<'a> {
             // 恢复此前的break和continue标签
             self.brk_label = brk_label;
             self.ctn_label = ctn_label;
+            return Some(node);
+        }
+
+        // "do" stmt "while" "(" expr ")" ";"
+        if token.equal(KW_DO) {
+            let mut node = Node::new(NodeKind::Do, nt);
+
+            // 存储此前break和continue标签的名称
+            let brk_label = self.brk_label.to_string();
+            let ctn_label = self.ctn_label.to_string();
+            // 设置break和continue标签的名称
+            self.brk_label = self.new_unique_name();
+            self.ctn_label = self.new_unique_name();
+            node.break_label = Some(self.brk_label.to_string());
+            node.continue_label = Some(self.ctn_label.to_string());
+
+            // stmt
+            // do代码块内的语句
+            node.then = Some(self.next().stmt().unwrap());
+
+            // 恢复此前的break和continue标签
+            self.brk_label = brk_label;
+            self.ctn_label = ctn_label;
+
+            // "while" "(" expr ")" ";"
+            self.skip(KW_WHILE);
+            self.skip("(");
+            // expr
+            // while使用的条件表达式
+            node.cond = Some(self.expr().unwrap());
+            self.skip(")");
+            self.skip(";");
             return Some(node);
         }
 

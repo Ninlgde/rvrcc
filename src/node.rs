@@ -70,6 +70,8 @@ pub enum NodeKind {
     If,
     /// "for" 或 "while"，循环
     For,
+    /// "do"，用于do while语句
+    Do,
     /// "switch"，分支语句
     Switch,
     /// "case"
