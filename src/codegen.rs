@@ -233,7 +233,8 @@ impl<'a> Generator<'a> {
 
                     // 偏移量为实际变量所用的栈大小
                     writeln!("  # sp腾出StackSize大小的栈空间");
-                    writeln!("  addi sp, sp, -{}", stack_size);
+                    writeln!("  li t0, -{}", stack_size);
+                    writeln!("  add sp, sp, t0");
 
                     let mut i = 0;
                     // 正常传递的形参
@@ -540,7 +541,9 @@ impl<'a> Generator<'a> {
                 );
                 // 对栈内变量所占用的每个字节都进行清零
                 for i in 0..typ.size {
-                    writeln!("  sb zero, {}(fp)", var.get_offset() + i);
+                    writeln!("  li t0, {}", var.get_offset() + i);
+                    writeln!("  add t0, fp, t0");
+                    writeln!("  sb zero, 0(t0)");
                 }
                 return;
             }
@@ -812,7 +815,8 @@ impl<'a> Generator<'a> {
                     if *is_local {
                         // 偏移量是相对于fp的
                         writeln!("  # 获取局部变量{}的栈内地址为{}(fp)", name, offset);
-                        writeln!("  addi a0, fp, {}", offset);
+                        writeln!("  li t0, {}", offset);
+                        writeln!("  add a0, fp, t0");
                     } else {
                         writeln!("  # 获取全局变量{}的地址", name);
                         writeln!("  la a0, {}", name);
@@ -920,11 +924,13 @@ impl<'a> Generator<'a> {
             ARG_NAMES[register],
             offset
         );
+        writeln!("  li t0, {}", offset);
+        writeln!("  add t0, fp, t0");
         match size {
-            1 => writeln!("  sb {}, {}(fp)", ARG_NAMES[register], offset),
-            2 => writeln!("  sh {}, {}(fp)", ARG_NAMES[register], offset),
-            4 => writeln!("  sw {}, {}(fp)", ARG_NAMES[register], offset),
-            8 => writeln!("  sd {}, {}(fp)", ARG_NAMES[register], offset),
+            1 => writeln!("  sb {}, 0(t0)", ARG_NAMES[register]),
+            2 => writeln!("  sh {}, 0(t0)", ARG_NAMES[register]),
+            4 => writeln!("  sw {}, 0(t0)", ARG_NAMES[register]),
+            8 => writeln!("  sd {}, 0(t0)", ARG_NAMES[register]),
             _ => {
                 unreachable!();
             }

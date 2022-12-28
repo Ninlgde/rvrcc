@@ -286,12 +286,20 @@ pub fn eval0(node: &mut Box<Node>, label: &mut Option<String>) -> i64 {
             return eval(node.lhs.as_mut().unwrap()) * eval(node.rhs.as_mut().unwrap());
         }
         NodeKind::Div => {
+            if node.typ.as_ref().unwrap().borrow().is_unsigned {
+                return (eval(node.lhs.as_mut().unwrap()) as u64
+                    / eval(node.rhs.as_mut().unwrap()) as u64) as i64;
+            }
             return eval(node.lhs.as_mut().unwrap()) / eval(node.rhs.as_mut().unwrap());
         }
         NodeKind::Neg => {
             return -eval(node.lhs.as_mut().unwrap());
         }
         NodeKind::Mod => {
+            if node.typ.as_ref().unwrap().borrow().is_unsigned {
+                return (eval(node.lhs.as_mut().unwrap()) as u64
+                    % eval(node.rhs.as_mut().unwrap()) as u64) as i64;
+            }
             return eval(node.lhs.as_mut().unwrap()) % eval(node.rhs.as_mut().unwrap());
         }
         NodeKind::BitAnd => {
@@ -304,6 +312,11 @@ pub fn eval0(node: &mut Box<Node>, label: &mut Option<String>) -> i64 {
             return eval(node.lhs.as_mut().unwrap()) ^ eval(node.rhs.as_mut().unwrap());
         }
         NodeKind::Shl => {
+            let typ = node.typ.as_ref().unwrap().borrow();
+            if typ.is_unsigned && typ.size == 8 {
+                return ((eval(node.lhs.as_mut().unwrap()) as u64)
+                    << eval(node.rhs.as_mut().unwrap())) as i64;
+            }
             return eval(node.lhs.as_mut().unwrap()) << eval(node.rhs.as_mut().unwrap());
         }
         NodeKind::Shr => {
@@ -320,14 +333,26 @@ pub fn eval0(node: &mut Box<Node>, label: &mut Option<String>) -> i64 {
             )
         }
         NodeKind::Lt => {
-            return bool_to_i64(
-                eval(node.lhs.as_mut().unwrap()) < eval(node.rhs.as_mut().unwrap()),
-            );
+            let r;
+            let lhs = node.lhs.as_ref().unwrap();
+            if lhs.typ.as_ref().unwrap().borrow().is_unsigned {
+                r = (eval(node.lhs.as_mut().unwrap()) as u64)
+                    < eval(node.rhs.as_mut().unwrap()) as u64
+            } else {
+                r = eval(node.lhs.as_mut().unwrap()) < eval(node.rhs.as_mut().unwrap())
+            }
+            return bool_to_i64(r);
         }
         NodeKind::Le => {
-            return bool_to_i64(
-                eval(node.lhs.as_mut().unwrap()) <= eval(node.rhs.as_mut().unwrap()),
-            );
+            let r;
+            let lhs = node.lhs.as_ref().unwrap();
+            if lhs.typ.as_ref().unwrap().borrow().is_unsigned {
+                r = (eval(node.lhs.as_mut().unwrap()) as u64)
+                    <= eval(node.rhs.as_mut().unwrap()) as u64
+            } else {
+                r = eval(node.lhs.as_mut().unwrap()) <= eval(node.rhs.as_mut().unwrap())
+            }
+            return bool_to_i64(r);
         }
         NodeKind::Cond => {
             let cond = eval(node.cond.as_mut().unwrap());
@@ -368,13 +393,25 @@ pub fn eval0(node: &mut Box<Node>, label: &mut Option<String>) -> i64 {
             if t.is_int() {
                 match t.size {
                     1 => {
-                        return r as i8 as i64;
+                        return if t.is_unsigned {
+                            r as u8 as i64
+                        } else {
+                            r as i8 as i64
+                        };
                     }
                     2 => {
-                        return r as i16 as i64;
+                        return if t.is_unsigned {
+                            r as u16 as i64
+                        } else {
+                            r as i16 as i64
+                        };
                     }
                     4 => {
-                        return r as i32 as i64;
+                        return if t.is_unsigned {
+                            r as u32 as i64
+                        } else {
+                            r as i32 as i64
+                        };
                     }
                     _ => {}
                 }
