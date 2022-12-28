@@ -203,6 +203,9 @@ impl<'a> Parser<'a> {
             first = false;
 
             let typ = self.declarator(base_type.clone());
+            if typ.borrow().name.is_null() {
+                error_token!(&typ.borrow().name_pos, "variable name omitted");
+            }
             let name = typ.borrow().get_name().to_string();
             let obj = Obj::new_gvar(name.to_string(), typ);
             let mut var = self.new_gvar(name.to_string(), obj);
@@ -228,6 +231,10 @@ impl<'a> Parser<'a> {
         // declarator
         // 声明获取到变量类型，包括变量名
         let typ = self.declarator(base_type);
+        if typ.borrow().name.is_null() {
+            error_token!(&typ.borrow().name_pos, "variable name omitted");
+        }
+
         let ct = typ.borrow();
         let name = ct.get_name().clone();
 
@@ -317,6 +324,9 @@ impl<'a> Parser<'a> {
     /// 将形参添加到locals
     fn create_param_lvars(&mut self, params: &Vec<TypeLink>) {
         for param in params.iter() {
+            if param.borrow().name.is_null() {
+                error_token!(&param.borrow().name_pos, "variable name omitted");
+            }
             let name = param.borrow().get_name().to_string();
             self.new_lvar(name, param.clone());
         }
@@ -611,12 +621,18 @@ impl<'a> Parser<'a> {
             return typ;
         }
 
-        let name = token.clone();
+        let mut name = Token::Undefined;
+        let name_pos = token.clone();
+        if token.is_ident() {
+            name = token.clone();
+            self.next();
+        }
         // type_suffix
-        typ = self.next().type_suffix(typ);
+        typ = self.type_suffix(typ);
         // ident
         // 变量名 或 函数名
         typ.borrow_mut().set_name(name);
+        typ.borrow_mut().name_pos = name_pos;
         typ
     }
 
@@ -803,6 +819,9 @@ impl<'a> Parser<'a> {
                 let (_, token) = self.current();
                 error_token!(token, "variable declared void");
                 unreachable!()
+            }
+            if typ.borrow().name.is_null() {
+                error_token!(&typ.borrow().name_pos, "variable name omitted");
             }
 
             if attr.is_some() && attr.as_ref().unwrap().is_static {
@@ -2656,6 +2675,9 @@ impl<'a> Parser<'a> {
             }
             first = false;
             let typ = self.declarator(base_type.clone());
+            if typ.borrow().name.is_null() {
+                error_token!(&typ.borrow().name_pos, "variable name omitted");
+            }
             let name = typ.borrow().get_name().to_string();
 
             let vs = self.push_scope(name);

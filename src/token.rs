@@ -107,6 +107,10 @@ impl Token {
         matches!(self, Self::Str { .. })
     }
 
+    pub fn is_null(&self) -> bool {
+        matches!(self, Self::Undefined { .. })
+    }
+
     /// 获取字符串
     pub fn get_string(&self) -> (Vec<u8>, TypeLink) {
         match self {

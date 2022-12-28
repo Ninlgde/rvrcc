@@ -47,6 +47,8 @@ pub struct Type {
     pub(crate) name: Token,
     /// 名称字符串
     pub(crate) name_string: String,
+    // 名称位置
+    pub(crate) name_pos: Token,
     /// 大小, sizeof返回的值
     pub(crate) size: isize,
     /// 对齐
@@ -76,6 +78,7 @@ impl Type {
             kind,
             name: Token::Undefined,
             name_string: "".to_string(),
+            name_pos: Token::Undefined,
             size,
             align,
             is_unsigned: false,

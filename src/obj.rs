@@ -32,6 +32,8 @@ pub enum Obj {
         is_definition: bool,
         /// 对齐量
         align: isize,
+        /// 对应的终结符
+        token: Option<Token>,
     },
     /// 函数
     Func {
@@ -53,6 +55,8 @@ pub enum Obj {
         is_definition: bool,
         /// 是否为文件域内的
         is_static: bool,
+        /// 对应的终结符
+        token: Option<Token>,
     },
 }
 
@@ -153,6 +157,7 @@ impl Obj {
             relocation: ptr::null_mut(),
             is_definition: false,
             align,
+            token: None,
         }
     }
 
@@ -273,6 +278,7 @@ impl Obj {
             is_definition: false,
             is_static: false,
             va_area: None,
+            token: None,
         }
     }
 }
