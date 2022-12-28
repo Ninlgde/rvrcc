@@ -64,7 +64,8 @@
 //! struct_declare = struct_union_declare
 //! union_declare = struct_union_declare
 //! struct_union_declare = ident? ("{" struct_members)?
-//! postfix = primary ("[" expr "]" | "." ident)* | "->" ident | "++" | "--")*
+//! postfix = "(" typename ")" "{" initializer_list "}"
+//!         | primary ("[" expr "]" | "." ident)* | "->" ident | "++" | "--")*
 //! primary =  "(" "{" stmt+ "}" ")"
 //!         | "(" expr ")"
 //!         | "sizeof" "(" typename ")"
@@ -1739,6 +1740,15 @@ impl<'a> Parser<'a> {
         if token.equal("(") && self.is_typename(next) {
             let typ = self.next().typename();
             self.skip(")");
+
+            let (_, token) = self.current();
+            // 复合字面量
+            if token.equal("{") {
+                self.cursor = pos;
+                return self.unary();
+            }
+
+            // 解析嵌套的类型转换
             let cast = self.cast().unwrap();
             let node = Node::new_cast(cast, typ);
             return Some(node);
@@ -2087,8 +2097,39 @@ impl<'a> Parser<'a> {
         Some(cast)
     }
 
-    /// postfix = primary ("[" expr "]" | "." ident)* | "->" ident | "++" | "--")*
+    /// postfix = "(" typename ")" "{" initializer_list "}"
+    ///         | primary ("[" expr "]" | "." ident)* | "->" ident | "++" | "--")*
     fn postfix(&mut self) -> Option<NodeLink> {
+        //  "(" typename ")" "{" initializer_list "}"
+        let (pos, token) = self.current();
+        let start = token.clone();
+        let next = &self.tokens[pos + 1];
+        if token.equal("(") && self.is_typename(next) {
+            // 复合字面量
+            let typ = self.next().typename();
+            self.skip(")");
+
+            if self.scopes.len() == 1 {
+                let var = self.new_anon_gvar(typ);
+                self.gvar_initializer(var.clone());
+                let (end_pos, _) = self.current();
+                self.cursor = pos;
+                let node = Some(Node::new_var(var, start));
+                self.cursor = end_pos;
+                return node;
+            }
+
+            let nvar = self.new_lvar(typ).unwrap();
+            let lhs = self.lvar_initializer(nvar.clone()).unwrap();
+            let (_, token2) = self.current();
+            let rhs = Node::new_var(nvar, token2.clone());
+            let (end_pos, _) = self.current();
+            self.cursor = pos;
+            let node = Some(Node::new_binary(NodeKind::Comma, lhs, rhs, start));
+            self.cursor = end_pos;
+            return node;
+        }
+
         // primary
         let mut node = self.primary().unwrap();
 

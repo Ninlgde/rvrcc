@@ -1,12 +1,21 @@
 
-//typedef char T60[];
-//T60 g60 = {1, 2, 3};
-//T60 g61 = {1, 2, 3, 4, 5, 6};
+// [121] 支持复合字面量
+typedef struct Tree {
+    int val;
+    struct Tree *lhs;
+    struct Tree *rhs;
+} Tree;
 
-typedef struct {char a, b[];} T65;
-T65 g65 = {'f', 'o', 'o', 0};
-T65 g66 = {'f', 'o', 'o', 'b', 'a', 'r', 0};
+Tree *tree = &(Tree){
+        1,
+        &(Tree){
+                2,
+                &(Tree){ 3, 0, 0 },
+                &(Tree){ 4, 0, 0 }
+        },
+        0
+};
 
 int main() {
-    g66.b[0];
+    tree->val;
 }
