@@ -211,6 +211,13 @@ impl Node {
         node
     }
 
+    pub fn new_unsigned_long(val: i64, token: Token) -> NodeLink {
+        let mut node = Self::new(NodeKind::Num, token);
+        node.val = val;
+        node.typ = Some(Type::new_unsigned_long());
+        node
+    }
+
     /// 创建一个var类型的节点
     pub fn new_var(val: ObjLink, token: Token) -> NodeLink {
         let mut node = Self::new(NodeKind::Var, token);

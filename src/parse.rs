@@ -2346,7 +2346,7 @@ impl<'a> Parser<'a> {
             let typ = self.typename();
             self.skip(")");
             // self.cursor = pos;
-            return Some(Node::new_num(typ.borrow().size as i64, nt));
+            return Some(Node::new_unsigned_long(typ.borrow().size as i64, nt));
         }
 
         // "sizeof" unary
@@ -2354,7 +2354,7 @@ impl<'a> Parser<'a> {
             let mut node = self.next().unary();
             add_type(node.as_mut().unwrap());
             let size = node.unwrap().get_type().as_ref().unwrap().borrow().size as i64;
-            return Some(Node::new_num(size, nt));
+            return Some(Node::new_unsigned_long(size, nt));
         }
 
         // "_Alignof" "(" typename ")"
@@ -2362,7 +2362,7 @@ impl<'a> Parser<'a> {
         if token.equal(KW_ALIGNOF) && next.equal("(") && self.is_typename(next_next) {
             let typ = self.next().next().typename();
             self.skip(")");
-            return Some(Node::new_num(typ.borrow().align as i64, nt));
+            return Some(Node::new_unsigned_long(typ.borrow().align as i64, nt));
         }
 
         // "_Alignof" unary
@@ -2372,7 +2372,7 @@ impl<'a> Parser<'a> {
             let (pos, _) = self.current();
             let nt = self.tokens[pos].clone();
             let align = node.unwrap().get_type().as_ref().unwrap().borrow().align as i64;
-            return Some(Node::new_num(align, nt));
+            return Some(Node::new_unsigned_long(align, nt));
         }
 
         // ident args?
