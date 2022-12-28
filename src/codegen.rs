@@ -611,6 +611,26 @@ impl<'a> Generator<'a> {
                     writeln!("  call {}", node.func_name);
                     writeln!("  addi sp, sp, 8");
                 }
+
+                // 清除寄存器中高位无关的数据
+                match node.type_.as_ref().unwrap().borrow().kind {
+                    TypeKind::Bool => {
+                        writeln!("  # 清除bool类型的高位");
+                        writeln!("  slli a0, a0, 63");
+                        writeln!("  srli a0, a0, 63");
+                    }
+                    TypeKind::Char => {
+                        writeln!("  # 清除char类型的高位");
+                        writeln!("  slli a0, a0, 56");
+                        writeln!("  srai a0, a0, 56");
+                    }
+                    TypeKind::Short => {
+                        writeln!("  # 清除short类型的高位");
+                        writeln!("  slli a0, a0, 48");
+                        writeln!("  srai a0, a0, 48");
+                    }
+                    _ => {}
+                }
                 return;
             }
             _ => {}
