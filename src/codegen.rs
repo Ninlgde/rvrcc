@@ -396,7 +396,9 @@ impl<'a> Generator<'a> {
             // 生成return语句
             NodeKind::Return => {
                 writeln!("# 返回语句");
-                self.gen_expr(node.lhs.as_ref().unwrap());
+                if node.lhs.is_some() {
+                    self.gen_expr(node.lhs.as_ref().unwrap());
+                }
                 // 无条件跳转语句，跳转到.L.return段
                 // j offset是 jal x0, offset的别名指令
                 writeln!("  # 跳转到.L.return.{}段", self.current_function_name);

@@ -28,7 +28,7 @@
 //! struct_initializer1 = "{" initializer ("," initializer)* ","? "}"
 //! struct_initializer2 = initializer ("," initializer)* ","?
 //! union_initializer = "{" initializer "}"
-//! stmt = "return" expr ";"
+//! stmt = "return" expr? ";"
 //!        | "if" "(" expr ")" stmt ("else" stmt)?
 //!        | "switch" "(" expr ")" stmt
 //!        | "case" const_expr ":" stmt
@@ -1032,7 +1032,7 @@ impl<'a> Parser<'a> {
     }
 
     /// 解析语句
-    /// stmt = "return" expr ";"
+    /// stmt = "return" expr? ";"
     ///        | "if" "(" expr ")" stmt ("else" stmt)?
     ///        | "switch" "(" expr ")" stmt
     ///        | "case" const_expr ":" stmt
@@ -1050,6 +1050,13 @@ impl<'a> Parser<'a> {
         let nt = self.tokens[pos].clone();
         // "return" expr ";"
         if token.equal(KW_RETURN) {
+            // 空返回语句
+            if self.next().consume(";") {
+                return Some(Node::new(NodeKind::Return, nt));
+            }
+            // 不是空语句,恢复cursor
+            self.cursor = pos;
+
             let mut expr = self.next().expr().unwrap();
             self.skip(";");
             add_type(&mut expr);
