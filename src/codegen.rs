@@ -600,8 +600,17 @@ impl<'a> Generator<'a> {
                     self.pop(ARG_NAMES[i]);
                 }
 
-                writeln!("  # 调用{}函数", node.func_name);
-                writeln!("  call {}", node.func_name);
+                if self.depth % 2 == 0 {
+                    // 偶数深度，sp已经对齐16字节
+                    writeln!("  # 调用{}函数", node.func_name);
+                    writeln!("  call {}", node.func_name);
+                } else {
+                    // 对齐sp到16字节的边界
+                    writeln!("  # 对齐sp到16字节的边界，并调用{}函数", node.func_name);
+                    writeln!("  addi sp, sp, -8");
+                    writeln!("  call {}", node.func_name);
+                    writeln!("  addi sp, sp, 8");
+                }
                 return;
             }
             _ => {}
