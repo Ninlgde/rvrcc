@@ -640,13 +640,25 @@ impl<'a> Generator<'a> {
                     }
                     TypeKind::Char => {
                         writeln!("  # 清除char类型的高位");
-                        writeln!("  slli a0, a0, 56");
-                        writeln!("  srai a0, a0, 56");
+                        let is_unsigned = node.type_.as_ref().unwrap().borrow().is_unsigned;
+                        if is_unsigned {
+                            writeln!("  slli a0, a0, 56");
+                            writeln!("  srli a0, a0, 56");
+                        } else {
+                            writeln!("  slli a0, a0, 56");
+                            writeln!("  srai a0, a0, 56");
+                        }
                     }
                     TypeKind::Short => {
                         writeln!("  # 清除short类型的高位");
-                        writeln!("  slli a0, a0, 48");
-                        writeln!("  srai a0, a0, 48");
+                        let is_unsigned = node.type_.as_ref().unwrap().borrow().is_unsigned;
+                        if is_unsigned {
+                            writeln!("  slli a0, a0, 48");
+                            writeln!("  srli a0, a0, 48");
+                        } else {
+                            writeln!("  slli a0, a0, 48");
+                            writeln!("  srai a0, a0, 48");
+                        }
                     }
                     _ => {}
                 }
@@ -683,12 +695,22 @@ impl<'a> Generator<'a> {
             NodeKind::Div => {
                 // / a0=a0/a1
                 writeln!("  # a0÷a1，结果写入a0");
-                writeln!("  div{} a0, a0, a1", suffix);
+                let is_unsigned = node.type_.as_ref().unwrap().borrow().is_unsigned;
+                if is_unsigned {
+                    writeln!("  divu{} a0, a0, a1", suffix);
+                } else {
+                    writeln!("  div{} a0, a0, a1", suffix);
+                }
             }
             NodeKind::Mod => {
                 // % a0=a0%a1
                 writeln!("  # a0%%a1，结果写入a0");
-                writeln!("  rem{} a0, a0, a1", suffix);
+                let is_unsigned = node.type_.as_ref().unwrap().borrow().is_unsigned;
+                if is_unsigned {
+                    writeln!("  remu{} a0, a0, a1", suffix);
+                } else {
+                    writeln!("  rem{} a0, a0, a1", suffix);
+                }
             }
             NodeKind::BitAnd => {
                 // & a0=a0&a1
@@ -725,13 +747,23 @@ impl<'a> Generator<'a> {
             }
             NodeKind::Lt => {
                 writeln!("  # 判断a0<a1");
-                writeln!("  slt a0, a0, a1");
+                let is_unsigned = typ.is_unsigned;
+                if is_unsigned {
+                    writeln!("  sltu a0, a0, a1");
+                } else {
+                    writeln!("  slt a0, a0, a1");
+                }
             }
             NodeKind::Le => {
                 // a0<=a1等价于
                 // a0=a1<a0, a0=a0^1
                 writeln!("  # 判断是否a0≤a1");
-                writeln!("  slt a0, a1, a0");
+                let is_unsigned = typ.is_unsigned;
+                if is_unsigned {
+                    writeln!("  sltu a0, a1, a0");
+                } else {
+                    writeln!("  slt a0, a1, a0");
+                }
                 writeln!("  xori a0, a0, 1");
             }
             NodeKind::Shl => {
@@ -740,7 +772,12 @@ impl<'a> Generator<'a> {
             }
             NodeKind::Shr => {
                 writeln!("  # a0算术右移a1位");
-                writeln!("  sra{} a0, a0, a1", suffix);
+                let is_unsigned = node.type_.as_ref().unwrap().borrow().is_unsigned;
+                if is_unsigned {
+                    writeln!("  srl{} a0, a0, a1", suffix);
+                } else {
+                    writeln!("  sra{} a0, a0, a1", suffix);
+                }
             }
             _ => error_token!(&node.get_token(), "invalid expression"),
         }
@@ -832,11 +869,12 @@ impl<'a> Generator<'a> {
 
         writeln!("  # 读取a0中存放的地址，得到的值存入a0");
         let size = type_.borrow().size;
+        let suffix = if type_.borrow().is_unsigned { "u" } else { "" };
         match size {
-            1 => writeln!("  lb a0, 0(a0)"),
-            2 => writeln!("  lh a0, 0(a0)"),
-            4 => writeln!("  lw a0, 0(a0)"),
-            8 => writeln!("  ld a0, 0(a0)"),
+            1 => writeln!("  lb{} a0, 0(a0)", suffix),
+            2 => writeln!("  lh{} a0, 0(a0)", suffix),
+            4 => writeln!("  lw{} a0, 0(a0)", suffix),
+            8 => writeln!("  ld{} a0, 0(a0)", suffix),
             _ => {}
         }
     }
@@ -925,33 +963,46 @@ impl<'a> Generator<'a> {
 
 // 类型映射表
 // 先逻辑左移N位，再算术右移N位，就实现了将64位有符号数转换为64-N位的有符号数
-// long 64 -> i8
+/// long 64 -> i8
 const L8I1: Option<&str> = Some("  # 转换为i8类型\n  slli a0, a0, 56\n  srai a0, a0, 56");
-// long 64 -> i16
+/// long 64 -> i16
 const L8I2: Option<&str> = Some("  # 转换为i16类型\n  slli a0, a0, 48\n  srai a0, a0, 48");
-// long 64 -> i32
+/// long 64 -> i32
 const L8I4: Option<&str> = Some("  # 转换为i32类型\n  slli a0, a0, 32\n  srai a0, a0, 32");
+// 先逻辑左移N位，再逻辑右移N位，就实现了将64位无符号数转换为64-N位的无符号数
+/// long 64 -> u8
+const L8U1: Option<&str> = Some("  # 转换为u8类型\n  slli a0, a0, 56\n  srli a0, a0, 56");
+/// long 64 -> u16
+const L8U2: Option<&str> = Some("  # 转换为u16类型\n  slli a0, a0, 48\n  srli a0, a0, 48");
+/// long 64 -> u32
+const L8U4: Option<&str> = Some("  # 转换为u32类型\n  slli a0, a0, 32\n  srli a0, a0, 32");
 
 /// 获取类型对应的index
 fn get_type_id(typ: TypeLink) -> usize {
-    match typ.borrow().kind {
+    let result = match typ.borrow().kind {
         TypeKind::Char => 0,
         TypeKind::Short => 1,
         TypeKind::Int => 2,
         _ => 3,
+    };
+    if typ.borrow().is_unsigned {
+        result + 4
+    } else {
+        result
     }
 }
 
 /// 所有类型转换表
 const CAST_TABLE: [[Option<&str>; 10]; 10] = [
-    [None, None, None, None, None, None, None, None, None, None],
-    [L8I1, None, None, None, None, None, None, None, None, None],
-    [L8I1, L8I2, None, None, None, None, None, None, None, None],
-    [L8I1, L8I2, L8I4, None, None, None, None, None, None, None],
-    [None, None, None, None, None, None, None, None, None, None],
-    [None, None, None, None, None, None, None, None, None, None],
-    [None, None, None, None, None, None, None, None, None, None],
-    [None, None, None, None, None, None, None, None, None, None],
+    //{i8, i16,  i32,  i64,  u8,   u16,  u32,  u64}
+    [None, None, None, None, L8U1, None, None, None, None, None], // 从i8转换
+    [L8I1, None, None, None, L8U1, L8U2, None, None, None, None], // 从i16转换
+    [L8I1, L8I2, None, None, L8U1, L8U2, L8U4, None, None, None], // 从i32转换
+    [L8I1, L8I2, L8I4, None, L8U1, L8U2, L8U4, None, None, None], // 从i64转换
+    [L8I1, None, None, None, None, None, None, None, None, None], // 从u8转换
+    [L8I1, L8I2, None, None, L8U1, None, None, None, None, None], // 从u16转换
+    [L8I1, L8I2, L8I4, None, L8U1, L8U2, None, None, None, None], // 从u32转换
+    [L8I1, L8I2, L8I4, None, L8U1, L8U2, L8U4, None, None, None], // 从u64转换
     [None, None, None, None, None, None, None, None, None, None],
     [None, None, None, None, None, None, None, None, None, None],
 ];

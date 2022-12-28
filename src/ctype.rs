@@ -51,6 +51,8 @@ pub struct Type {
     pub(crate) size: isize,
     /// 对齐
     pub(crate) align: isize,
+    /// 是否为无符号的
+    pub(crate) is_unsigned: bool,
     /// 指向的类型
     pub(crate) base: Option<TypeLink>,
     /// 返回的类型
@@ -69,13 +71,14 @@ pub struct Type {
 
 impl Type {
     /// 通过类型`kind`,大小`size`,对齐`align`来创建一个类型
-    pub fn new(kind: TypeKind, size: isize, align: isize) -> Self {
+    fn new(kind: TypeKind, size: isize, align: isize) -> Self {
         Self {
             kind,
             name: Token::Undefined,
             name_string: "".to_string(),
             size,
             align,
+            is_unsigned: false,
             base: None,
             return_type: None,
             params: vec![],
@@ -84,6 +87,12 @@ impl Type {
             members: vec![],
             is_flexible: false,
         }
+    }
+
+    fn new_unsigned(kind: TypeKind, size: isize, align: isize) -> Self {
+        let mut type_ = Self::new(kind, size, align);
+        type_.is_unsigned = true;
+        type_
     }
 
     /// 创建一个void类型
@@ -119,6 +128,30 @@ impl Type {
     /// 创建一个long类型
     pub fn new_long() -> TypeLink {
         let type_ = Self::new(TypeKind::Long, 8, 8);
+        Rc::new(RefCell::new(type_))
+    }
+
+    /// 创建一个char类型
+    pub fn new_unsigned_char() -> TypeLink {
+        let type_ = Self::new_unsigned(TypeKind::Char, 1, 1);
+        Rc::new(RefCell::new(type_))
+    }
+
+    /// 创建一个short类型
+    pub fn new_unsigned_short() -> TypeLink {
+        let type_ = Self::new_unsigned(TypeKind::Short, 2, 2);
+        Rc::new(RefCell::new(type_))
+    }
+
+    /// 创建一个int类型
+    pub fn new_unsigned_int() -> TypeLink {
+        let type_ = Self::new_unsigned(TypeKind::Int, 4, 4);
+        Rc::new(RefCell::new(type_))
+    }
+
+    /// 创建一个long类型
+    pub fn new_unsigned_long() -> TypeLink {
+        let type_ = Self::new_unsigned(TypeKind::Long, 8, 8);
         Rc::new(RefCell::new(type_))
     }
 
@@ -210,11 +243,28 @@ impl Type {
         if typ1.borrow().has_base() {
             return Self::pointer_to(typ1.borrow().base.as_ref().unwrap().clone());
         }
-        if typ1.borrow().size == 8 || typ2.borrow().size == 8 {
-            return Self::new_long();
+
+        let s1 = typ1.borrow().size;
+        let s2 = typ2.borrow().size;
+
+        let mut r1 = Type::new_int();
+        let mut r2 = Type::new_int();
+        if s1 >= 4 {
+            r1 = typ1.clone()
+        }
+        if s2 >= 4 {
+            r2 = typ2.clone()
         }
 
-        Self::new_int()
+        if s1 != s2 {
+            return if s1 < s2 { r2 } else { r1 };
+        }
+
+        if typ2.borrow().is_unsigned {
+            return r2;
+        }
+
+        r1
     }
 
     /// 复制结构体的类型

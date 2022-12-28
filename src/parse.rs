@@ -5,7 +5,7 @@
 //! declspec = ("void" | "_Bool" | "char" | "short" | "int" | "long"
 //!            | "typedef" | "static" | "extern"
 //!            | "_Alignas" ("(" typename | const_expr ")")
-//!            | "signed"
+//!            | "signed" | "unsigned"
 //!            | struct_declare | union_declare | typedef_name
 //!            | enum_specifier)+
 //! enum_specifier = ident? "{" enum_list? "}"
@@ -86,7 +86,8 @@ use crate::initializer::{create_lvar_init, write_gvar_data, InitDesig, Initializ
 use crate::keywords::{
     KW_ALIGNAS, KW_ALIGNOF, KW_BOOL, KW_BREAK, KW_CASE, KW_CHAR, KW_CONTINUE, KW_DEFAULT, KW_DO,
     KW_ELSE, KW_ENUM, KW_EXTERN, KW_FOR, KW_GOTO, KW_IF, KW_INT, KW_LONG, KW_RETURN, KW_SHORT,
-    KW_SIGNED, KW_SIZEOF, KW_STATIC, KW_STRUCT, KW_SWITCH, KW_TYPEDEF, KW_UNION, KW_VOID, KW_WHILE,
+    KW_SIGNED, KW_SIZEOF, KW_STATIC, KW_STRUCT, KW_SWITCH, KW_TYPEDEF, KW_UNION, KW_UNSIGNED,
+    KW_VOID, KW_WHILE,
 };
 use crate::node::{add_with_type, eval, sub_with_type, LabelInfo, Node, NodeKind, NodeLink};
 use crate::obj::{Member, Obj, ObjLink, Scope, VarAttr, VarScope};
@@ -365,7 +366,7 @@ impl<'a> Parser<'a> {
     /// declspec = ("void" | "_Bool" | "char" | "short" | "int" | "long"
     ///            | "typedef" | "static" | "extern"
     ///            | "_Alignas" ("(" typename | const_expr ")")
-    ///            | "signed"
+    ///            | "signed" | "unsigned"
     ///            | struct_declare | union_declare | typedef_name
     ///            | enum_specifier)+
     /// declarator specifier
@@ -380,6 +381,7 @@ impl<'a> Parser<'a> {
         const LONG: i32 = 1 << 10;
         const OTHER: i32 = 1 << 12;
         const SIGNED: i32 = 1 << 13;
+        const UNSIGNED: i32 = 1 << 14;
 
         let mut type_ = Type::new_int();
         let mut counter = 0; // 记录类型相加的数值
@@ -471,6 +473,8 @@ impl<'a> Parser<'a> {
                 counter += LONG;
             } else if token.equal(KW_SIGNED) {
                 counter |= SIGNED;
+            } else if token.equal(KW_UNSIGNED) {
+                counter |= UNSIGNED;
             } else {
                 unreachable!()
             }
@@ -489,15 +493,21 @@ impl<'a> Parser<'a> {
                 type_ = Type::new_void()
             } else if eq(counter, vec![BOOL]) {
                 type_ = Type::new_bool()
-            } else if eq(counter, vec![CHAR, SIGNED + CHAR]) {
+            } else if eq(counter, vec![SIGNED + CHAR]) {
                 type_ = Type::new_char()
+            } else if eq(counter, vec![CHAR, UNSIGNED + CHAR]) {
+                type_ = Type::new_unsigned_char()
             } else if eq(
                 counter,
                 vec![SHORT, SHORT + INT, SIGNED + SHORT, SIGNED + SHORT + INT],
             ) {
                 type_ = Type::new_short()
+            } else if eq(counter, vec![UNSIGNED + SHORT, UNSIGNED + SHORT + INT]) {
+                type_ = Type::new_unsigned_short()
             } else if eq(counter, vec![INT, SIGNED, SIGNED + INT]) {
                 type_ = Type::new_int()
+            } else if eq(counter, vec![UNSIGNED, UNSIGNED + INT]) {
+                type_ = Type::new_unsigned_int()
             } else if eq(
                 counter,
                 vec![
@@ -512,6 +522,16 @@ impl<'a> Parser<'a> {
                 ],
             ) {
                 type_ = Type::new_long()
+            } else if eq(
+                counter,
+                vec![
+                    UNSIGNED + LONG,
+                    UNSIGNED + LONG + INT,
+                    UNSIGNED + LONG + LONG,
+                    UNSIGNED + LONG + LONG + INT,
+                ],
+            ) {
+                type_ = Type::new_unsigned_long()
             } else {
                 error_token!(token, "invalid type")
             }
