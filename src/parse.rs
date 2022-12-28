@@ -8,10 +8,13 @@
 //!            | "signed" | "unsigned"
 //!            | struct_declare | union_declare | typedef_name
 //!            | enum_specifier)+
+//!            | "const" | "volatile" | "auto" | "register" | "restrict"
+//!            | "__restrict" | "__restrict__" | "_Noreturn")+
 //! enum_specifier = ident? "{" enum_list? "}"
 //!                 | ident ("{" enum_list? "}")?
 //! enum_list = ident ("=" const_expr)? ("," ident ("=" const_expr)?)* ","?
-//! declarator = "*"* ("(" ident ")" | "(" declarator ")" | ident) type_suffix
+//! declarator = pointers ("(" ident ")" | "(" declarator ")" | ident) type_suffix
+//! pointers = ("*" ("const" | "volatile" | "restrict")*)*
 //! type_suffix = "(" funcParams | "[" array_dimensions | ε
 //! array_dimensions = const_expr? "]" typeSuffix
 //! func_params = ("void" | param ("," param)* ("," "...")?)? ")"
@@ -78,16 +81,17 @@
 //!         | str
 //!         | num
 //! typename = declspec abstract_declarator
-//! abstract_declarator = "*"* ("(" abstract_declarator ")")? type_suffix
+//! abstract_declarator = pointers ("(" abstract_declarator ")")? type_suffix
 //! func_call = ident "(" (assign ("," assign)*)? ")"
 
 use crate::ctype::{add_type, Type, TypeKind, TypeLink};
 use crate::initializer::{create_lvar_init, write_gvar_data, InitDesig, Initializer, Relocation};
 use crate::keywords::{
-    KW_ALIGNAS, KW_ALIGNOF, KW_BOOL, KW_BREAK, KW_CASE, KW_CHAR, KW_CONTINUE, KW_DEFAULT, KW_DO,
-    KW_ELSE, KW_ENUM, KW_EXTERN, KW_FOR, KW_GOTO, KW_IF, KW_INT, KW_LONG, KW_RETURN, KW_SHORT,
-    KW_SIGNED, KW_SIZEOF, KW_STATIC, KW_STRUCT, KW_SWITCH, KW_TYPEDEF, KW_UNION, KW_UNSIGNED,
-    KW_VOID, KW_WHILE,
+    KW_ALIGNAS, KW_ALIGNOF, KW_AUTO, KW_BOOL, KW_BREAK, KW_CASE, KW_CHAR, KW_CONST, KW_CONTINUE,
+    KW_DEFAULT, KW_DO, KW_ELSE, KW_ENUM, KW_EXTERN, KW_FOR, KW_GOTO, KW_IF, KW_INT, KW_LONG,
+    KW_NORETURN, KW_REGISTER, KW_RESTRICT, KW_RETURN, KW_SHORT, KW_SIGNED, KW_SIZEOF, KW_STATIC,
+    KW_STRUCT, KW_SWITCH, KW_TYPEDEF, KW_UNION, KW_UNSIGNED, KW_VOID, KW_VOLATILE, KW_WHILE,
+    KW___RESTRICT, KW___RESTRICT__,
 };
 use crate::node::{add_with_type, eval, sub_with_type, LabelInfo, Node, NodeKind, NodeLink};
 use crate::obj::{Member, Obj, ObjLink, Scope, VarAttr, VarScope};
@@ -369,6 +373,8 @@ impl<'a> Parser<'a> {
     ///            | "signed" | "unsigned"
     ///            | struct_declare | union_declare | typedef_name
     ///            | enum_specifier)+
+    ///            | "const" | "volatile" | "auto" | "register" | "restrict"
+    ///            | "__restrict" | "__restrict__" | "_Noreturn")+
     /// declarator specifier
     fn declspec(&mut self, attr: &mut Option<VarAttr>) -> TypeLink {
         // 类型的组合，被表示为例如：LONG+LONG=1<<9
@@ -416,7 +422,21 @@ impl<'a> Parser<'a> {
                 continue;
             }
 
+            // 识别这些关键字并忽略
+            if self.consume(KW_CONST)
+                || self.consume(KW_VOLATILE)
+                || self.consume(KW_AUTO)
+                || self.consume(KW_REGISTER)
+                || self.consume(KW_RESTRICT)
+                || self.consume(KW___RESTRICT)
+                || self.consume(KW___RESTRICT__)
+                || self.consume(KW_NORETURN)
+            {
+                continue;
+            }
+
             // "_Alignas" ("(" typename | const_expr ")")
+            let (_, token) = self.current();
             if token.equal(KW_ALIGNAS) {
                 if attr.is_none() {
                     error_token!(token, "_Alignas is not allowed in this context")
@@ -542,13 +562,35 @@ impl<'a> Parser<'a> {
         return typ;
     }
 
-    /// declarator = "*"* ("(" ident ")" | "(" declarator ")" | ident) type_suffix
-    fn declarator(&mut self, mut typ: TypeLink) -> TypeLink {
+    /// pointers = ("*" ("const" | "volatile" | "restrict")*)*
+    fn pointers(&mut self, mut typ: TypeLink) -> TypeLink {
         // "*"*
         // 构建所有的（多重）指针
         while self.consume("*") {
             typ = Type::pointer_to(typ);
+
+            // 识别这些关键字并忽略
+            loop {
+                let (_, token) = self.current();
+                if token.equal(KW_CONST)
+                    || token.equal(KW_VOLATILE)
+                    || token.equal(KW_RESTRICT)
+                    || token.equal(KW___RESTRICT)
+                    || token.equal(KW___RESTRICT__)
+                {
+                    self.next();
+                } else {
+                    break;
+                }
+            }
         }
+        return typ;
+    }
+
+    /// declarator = pointers ("(" ident ")" | "(" declarator ")" | ident) type_suffix
+    fn declarator(&mut self, mut typ: TypeLink) -> TypeLink {
+        // pointers
+        typ = self.pointers(typ);
 
         let (start_pos, token) = self.current();
         // "(" declarator ")"
@@ -2447,17 +2489,10 @@ impl<'a> Parser<'a> {
         return self.abstract_declarator(typ);
     }
 
-    /// abstract_declarator = "*"* ("(" abstract_declarator ")")? type_suffix
+    /// abstract_declarator = pointers ("(" abstract_declarator ")")? type_suffix
     fn abstract_declarator(&mut self, mut base_type: TypeLink) -> TypeLink {
-        // "*"*
-        loop {
-            let (_, token) = self.current();
-            if !token.equal("*") {
-                break;
-            }
-            base_type = Type::pointer_to(base_type);
-            self.next();
-        }
+        // pointers
+        base_type = self.pointers(base_type);
 
         // ("(" abstract_declarator ")")?
         let (start_pos, token) = self.current();

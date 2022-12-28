@@ -31,10 +31,18 @@ pub const KEYWORDS: [&str; KW_COUNT] = [
     KW_DO,
     KW_SIGNED,
     KW_UNSIGNED,
+    KW_CONST,
+    KW_VOLATILE,
+    KW_AUTO,
+    KW_REGISTER,
+    KW_RESTRICT,
+    KW___RESTRICT,
+    KW___RESTRICT__,
+    KW_NORETURN,
 ];
 
 /// 关键字数量
-const KW_COUNT: usize = 29;
+const KW_COUNT: usize = 37;
 
 /// 类型名称列表
 pub const KW_TYPENAME: [&str; KW_TYPENAME_COUNT] = [
@@ -53,10 +61,18 @@ pub const KW_TYPENAME: [&str; KW_TYPENAME_COUNT] = [
     KW_ALIGNAS,
     KW_SIGNED,
     KW_UNSIGNED,
+    KW_CONST,
+    KW_VOLATILE,
+    KW_AUTO,
+    KW_REGISTER,
+    KW_RESTRICT,
+    KW___RESTRICT,
+    KW___RESTRICT__,
+    KW_NORETURN,
 ];
 
 /// 类型名称数量
-const KW_TYPENAME_COUNT: usize = 15;
+const KW_TYPENAME_COUNT: usize = 23;
 
 /// 关键字: 返回
 pub const KW_RETURN: &str = "return";
@@ -116,3 +132,19 @@ pub const KW_DO: &str = "do";
 pub const KW_SIGNED: &str = "signed";
 /// 关键字: unsigned
 pub const KW_UNSIGNED: &str = "unsigned";
+/// 关键字: const
+pub const KW_CONST: &str = "const";
+/// 关键字: volatile
+pub const KW_VOLATILE: &str = "volatile";
+/// 关键字: auto
+pub const KW_AUTO: &str = "auto";
+/// 关键字: register
+pub const KW_REGISTER: &str = "register";
+/// 关键字: restrict
+pub const KW_RESTRICT: &str = "restrict";
+/// 关键字: __restrict
+pub const KW___RESTRICT: &str = "__restrict";
+/// 关键字: __restrict__
+pub const KW___RESTRICT__: &str = "__restrict__";
+/// 关键字: _Noreturn
+pub const KW_NORETURN: &str = "_Noreturn";
