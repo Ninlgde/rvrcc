@@ -8,7 +8,7 @@ use std::fmt;
 use std::io::Write;
 
 /// 形参name
-const ARG_NAMES: [&str; 6] = ["a0", "a1", "a2", "a3", "a4", "a5"];
+const ARG_NAMES: [&str; 8] = ["a0", "a1", "a2", "a3", "a4", "a5", "a6", "a7"];
 
 /// 输出文件
 static mut OUTPUT: Option<Box<dyn Write>> = None;
@@ -187,6 +187,7 @@ impl<'a> Generator<'a> {
                     stack_size,
                     is_definition,
                     is_static,
+                    va_area,
                     ..
                 } => {
                     if !is_definition {
@@ -235,11 +236,29 @@ impl<'a> Generator<'a> {
                     writeln!("  addi sp, sp, -{}", stack_size);
 
                     let mut i = 0;
+                    // 正常传递的形参
                     for p in params.iter().rev() {
                         let p = p.borrow();
                         let size = p.get_type().borrow().size;
                         self.store_general(i, p.get_offset(), size);
                         i += 1;
+                    }
+
+                    // 可变参数
+                    if va_area.is_some() {
+                        // 可变参数存入__va_area__，注意最多为7个
+                        let va_area = va_area.as_ref().unwrap().borrow();
+                        let mut offset = va_area.get_offset();
+                        while i < 8 {
+                            writeln!(
+                                "  # 可变参数，相对{}的偏移量为{}",
+                                va_area.get_name(),
+                                offset - va_area.get_offset()
+                            );
+                            self.store_general(i, offset, 8);
+                            i += 1;
+                            offset += 8;
+                        }
                     }
 
                     writeln!("# ====={}段主体===============", name);

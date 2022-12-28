@@ -45,6 +45,8 @@ pub enum Obj {
         body: Option<NodeLink>,
         /// 本地变量
         locals: Vec<ObjLink>,
+        /// 可变参数区域
+        va_area: Option<ObjLink>,
         /// 栈大小
         stack_size: isize,
         /// 是否为函数定义
@@ -232,6 +234,7 @@ impl Obj {
     pub fn set_function(
         &mut self,
         params_: Vec<ObjLink>,
+        va_area_: Option<ObjLink>,
         locals_: Vec<ObjLink>,
         body_: Option<NodeLink>,
         definition: bool,
@@ -244,6 +247,7 @@ impl Obj {
                 body,
                 is_definition,
                 is_static,
+                va_area,
                 ..
             } => {
                 *params = params_;
@@ -251,6 +255,7 @@ impl Obj {
                 *body = body_;
                 *is_definition = definition;
                 *is_static = is_static_;
+                *va_area = va_area_
             }
             _ => panic!("error object!"),
         }
@@ -267,6 +272,7 @@ impl Obj {
             stack_size: 0,
             is_definition: false,
             is_static: false,
+            va_area: None,
         }
     }
 }

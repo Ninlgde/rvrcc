@@ -233,6 +233,7 @@ impl<'a> Parser<'a> {
         let mut params = vec![];
         let mut locals = vec![];
         let mut body = None;
+        let mut va_area = None;
 
         if !self.consume(";") {
             self.cur_func = gvar.clone(); // 指向当前正值解析的方法
@@ -243,6 +244,13 @@ impl<'a> Parser<'a> {
             self.enter_scope();
             self.create_param_lvars(type_.borrow().get_params());
             params = self.locals.to_vec();
+
+            if type_.borrow().is_variadic {
+                va_area = self.new_lvar(
+                    "__va_area__".to_string(),
+                    Type::array_of(Type::new_char(), 64),
+                );
+            }
 
             self.skip("{");
 
@@ -258,7 +266,14 @@ impl<'a> Parser<'a> {
 
         // 把初始化移到这个地方,因为在构建方法的时候里面需要borrow_mut这个obj,如果放前面,会导致rust的RefCell报already mutably borrowed
         let mut function = gvar.as_ref().unwrap().borrow_mut();
-        function.set_function(params, locals, body, definition, var_attr.is_static);
+        function.set_function(
+            params,
+            va_area,
+            locals,
+            body,
+            definition,
+            var_attr.is_static,
+        );
     }
 
     /// 处理goto和标签
@@ -296,7 +311,8 @@ impl<'a> Parser<'a> {
     /// 将形参添加到locals
     fn create_param_lvars(&mut self, params: &Vec<TypeLink>) {
         for param in params.iter() {
-            self.new_lvar(param.clone());
+            let name = param.borrow().get_name().to_string();
+            self.new_lvar(name, param.clone());
         }
     }
 
@@ -319,8 +335,7 @@ impl<'a> Parser<'a> {
     }
 
     /// 创建新的左值
-    fn new_lvar(&mut self, base_type: TypeLink) -> Option<ObjLink> {
-        let name = base_type.borrow().get_name().to_string();
+    fn new_lvar(&mut self, name: String, base_type: TypeLink) -> Option<ObjLink> {
         let nvar = Rc::new(RefCell::new(Obj::new_lvar(name.to_string(), base_type)));
         self.locals.push(nvar.clone());
         let vs = self.push_scope(name.to_string());
@@ -696,7 +711,8 @@ impl<'a> Parser<'a> {
                 continue;
             }
 
-            let nvar = self.new_lvar(type_).unwrap();
+            let name = type_.borrow().get_name().to_string();
+            let nvar = self.new_lvar(name, type_).unwrap();
             // 读取是否存在变量的对齐值
             if attr.is_some() && attr.as_ref().unwrap().align != 0 {
                 nvar.borrow_mut().set_align(attr.as_ref().unwrap().align);
@@ -1418,9 +1434,10 @@ impl<'a> Parser<'a> {
 
         // TMP
         let var = self
-            .new_lvar(Type::pointer_to(
-                binary.lhs.as_ref().unwrap().type_.as_ref().unwrap().clone(),
-            ))
+            .new_lvar(
+                "".to_string(),
+                Type::pointer_to(binary.lhs.as_ref().unwrap().type_.as_ref().unwrap().clone()),
+            )
             .unwrap();
         // TMP = &A
         let lhs = Node::new_var(var.clone(), token.clone());
@@ -2172,7 +2189,7 @@ impl<'a> Parser<'a> {
                 return node;
             }
 
-            let nvar = self.new_lvar(typ).unwrap();
+            let nvar = self.new_lvar("".to_string(), typ).unwrap();
             let lhs = self.lvar_initializer(nvar.clone()).unwrap();
             let (_, token2) = self.current();
             let rhs = Node::new_var(nvar, token2.clone());
