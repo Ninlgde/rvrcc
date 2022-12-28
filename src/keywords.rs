@@ -29,19 +29,20 @@ pub const KEYWORDS: [&str; KW_COUNT] = [
     KW_ALIGNOF,
     KW_ALIGNAS,
     KW_DO,
+    KW_SIGNED,
 ];
 
 /// 关键字数量
-const KW_COUNT: usize = 27;
+const KW_COUNT: usize = 28;
 
 /// 类型名称列表
 pub const KW_TYPENAME: [&str; KW_TYPENAME_COUNT] = [
     KW_CHAR, KW_SHORT, KW_INT, KW_LONG, KW_STRUCT, KW_UNION, KW_VOID, KW_TYPEDEF, KW_BOOL, KW_ENUM,
-    KW_STATIC, KW_EXTERN, KW_ALIGNAS,
+    KW_STATIC, KW_EXTERN, KW_ALIGNAS, KW_SIGNED,
 ];
 
 /// 类型名称数量
-const KW_TYPENAME_COUNT: usize = 13;
+const KW_TYPENAME_COUNT: usize = 14;
 
 /// 关键字: 返回
 pub const KW_RETURN: &str = "return";
@@ -97,3 +98,5 @@ pub const KW_ALIGNOF: &str = "_Alignof";
 pub const KW_ALIGNAS: &str = "_Alignas";
 /// 关键字: do while
 pub const KW_DO: &str = "do";
+/// 关键字: signed
+pub const KW_SIGNED: &str = "signed";

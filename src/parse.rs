@@ -5,6 +5,7 @@
 //! declspec = ("void" | "_Bool" | "char" | "short" | "int" | "long"
 //!            | "typedef" | "static" | "extern"
 //!            | "_Alignas" ("(" typename | const_expr ")")
+//!            | "signed"
 //!            | struct_declare | union_declare | typedef_name
 //!            | enum_specifier)+
 //! enum_specifier = ident? "{" enum_list? "}"
@@ -85,7 +86,7 @@ use crate::initializer::{create_lvar_init, write_gvar_data, InitDesig, Initializ
 use crate::keywords::{
     KW_ALIGNAS, KW_ALIGNOF, KW_BOOL, KW_BREAK, KW_CASE, KW_CHAR, KW_CONTINUE, KW_DEFAULT, KW_DO,
     KW_ELSE, KW_ENUM, KW_EXTERN, KW_FOR, KW_GOTO, KW_IF, KW_INT, KW_LONG, KW_RETURN, KW_SHORT,
-    KW_SIZEOF, KW_STATIC, KW_STRUCT, KW_SWITCH, KW_TYPEDEF, KW_UNION, KW_VOID, KW_WHILE,
+    KW_SIGNED, KW_SIZEOF, KW_STATIC, KW_STRUCT, KW_SWITCH, KW_TYPEDEF, KW_UNION, KW_VOID, KW_WHILE,
 };
 use crate::node::{add_with_type, eval, sub_with_type, LabelInfo, Node, NodeKind, NodeLink};
 use crate::obj::{Member, Obj, ObjLink, Scope, VarAttr, VarScope};
@@ -364,6 +365,7 @@ impl<'a> Parser<'a> {
     /// declspec = ("void" | "_Bool" | "char" | "short" | "int" | "long"
     ///            | "typedef" | "static" | "extern"
     ///            | "_Alignas" ("(" typename | const_expr ")")
+    ///            | "signed"
     ///            | struct_declare | union_declare | typedef_name
     ///            | enum_specifier)+
     /// declarator specifier
@@ -377,10 +379,7 @@ impl<'a> Parser<'a> {
         const INT: i32 = 1 << 8;
         const LONG: i32 = 1 << 10;
         const OTHER: i32 = 1 << 12;
-        const SHORT_INT: i32 = SHORT + INT;
-        const LONG_INT: i32 = LONG + INT;
-        const LONG_LONG: i32 = LONG + LONG;
-        const LONG_LONG_INT: i32 = LONG + LONG + INT;
+        const SIGNED: i32 = 1 << 13;
 
         let mut type_ = Type::new_int();
         let mut counter = 0; // 记录类型相加的数值
@@ -470,18 +469,51 @@ impl<'a> Parser<'a> {
                 counter += INT;
             } else if token.equal(KW_LONG) {
                 counter += LONG;
+            } else if token.equal(KW_SIGNED) {
+                counter |= SIGNED;
             } else {
                 unreachable!()
             }
 
-            match counter {
-                VOID => type_ = Type::new_void(),
-                BOOL => type_ = Type::new_bool(),
-                CHAR => type_ = Type::new_char(),
-                SHORT | SHORT_INT => type_ = Type::new_short(),
-                INT => type_ = Type::new_int(),
-                LONG | LONG_INT | LONG_LONG | LONG_LONG_INT => type_ = Type::new_long(),
-                _ => error_token!(token, "invalid type"),
+            // 判断是否相等
+            let eq = |c: i32, vals: Vec<i32>| -> bool {
+                for v in vals {
+                    if c == v {
+                        return true;
+                    }
+                }
+                return false;
+            };
+
+            if eq(counter, vec![VOID]) {
+                type_ = Type::new_void()
+            } else if eq(counter, vec![BOOL]) {
+                type_ = Type::new_bool()
+            } else if eq(counter, vec![CHAR, SIGNED + CHAR]) {
+                type_ = Type::new_char()
+            } else if eq(
+                counter,
+                vec![SHORT, SHORT + INT, SIGNED + SHORT, SIGNED + SHORT + INT],
+            ) {
+                type_ = Type::new_short()
+            } else if eq(counter, vec![INT, SIGNED, SIGNED + INT]) {
+                type_ = Type::new_int()
+            } else if eq(
+                counter,
+                vec![
+                    LONG,
+                    LONG + INT,
+                    LONG + LONG,
+                    LONG + LONG + INT,
+                    SIGNED + LONG,
+                    SIGNED + LONG + INT,
+                    SIGNED + LONG + LONG,
+                    SIGNED + LONG + LONG + INT,
+                ],
+            ) {
+                type_ = Type::new_long()
+            } else {
+                error_token!(token, "invalid type")
             }
 
             self.next();
