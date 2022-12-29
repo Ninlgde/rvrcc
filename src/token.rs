@@ -37,6 +37,8 @@ pub enum Token {
     Num {
         /// 值
         val: i64,
+        /// TK_NUM浮点值
+        fval: f64,
         /// 类型
         typ: TypeLink,
         /// token 名

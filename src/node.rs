@@ -139,6 +139,8 @@ pub struct Node {
     pub(crate) var: Option<ObjLink>,
     /// 存储ND_NUM种类的值
     pub(crate) val: i64,
+    /// 存储ND_NUM种类的浮点值
+    pub(crate) fval: f64,
     /// 结构体成员访问
     pub(crate) member: Option<Box<Member>>,
     /// goto和标签语句
@@ -172,6 +174,7 @@ impl Node {
             args: Vec::new(),
             var: None,
             val: 0,
+            fval: 0.0,
             member: None,
             label_info: None,
             break_label: None,

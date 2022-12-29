@@ -22,6 +22,10 @@ pub enum TypeKind {
     Int,
     /// long长整型
     Long,
+    /// float类型
+    Float,
+    /// double类型
+    Double,
     /// enum枚举类型
     Enum,
     /// 指针
@@ -134,27 +138,39 @@ impl Type {
         Rc::new(RefCell::new(typ))
     }
 
-    /// 创建一个char类型
+    /// 创建一个unsigned char类型
     pub fn new_unsigned_char() -> TypeLink {
         let typ = Self::new_unsigned(TypeKind::Char, 1, 1);
         Rc::new(RefCell::new(typ))
     }
 
-    /// 创建一个short类型
+    /// 创建一个unsigned short类型
     pub fn new_unsigned_short() -> TypeLink {
         let typ = Self::new_unsigned(TypeKind::Short, 2, 2);
         Rc::new(RefCell::new(typ))
     }
 
-    /// 创建一个int类型
+    /// 创建一个unsigned int类型
     pub fn new_unsigned_int() -> TypeLink {
         let typ = Self::new_unsigned(TypeKind::Int, 4, 4);
         Rc::new(RefCell::new(typ))
     }
 
-    /// 创建一个long类型
+    /// 创建一个unsigned long类型
     pub fn new_unsigned_long() -> TypeLink {
         let typ = Self::new_unsigned(TypeKind::Long, 8, 8);
+        Rc::new(RefCell::new(typ))
+    }
+
+    /// 创建一个float类型
+    pub fn new_float() -> TypeLink {
+        let typ = Self::new(TypeKind::Float, 4, 4);
+        Rc::new(RefCell::new(typ))
+    }
+
+    /// 创建一个double类型
+    pub fn new_double() -> TypeLink {
+        let typ = Self::new(TypeKind::Double, 8, 8);
         Rc::new(RefCell::new(typ))
     }
 
@@ -211,6 +227,11 @@ impl Type {
             || self.kind == TypeKind::Long
             || self.kind == TypeKind::Bool
             || self.kind == TypeKind::Enum
+    }
+
+    /// 是否是浮点数类型
+    pub fn is_float(&self) -> bool {
+        self.kind == TypeKind::Float || self.kind == TypeKind::Double
     }
 
     /// 是否含有基础类型

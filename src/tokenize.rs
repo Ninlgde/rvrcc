@@ -75,11 +75,12 @@ pub fn tokenize(path: String, input: String) -> Vec<Token> {
         }
 
         // 解析数值
-        if c.is_digit(10) {
+        let cn = chars[pos + 1] as char;
+        if c.is_digit(10) || (c == '.' && cn.is_digit(10)) {
             // 初始化，类似于C++的构造函数
             // 我们不使用Head来存储信息，仅用来表示链表入口，这样每次都是存储在Cur->Next
             // 否则下述操作将使第一个Token的地址不在Head中。
-            let (val, typ) = read_int_literal(&chars, &mut pos);
+            let (val, fval, typ) = read_number(&chars, &mut pos);
             let t_str = slice_to_string(&chars, old_pos, pos);
             let t = Token::Num {
                 val,
@@ -87,6 +88,7 @@ pub fn tokenize(path: String, input: String) -> Vec<Token> {
                 offset: old_pos,
                 line_no,
                 typ,
+                fval,
             };
             tokens.push(t);
             continue;
@@ -118,6 +120,7 @@ pub fn tokenize(path: String, input: String) -> Vec<Token> {
                 offset: old_pos,
                 line_no,
                 typ: Type::new_int(),
+                fval: 0.0,
             });
             continue;
         }
@@ -165,23 +168,6 @@ pub fn tokenize(path: String, input: String) -> Vec<Token> {
 
     // Head无内容，所以直接返回Next
     tokens
-}
-
-/// 传入程序的参数为str类型，因为需要转换为需要long类型
-/// strtol为“string to long”，
-/// 参数为：被转换的str，str除去数字后的剩余部分，进制
-/// 传入&p，即char**, 是为了修改P的值
-fn strtol(chars: &Vec<u8>, pos: &mut usize, base: u32) -> u64 {
-    let mut result: u64 = 0;
-    while *pos < chars.len() {
-        if let Some(i) = (chars[*pos] as char).to_digit(base) {
-            result = result * base as u64 + i as u64;
-            *pos += 1;
-        } else {
-            break;
-        }
-    }
-    result
 }
 
 /// 判断chars中pos开头的字符是否与sub字符串匹配
@@ -383,7 +369,7 @@ fn read_char_literal(chars: &Vec<u8>, pos: &mut usize) -> char {
 }
 
 /// 读取数字的字面量
-fn read_int_literal(chars: &Vec<u8>, pos: &mut usize) -> (i64, TypeLink) {
+fn read_int_literal(chars: &Vec<u8>, pos: &mut usize) -> (i64, TypeLink, u32) {
     let c = chars[*pos] as char;
     let cnn = chars[*pos + 2] as char; //0x() or 0b()
 
@@ -404,6 +390,11 @@ fn read_int_literal(chars: &Vec<u8>, pos: &mut usize) -> (i64, TypeLink) {
         radix = 8;
     }
 
+    let c = chars[*pos] as char;
+    if c == '.' {
+        // 可能是0x.111
+        return (0, Type::new_float(), radix);
+    }
     // 将字符串转换为Base进制的数字
     let result = strtol(chars, pos, radix);
 
@@ -435,12 +426,6 @@ fn read_int_literal(chars: &Vec<u8>, pos: &mut usize) -> (i64, TypeLink) {
         // U
         *pos += 1;
         u = true;
-    }
-
-    // 匹配完成后不应该还有数字
-    let c = chars[*pos] as char;
-    if c.is_alphabetic() {
-        error_at!(0, *pos, "invalid digit");
     }
 
     // 推断出类型，采用能存下当前数值的类型
@@ -489,5 +474,184 @@ fn read_int_literal(chars: &Vec<u8>, pos: &mut usize) -> (i64, TypeLink) {
         }
     }
 
-    (result as i64, typ)
+    (result as i64, typ, radix)
+}
+
+fn read_number(chars: &Vec<u8>, pos: &mut usize) -> (i64, f64, TypeLink) {
+    let start_pos = *pos;
+    // 尝试解析整型常量
+    let (val, typ, raidx) = read_int_literal(chars, pos);
+    let c = chars[*pos] as char;
+    // 2进制 | 非16进制 不带.或者e或者f后缀 | 16进制 不带.或者p后缀, 则为整型
+    if raidx == 2 || (raidx != 16 && !".eEfF".contains(c)) || (raidx == 16 && !".pP".contains(c)) {
+        return (val, 0.0, typ);
+    }
+
+    let mut result: f64 = 0.0;
+    let mut check_suffix = false;
+    if raidx == 16 && c == '.' {
+        // 解析16进制+小数+pow x的形式
+        let mut fval = read_hex_fraction(chars, pos);
+        let pow_x = read_hex_exponent(chars, pos);
+        fval += val as f64;
+        result = fval * f64::powi(2.0, pow_x); // may be overflow
+    } else if raidx == 16 && (c == 'p' || c == 'P') {
+        // 解析16进制 pow x的形式
+        let pow_x = read_hex_exponent(chars, pos);
+        let fval = val as f64;
+        result = f64::powi(fval, pow_x); // may be overflow
+    } else if raidx == 10 && ".eEfF".contains(c) {
+        // 解析10进制 + 小数 (e x) (f) 的形式
+        let mut fval = read_fraction(chars, pos);
+        let exp = read_exponent(chars, pos);
+        fval += val as f64;
+        result = fval * f64::powi(10.0, exp); // may be overflow
+        check_suffix = true;
+    } else if raidx == 8 && ".eEfF".contains(c) {
+        // 从头按十进制解析整数部分 + 小数 (e x) (f) 的形式
+        *pos = start_pos + 1; // 恢复到开头并跳过0
+        let val = strtol(chars, pos, 10); // 把8进制按10进制读
+        let mut fval = read_fraction(chars, pos);
+        let exp = read_exponent(chars, pos);
+        fval += val as f64;
+        result = fval * f64::powi(10.0, exp); // may be overflow
+        check_suffix = true;
+    }
+
+    let mut typ = Type::new_double();
+    if check_suffix {
+        let c = chars[*pos] as char;
+        if c == 'f' || c == 'F' {
+            typ = Type::new_float();
+            *pos += 1;
+        } else if c == 'l' || c == 'L' {
+            *pos += 1;
+        }
+    }
+
+    (0, result, typ)
+}
+
+/// 读取十进制小数部分
+fn read_fraction(chars: &Vec<u8>, pos: &mut usize) -> f64 {
+    if chars[*pos] as char != '.' {
+        // 没有小数部分,直接返回0
+        return 0.0;
+    }
+    *pos += 1; // 跳过点
+
+    let mut result = 0.0;
+    let mut base = 10.0;
+    while *pos < chars.len() {
+        if let Some(i) = (chars[*pos] as char).to_digit(10) {
+            result += i as f64 / base;
+            *pos += 1;
+            base *= 10.0;
+        } else {
+            break;
+        }
+    }
+
+    result
+}
+
+fn read_exponent(chars: &Vec<u8>, pos: &mut usize) -> i32 {
+    let c = chars[*pos] as char;
+    if c != 'e' && c != 'E' {
+        return 0;
+    }
+    *pos += 1;
+
+    let mut neg = false;
+    let c = chars[*pos] as char;
+    if c == '-' || c == '+' {
+        neg = c == '-';
+        *pos += 1;
+    }
+
+    if !(chars[*pos] as char).is_digit(10) {
+        error_at!(0, *pos, "malformed floating-point literal");
+    }
+
+    let mut val = strtol(chars, pos, 10) as i32;
+
+    if neg {
+        val *= -1; // 负号
+    }
+    val
+}
+
+/// 读取十六进制小数部分
+fn read_hex_fraction(chars: &Vec<u8>, pos: &mut usize) -> f64 {
+    *pos += 1; // 跳过点
+
+    let mut result = 0.0;
+    let mut base = 0;
+    while *pos < chars.len() {
+        if let Some(i) = (chars[*pos] as char).to_digit(16) {
+            if i & 0x8 != 0 {
+                result += f64::powi(2.0, base - 1);
+            }
+            if i & 0x4 != 0 {
+                result += f64::powi(2.0, base - 2);
+            }
+            if i & 0x2 != 0 {
+                result += f64::powi(2.0, base - 3);
+            }
+            if i & 0x1 != 0 {
+                let a = f64::powi(2.0, base - 4);
+                result += a;
+            }
+            *pos += 1;
+            base -= 4;
+        } else {
+            break;
+        }
+    }
+
+    result
+}
+
+/// 读取十六进制pow x
+fn read_hex_exponent(chars: &Vec<u8>, pos: &mut usize) -> i32 {
+    let c = chars[*pos] as char;
+    if c != 'p' && c != 'P' {
+        error_at!(0, *pos, "malformed floating-point literal");
+    }
+    *pos += 1;
+
+    let mut neg = false;
+    let c = chars[*pos] as char;
+    if c == '-' || c == '+' {
+        neg = c == '-';
+        *pos += 1;
+    }
+
+    if !(chars[*pos] as char).is_digit(10) {
+        error_at!(0, *pos, "malformed floating-point literal");
+    }
+
+    let mut val = strtol(chars, pos, 10) as i32;
+
+    if neg {
+        val *= -1; // 负号
+    }
+    val
+}
+
+/// 传入程序的参数为str类型，因为需要转换为需要long类型
+/// strtol为“string to long”，
+/// 参数为：被转换的str，str除去数字后的剩余部分，进制
+/// 传入&p，即char**, 是为了修改P的值
+fn strtol(chars: &Vec<u8>, pos: &mut usize, base: u32) -> u64 {
+    let mut result: u64 = 0;
+    while *pos < chars.len() {
+        if let Some(i) = (chars[*pos] as char).to_digit(base) {
+            result = result * base as u64 + i as u64;
+            *pos += 1;
+        } else {
+            break;
+        }
+    }
+    result
 }

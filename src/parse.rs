@@ -2491,12 +2491,21 @@ impl<'a> Parser<'a> {
             }
             Token::Num {
                 val,
+                fval,
                 typ,
                 t_str: _t_str,
                 offset: _offset,
                 ..
             } => {
-                let mut node = Node::new_num(*val, nt);
+                let mut node;
+                if typ.borrow().is_float() {
+                    // 浮点数节点
+                    node = Node::new(NodeKind::Num, nt);
+                    node.fval = *fval;
+                } else {
+                    // 整型节点
+                    node = Node::new_num(*val, nt);
+                }
                 // 设置类型为终结符的类型
                 node.typ = Some(typ.clone());
                 self.next();

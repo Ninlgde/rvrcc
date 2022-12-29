@@ -1,5 +1,5 @@
 
 int main() {
-    int a = sizeof(0xffffffffffffffff);
+    double a = .1E4f;
     a;
 }

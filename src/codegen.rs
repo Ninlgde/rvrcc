@@ -468,8 +468,19 @@ impl<'a> Generator<'a> {
             }
             // 加载数字到a0
             NodeKind::Num => {
-                writeln!("  # 将{}加载到a0中", node.val);
-                writeln!("  li a0, {}", node.val);
+                let typ = node.typ.as_ref().unwrap().borrow();
+                if typ.kind == TypeKind::Float {
+                    writeln!("  # 将a0转换到float类型值为{}的fa0中", node.fval);
+                    writeln!("  li a0, {}  # float {}", node.fval as u32, node.fval);
+                    writeln!("  fmv.w.x fa0, a0");
+                } else if typ.kind == TypeKind::Double {
+                    writeln!("  # 将a0转换到double类型值为{}的fa0中", node.fval);
+                    writeln!("  li a0, {}  # double {}", node.fval as u64, node.fval);
+                    writeln!("  fmv.d.x fa0, a0");
+                } else {
+                    writeln!("  # 将{}加载到a0中", node.val);
+                    writeln!("  li a0, {}", node.val);
+                }
                 return;
             }
             // 对寄存器取反
