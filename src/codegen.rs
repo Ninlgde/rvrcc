@@ -471,11 +471,18 @@ impl<'a> Generator<'a> {
                 let typ = node.typ.as_ref().unwrap().borrow();
                 if typ.kind == TypeKind::Float {
                     writeln!("  # 将a0转换到float类型值为{}的fa0中", node.fval);
-                    writeln!("  li a0, {}  # float {}", node.fval as u32, node.fval);
+
+                    let b = node.fval.to_be_bytes();
+                    let a = u32::from_be_bytes([b[0], b[1], b[2], b[3]]);
+                    writeln!("  li a0, {}  # float {}", a, node.fval);
                     writeln!("  fmv.w.x fa0, a0");
                 } else if typ.kind == TypeKind::Double {
                     writeln!("  # 将a0转换到double类型值为{}的fa0中", node.fval);
-                    writeln!("  li a0, {}  # double {}", node.fval as u64, node.fval);
+                    writeln!(
+                        "  li a0, {}  # double {}",
+                        u64::from_be_bytes(node.fval.to_be_bytes()),
+                        node.fval
+                    );
                     writeln!("  fmv.d.x fa0, a0");
                 } else {
                     writeln!("  # 将{}加载到a0中", node.val);
@@ -880,6 +887,14 @@ impl<'a> Generator<'a> {
             || typ.borrow().kind == TypeKind::Union
         {
             return;
+        } else if typ.borrow().kind == TypeKind::Float {
+            writeln!("  # 访问a0中存放的地址，取得的值存入fa0");
+            writeln!("  flw fa0, 0(a0)");
+            return;
+        } else if typ.borrow().kind == TypeKind::Double {
+            writeln!("  # 访问a0中存放的地址，取得的值存入fa0");
+            writeln!("  fld fa0, 0(a0)");
+            return;
         }
 
         writeln!("  # 读取a0中存放的地址，得到的值存入a0");
@@ -914,6 +929,14 @@ impl<'a> Generator<'a> {
                 writeln!("  add t0, a1, t0");
                 writeln!("  sb t1, 0(t0)");
             }
+            return;
+        } else if *kind == TypeKind::Float {
+            writeln!("  # 将fa0的值，写入到a1中存放的地址");
+            writeln!("  fsw fa0, 0(a1)");
+            return;
+        } else if *kind == TypeKind::Double {
+            writeln!("  # 将fa0的值，写入到a1中存放的地址");
+            writeln!("  fsd fa0, 0(a1)");
             return;
         }
 
@@ -979,19 +1002,79 @@ impl<'a> Generator<'a> {
 
 // 类型映射表
 // 先逻辑左移N位，再算术右移N位，就实现了将64位有符号数转换为64-N位的有符号数
-/// long 64 -> i8
-const L8I1: Option<&str> = Some("  # 转换为i8类型\n  slli a0, a0, 56\n  srai a0, a0, 56");
-/// long 64 -> i16
-const L8I2: Option<&str> = Some("  # 转换为i16类型\n  slli a0, a0, 48\n  srai a0, a0, 48");
-/// long 64 -> i32
-const L8I4: Option<&str> = Some("  # 转换为i32类型\n  slli a0, a0, 32\n  srai a0, a0, 32");
+/// i64 -> i8
+const I8I1: Option<&str> = Some("  # 转换为i8类型\n  slli a0, a0, 56\n  srai a0, a0, 56");
+/// i64 -> i16
+const I8I2: Option<&str> = Some("  # 转换为i16类型\n  slli a0, a0, 48\n  srai a0, a0, 48");
+/// i64 -> i32
+const I8I4: Option<&str> = Some("  # 转换为i32类型\n  slli a0, a0, 32\n  srai a0, a0, 32");
 // 先逻辑左移N位，再逻辑右移N位，就实现了将64位无符号数转换为64-N位的无符号数
-/// long 64 -> u8
-const L8U1: Option<&str> = Some("  # 转换为u8类型\n  slli a0, a0, 56\n  srli a0, a0, 56");
-/// long 64 -> u16
-const L8U2: Option<&str> = Some("  # 转换为u16类型\n  slli a0, a0, 48\n  srli a0, a0, 48");
-/// long 64 -> u32
-const L8U4: Option<&str> = Some("  # 转换为u32类型\n  slli a0, a0, 32\n  srli a0, a0, 32");
+/// i64 -> u8
+const I8U1: Option<&str> = Some("  # 转换为u8类型\n  slli a0, a0, 56\n  srli a0, a0, 56");
+/// i64 -> u16
+const I8U2: Option<&str> = Some("  # 转换为u16类型\n  slli a0, a0, 48\n  srli a0, a0, 48");
+/// i64 -> u32
+const I8U4: Option<&str> = Some("  # 转换为u32类型\n  slli a0, a0, 32\n  srli a0, a0, 32");
+// 有符号整型转换为浮点数
+/// i64 -> f32
+const I8F4: Option<&str> = Some("  # i64转换为f32类型\n  fcvt.s.l fa0, a0");
+/// i64 -> f64
+const I8F8: Option<&str> = Some("  # i64转换为f64类型\n  fcvt.d.l fa0, a0");
+// 无符号整型转换为浮点数
+/// u64 -> f32
+const U8F4: Option<&str> = Some("  # u64转换为f32类型\n  fcvt.s.lu fa0, a0");
+/// u64 -> f64
+const U8F8: Option<&str> = Some("  # u64转换为f64类型\n  fcvt.d.lu fa0, a0");
+// 单精度浮点数转换为整型
+/// f32 -> i8
+const F4I1: Option<&str> =
+    Some("  # f32转换为i8类型\n  fcvt.w.s a0, fa0, rtz\n  slli a0, a0, 56\n  srai a0, a0, 56\n");
+/// f32 -> i16
+const F4I2: Option<&str> =
+    Some("  # f32转换为i16类型\n  fcvt.w.s a0, fa0, rtz\n  slli a0, a0, 48\n  srai a0, a0, 48\n");
+/// f32 -> i32
+const F4I4: Option<&str> = Some("  # f32转换为i32类型\n  fcvt.w.s a0, fa0, rtz");
+/// f32 -> i64
+const F4I8: Option<&str> = Some("  # f32转换为i64类型\n  fcvt.l.s a0, fa0, rtz");
+// 无符号整型转换为无符号浮点数
+/// f32 -> u8
+const F4U1: Option<&str> =
+    Some("  # f32转换为u8类型\n  fcvt.wu.s a0, fa0, rtz\n  slli a0, a0, 56\n  srli a0, a0, 56\n");
+/// f32 -> u16
+const F4U2: Option<&str> =
+    Some("  # f32转换为u16类型\n  fcvt.wu.s a0, fa0, rtz\n  slli a0, a0, 48\n  srli a0, a0, 48\n");
+/// f32 -> u32
+const F4U4: Option<&str> = Some("  # f32转换为u32类型\n  fcvt.wu.s a0, fa0, rtz");
+/// f32 -> u64
+const F4U8: Option<&str> = Some("  # f32转换为u64类型\n  fcvt.lu.s a0, fa0, rtz");
+// 单精度转换为双精度浮点数
+/// f32 -> f64
+const F4F8: Option<&str> = Some("  # f32转换为f64类型\n  fcvt.d.s fa0, fa0");
+// 双精度浮点数转换为整型
+/// f64 -> i8
+const F8I1: Option<&str> =
+    Some("  # f64转换为i8类型\n  fcvt.w.d a0, fa0, rtz\n  slli a0, a0, 56\n  srai a0, a0, 56\n");
+/// f64 -> i16
+const F8I2: Option<&str> =
+    Some("  # f64转换为i16类型\n  fcvt.w.d a0, fa0, rtz\n  slli a0, a0, 48\n  srai a0, a0, 48\n");
+/// f64 -> i32
+const F8I4: Option<&str> = Some("  # f64转换为i32类型\n  fcvt.w.d a0, fa0, rtz");
+/// f64 -> i64
+const F8I8: Option<&str> = Some("  # f64转换为i64类型\n  fcvt.l.d a0, fa0, rtz");
+// 双精度浮点数转换为无符号整型
+/// f64 -> u8
+const F8U1: Option<&str> =
+    Some("  # f64转换为u8类型\n  fcvt.wu.d a0, fa0, rtz\n  slli a0, a0, 56\n  srli a0, a0, 56\n");
+/// f64 -> u16
+const F8U2: Option<&str> =
+    Some("  # f64转换为u16类型\n  fcvt.wu.d a0, fa0, rtz\n  slli a0, a0, 48\n  srli a0, a0, 48\n");
+/// f64 -> u32
+const F8U4: Option<&str> = Some("  # f64转换为u32类型\n  fcvt.wu.d a0, fa0, rtz");
+/// f64 -> u64
+const F8U8: Option<&str> = Some("  # f64转换为u64类型\n  fcvt.lu.d a0, fa0, rtz");
+// 双精度转换为单精度浮点数
+/// f64 -> f32
+const F8F4: Option<&str> = Some("  # f64转换为f32类型\n  fcvt.s.d fa0, fa0");
 
 /// 获取类型对应的index
 fn get_type_id(typ: TypeLink) -> usize {
@@ -999,6 +1082,8 @@ fn get_type_id(typ: TypeLink) -> usize {
         TypeKind::Char => 0,
         TypeKind::Short => 1,
         TypeKind::Int => 2,
+        TypeKind::Float => 8,
+        TypeKind::Double => 9,
         _ => 3,
     };
     if typ.borrow().is_unsigned {
@@ -1010,17 +1095,17 @@ fn get_type_id(typ: TypeLink) -> usize {
 
 /// 所有类型转换表
 const CAST_TABLE: [[Option<&str>; 10]; 10] = [
-    //{i8, i16,  i32,  i64,  u8,   u16,  u32,  u64}
-    [None, None, None, None, L8U1, None, None, None, None, None], // 从i8转换
-    [L8I1, None, None, None, L8U1, L8U2, None, None, None, None], // 从i16转换
-    [L8I1, L8I2, None, None, L8U1, L8U2, L8U4, None, None, None], // 从i32转换
-    [L8I1, L8I2, L8I4, None, L8U1, L8U2, L8U4, None, None, None], // 从i64转换
-    [L8I1, None, None, None, None, None, None, None, None, None], // 从u8转换
-    [L8I1, L8I2, None, None, L8U1, None, None, None, None, None], // 从u16转换
-    [L8I1, L8I2, L8I4, None, L8U1, L8U2, None, None, None, None], // 从u32转换
-    [L8I1, L8I2, L8I4, None, L8U1, L8U2, L8U4, None, None, None], // 从u64转换
-    [None, None, None, None, None, None, None, None, None, None],
-    [None, None, None, None, None, None, None, None, None, None],
+    //{i8, i16,  i32,  i64,  u8,   u16,  u32,  u64   f32   f64}
+    [None, None, None, None, I8U1, None, None, None, I8F4, I8F8], // 从i8转换
+    [I8I1, None, None, None, I8U1, I8U2, None, None, I8F4, I8F8], // 从i16转换
+    [I8I1, I8I2, None, None, I8U1, I8U2, I8U4, None, I8F4, I8F8], // 从i32转换
+    [I8I1, I8I2, I8I4, None, I8U1, I8U2, I8U4, None, I8F4, I8F8], // 从i64转换
+    [I8I1, None, None, None, None, None, None, None, U8F4, U8F8], // 从u8转换
+    [I8I1, I8I2, None, None, I8U1, None, None, None, U8F4, U8F8], // 从u16转换
+    [I8I1, I8I2, I8I4, None, I8U1, I8U2, None, None, U8F4, U8F8], // 从u32转换
+    [I8I1, I8I2, I8I4, None, I8U1, I8U2, I8U4, None, U8F4, U8F8], // 从u64转换
+    [F4I1, F4I2, F4I4, F4I8, F4U1, F4U2, F4U4, F4U8, None, F4F8], // 从f32转换
+    [F8I1, F8I2, F8I4, F8I8, F8U1, F8U2, F8U4, F8U8, F8F4, None], // 从f64转换
 ];
 
 /// 返回2^N的N值

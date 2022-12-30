@@ -75,8 +75,7 @@ pub fn tokenize(path: String, input: String) -> Vec<Token> {
         }
 
         // 解析数值
-        let cn = chars[pos + 1] as char;
-        if c.is_digit(10) || (c == '.' && cn.is_digit(10)) {
+        if c.is_digit(10) || (c == '.' && (chars[pos + 1] as char).is_digit(10)) {
             // 初始化，类似于C++的构造函数
             // 我们不使用Head来存储信息，仅用来表示链表入口，这样每次都是存储在Cur->Next
             // 否则下述操作将使第一个Token的地址不在Head中。

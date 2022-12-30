@@ -88,10 +88,10 @@ use crate::ctype::{add_type, Type, TypeKind, TypeLink};
 use crate::initializer::{create_lvar_init, write_gvar_data, InitDesig, Initializer, Relocation};
 use crate::keywords::{
     KW_ALIGNAS, KW_ALIGNOF, KW_AUTO, KW_BOOL, KW_BREAK, KW_CASE, KW_CHAR, KW_CONST, KW_CONTINUE,
-    KW_DEFAULT, KW_DO, KW_ELSE, KW_ENUM, KW_EXTERN, KW_FOR, KW_GOTO, KW_IF, KW_INT, KW_LONG,
-    KW_NORETURN, KW_REGISTER, KW_RESTRICT, KW_RETURN, KW_SHORT, KW_SIGNED, KW_SIZEOF, KW_STATIC,
-    KW_STRUCT, KW_SWITCH, KW_TYPEDEF, KW_UNION, KW_UNSIGNED, KW_VOID, KW_VOLATILE, KW_WHILE,
-    KW___RESTRICT, KW___RESTRICT__,
+    KW_DEFAULT, KW_DO, KW_DOUBLE, KW_ELSE, KW_ENUM, KW_EXTERN, KW_FLOAT, KW_FOR, KW_GOTO, KW_IF,
+    KW_INT, KW_LONG, KW_NORETURN, KW_REGISTER, KW_RESTRICT, KW_RETURN, KW_SHORT, KW_SIGNED,
+    KW_SIZEOF, KW_STATIC, KW_STRUCT, KW_SWITCH, KW_TYPEDEF, KW_UNION, KW_UNSIGNED, KW_VOID,
+    KW_VOLATILE, KW_WHILE, KW___RESTRICT, KW___RESTRICT__,
 };
 use crate::node::{add_with_type, eval, sub_with_type, LabelInfo, Node, NodeKind, NodeLink};
 use crate::obj::{Member, Obj, ObjLink, Scope, VarAttr, VarScope};
@@ -395,9 +395,11 @@ impl<'a> Parser<'a> {
         const SHORT: i32 = 1 << 6;
         const INT: i32 = 1 << 8;
         const LONG: i32 = 1 << 10;
-        const OTHER: i32 = 1 << 12;
-        const SIGNED: i32 = 1 << 13;
-        const UNSIGNED: i32 = 1 << 14;
+        const FLOAT: i32 = 1 << 12;
+        const DOUBLE: i32 = 1 << 14;
+        const OTHER: i32 = 1 << 16;
+        const SIGNED: i32 = 1 << 17;
+        const UNSIGNED: i32 = 1 << 18;
 
         let mut typ = Type::new_int();
         let mut counter = 0; // 记录类型相加的数值
@@ -501,6 +503,10 @@ impl<'a> Parser<'a> {
                 counter += INT;
             } else if token.equal(KW_LONG) {
                 counter += LONG;
+            } else if token.equal(KW_FLOAT) {
+                counter += FLOAT;
+            } else if token.equal(KW_DOUBLE) {
+                counter += DOUBLE;
             } else if token.equal(KW_SIGNED) {
                 counter |= SIGNED;
             } else if token.equal(KW_UNSIGNED) {
@@ -562,6 +568,10 @@ impl<'a> Parser<'a> {
                 ],
             ) {
                 typ = Type::new_unsigned_long()
+            } else if eq(counter, vec![FLOAT]) {
+                typ = Type::new_float()
+            } else if eq(counter, vec![DOUBLE]) {
+                typ = Type::new_double()
             } else {
                 error_token!(token, "invalid type")
             }

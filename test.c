@@ -1,5 +1,5 @@
 
 int main() {
-    double a = .1E4f;
+    float a = .000001E4f;
     a;
 }

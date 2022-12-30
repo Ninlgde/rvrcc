@@ -39,10 +39,12 @@ pub const KEYWORDS: [&str; KW_COUNT] = [
     KW___RESTRICT,
     KW___RESTRICT__,
     KW_NORETURN,
+    KW_FLOAT,
+    KW_DOUBLE,
 ];
 
 /// 关键字数量
-const KW_COUNT: usize = 37;
+const KW_COUNT: usize = 39;
 
 /// 类型名称列表
 pub const KW_TYPENAME: [&str; KW_TYPENAME_COUNT] = [
@@ -69,10 +71,12 @@ pub const KW_TYPENAME: [&str; KW_TYPENAME_COUNT] = [
     KW___RESTRICT,
     KW___RESTRICT__,
     KW_NORETURN,
+    KW_FLOAT,
+    KW_DOUBLE,
 ];
 
 /// 类型名称数量
-const KW_TYPENAME_COUNT: usize = 23;
+const KW_TYPENAME_COUNT: usize = 25;
 
 /// 关键字: 返回
 pub const KW_RETURN: &str = "return";
@@ -148,3 +152,7 @@ pub const KW___RESTRICT: &str = "__restrict";
 pub const KW___RESTRICT__: &str = "__restrict__";
 /// 关键字: _Noreturn
 pub const KW_NORETURN: &str = "_Noreturn";
+/// 关键字: float
+pub const KW_FLOAT: &str = "float";
+/// 关键字: double
+pub const KW_DOUBLE: &str = "double";
