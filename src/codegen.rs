@@ -470,17 +470,19 @@ impl<'a> Generator<'a> {
             NodeKind::Num => {
                 let typ = node.typ.as_ref().unwrap().borrow();
                 if typ.kind == TypeKind::Float {
-                    writeln!("  # 将a0转换到float类型值为{}的fa0中", node.fval);
+                    writeln!("  # 将a0转换到float类型值为{0:.6}的fa0中", node.fval);
 
-                    let b = node.fval.to_be_bytes();
-                    let a = u32::from_be_bytes([b[0], b[1], b[2], b[3]]);
-                    writeln!("  li a0, {}  # float {}", a, node.fval);
+                    writeln!(
+                        "  li a0, {}  # float {1:.6}",
+                        (node.fval as f32).to_bits(),
+                        node.fval
+                    );
                     writeln!("  fmv.w.x fa0, a0");
                 } else if typ.kind == TypeKind::Double {
-                    writeln!("  # 将a0转换到double类型值为{}的fa0中", node.fval);
+                    writeln!("  # 将a0转换到double类型值为{0:.6}的fa0中", node.fval);
                     writeln!(
-                        "  li a0, {}  # double {}",
-                        u64::from_be_bytes(node.fval.to_be_bytes()),
+                        "  li a0, {}  # double {1:.6}",
+                        node.fval.to_bits(),
                         node.fval
                     );
                     writeln!("  fmv.d.x fa0, a0");
@@ -687,11 +689,57 @@ impl<'a> Generator<'a> {
             }
             _ => {}
         }
+        let typ = node.lhs.as_ref().unwrap().typ.as_ref().unwrap().clone();
+        let typ = typ.borrow();
+
+        // 处理浮点类型
+        if typ.is_float() {
+            let lhs = node.lhs.as_ref().unwrap();
+            // 递归到最右节点
+            self.gen_expr(node.rhs.as_ref().unwrap());
+            // 将结果压入栈
+            self.push_float();
+            // 递归到左节点
+            self.gen_expr(lhs);
+            // 将结果弹栈到a1
+            self.pop_float("fa1");
+
+            // 生成各个二叉树节点
+            // float对应s(single)后缀，double对应d(double)后缀
+            let suffix = if lhs.typ.as_ref().unwrap().borrow().kind == TypeKind::Float {
+                "s"
+            } else {
+                "d"
+            };
+
+            match node.kind {
+                NodeKind::Eq => {
+                    writeln!("  # 判断是否fa0=fa1");
+                    writeln!("  feq.{} a0, fa0, fa1", suffix);
+                    return;
+                }
+                NodeKind::Ne => {
+                    writeln!("  # 判断是否fa0≠fa1");
+                    writeln!("  feq.{} a0, fa0, fa1", suffix);
+                    writeln!("  seqz a0, a0");
+                    return;
+                }
+                NodeKind::Lt => {
+                    writeln!("  # 判断是否fa0<fa1");
+                    writeln!("  flt.{} a0, fa0, fa1", suffix);
+                    return;
+                }
+                NodeKind::Le => {
+                    writeln!("  # 判断是否fa0≤fa1");
+                    writeln!("  fle.{} a0, fa0, fa1", suffix);
+                    return;
+                }
+                _ => error_token!(&node.get_token(), "invalid expression"),
+            }
+        }
 
         self.gen_lrhs(node.lhs.as_ref().unwrap(), node.rhs.as_ref().unwrap());
 
-        let typ = node.lhs.as_ref().unwrap().typ.as_ref().unwrap().clone();
-        let typ = typ.borrow();
         let suffix = if typ.kind == TypeKind::Long || typ.has_base() {
             ""
         } else {
@@ -876,6 +924,22 @@ impl<'a> Generator<'a> {
     fn pop(&mut self, reg: &str) {
         writeln!("  # 弹栈，将栈顶的值存入{}", reg);
         writeln!("  ld {}, 0(sp)", reg);
+        writeln!("  addi sp, sp, 8");
+        self.depth -= 1;
+    }
+
+    /// 对于浮点类型进行压栈
+    fn push_float(&mut self) {
+        writeln!("  # 压栈，将fa0的值存入栈顶");
+        writeln!("  addi sp, sp, -8");
+        writeln!("  fsd fa0, 0(sp)");
+        self.depth += 1;
+    }
+
+    /// 对于浮点类型进行弹栈
+    fn pop_float(&mut self, reg: &str) {
+        writeln!("  # 弹栈，将栈顶的值存入{}", reg);
+        writeln!("  fld {}, 0(sp)", reg);
         writeln!("  addi sp, sp, 8");
         self.depth -= 1;
     }

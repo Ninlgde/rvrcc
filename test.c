@@ -1,5 +1,5 @@
 
 int main() {
-    float a = .000001E4f;
+    int a = 2e3f==2e3;
     a;
 }

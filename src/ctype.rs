@@ -269,6 +269,15 @@ impl Type {
         if typ1.borrow().has_base() {
             return Self::pointer_to(typ1.borrow().base.as_ref().unwrap().clone());
         }
+        // 处理浮点类型
+        // 优先使用double类型
+        if typ1.borrow().kind == TypeKind::Double || typ2.borrow().kind == TypeKind::Double {
+            return Type::new_double();
+        }
+        // 其次使用float类型
+        if typ1.borrow().kind == TypeKind::Float || typ2.borrow().kind == TypeKind::Float {
+            return Type::new_float();
+        }
 
         let s1 = typ1.borrow().size;
         let s2 = typ2.borrow().size;

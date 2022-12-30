@@ -528,7 +528,7 @@ fn read_number(chars: &Vec<u8>, pos: &mut usize) -> (i64, f64, TypeLink) {
         }
     }
 
-    (0, result, typ)
+    (0, result + 0.000000, typ)
 }
 
 /// 读取十进制小数部分
