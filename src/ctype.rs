@@ -234,6 +234,11 @@ impl Type {
         self.kind == TypeKind::Float || self.kind == TypeKind::Double
     }
 
+    /// 判断是否为数字
+    pub fn is_numeric(&self) -> bool {
+        return self.is_int() || self.is_float();
+    }
+
     /// 是否含有基础类型
     pub fn has_base(&self) -> bool {
         self.kind == TypeKind::Ptr || self.kind == TypeKind::Array

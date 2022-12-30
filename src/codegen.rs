@@ -494,10 +494,26 @@ impl<'a> Generator<'a> {
             }
             // 对寄存器取反
             NodeKind::Neg => {
+                // 计算左部的表达式
                 self.gen_expr(node.lhs.as_ref().unwrap());
-                // neg a0, a0是sub a0, x0, a0的别名, 即a0=0-a0
-                writeln!("  # 对a0值进行取反");
-                writeln!("  neg a0, a0");
+
+                let typ = node.lhs.as_ref().unwrap().typ.as_ref().unwrap().clone();
+                let typ = typ.borrow();
+                match typ.kind {
+                    TypeKind::Float => {
+                        writeln!("  # 对float类型的fa0值进行取反");
+                        writeln!("  fneg.s fa0, fa0");
+                    }
+                    TypeKind::Double => {
+                        writeln!("  # 对double类型的fa0值进行取反");
+                        writeln!("  fneg.d fa0, fa0");
+                    }
+                    _ => {
+                        // neg a0, a0是sub a0, x0, a0的别名, 即a0=0-a0
+                        writeln!("  # 对a0值进行取反");
+                        writeln!("  neg a0, a0");
+                    }
+                }
                 return;
             }
             // 变量
@@ -694,48 +710,8 @@ impl<'a> Generator<'a> {
 
         // 处理浮点类型
         if typ.is_float() {
-            let lhs = node.lhs.as_ref().unwrap();
-            // 递归到最右节点
-            self.gen_expr(node.rhs.as_ref().unwrap());
-            // 将结果压入栈
-            self.push_float();
-            // 递归到左节点
-            self.gen_expr(lhs);
-            // 将结果弹栈到a1
-            self.pop_float("fa1");
-
-            // 生成各个二叉树节点
-            // float对应s(single)后缀，double对应d(double)后缀
-            let suffix = if lhs.typ.as_ref().unwrap().borrow().kind == TypeKind::Float {
-                "s"
-            } else {
-                "d"
-            };
-
-            match node.kind {
-                NodeKind::Eq => {
-                    writeln!("  # 判断是否fa0=fa1");
-                    writeln!("  feq.{} a0, fa0, fa1", suffix);
-                    return;
-                }
-                NodeKind::Ne => {
-                    writeln!("  # 判断是否fa0≠fa1");
-                    writeln!("  feq.{} a0, fa0, fa1", suffix);
-                    writeln!("  seqz a0, a0");
-                    return;
-                }
-                NodeKind::Lt => {
-                    writeln!("  # 判断是否fa0<fa1");
-                    writeln!("  flt.{} a0, fa0, fa1", suffix);
-                    return;
-                }
-                NodeKind::Le => {
-                    writeln!("  # 判断是否fa0≤fa1");
-                    writeln!("  fle.{} a0, fa0, fa1", suffix);
-                    return;
-                }
-                _ => error_token!(&node.get_token(), "invalid expression"),
-            }
+            self.gen_float(node);
+            return;
         }
 
         self.gen_lrhs(node.lhs.as_ref().unwrap(), node.rhs.as_ref().unwrap());
@@ -847,6 +823,64 @@ impl<'a> Generator<'a> {
                 } else {
                     writeln!("  sra{} a0, a0, a1", suffix);
                 }
+            }
+            _ => error_token!(&node.get_token(), "invalid expression"),
+        }
+    }
+
+    fn gen_float(&mut self, node: &NodeLink) {
+        // 递归到最右节点
+        self.gen_expr(node.rhs.as_ref().unwrap());
+        // 将结果压入栈
+        self.push_float();
+        // 递归到左节点
+        self.gen_expr(node.lhs.as_ref().unwrap());
+        // 将结果弹栈到a1
+        self.pop_float("fa1");
+
+        // 生成各个二叉树节点
+        // float对应s(single)后缀，double对应d(double)后缀
+        let typ = node.lhs.as_ref().unwrap().typ.as_ref().unwrap().clone();
+        let typ = typ.borrow();
+        let suffix = if typ.kind == TypeKind::Float {
+            "s"
+        } else {
+            "d"
+        };
+
+        match node.kind {
+            NodeKind::Add => {
+                writeln!("  # fa0+fa1，结果写入fa0");
+                writeln!("  fadd.{} fa0, fa0, fa1", suffix);
+            }
+            NodeKind::Sub => {
+                writeln!("  # fa0-fa1，结果写入fa0");
+                writeln!("  fsub.{} fa0, fa0, fa1", suffix);
+            }
+            NodeKind::Mul => {
+                writeln!("  # fa0×fa1，结果写入fa0");
+                writeln!("  fmul.{} fa0, fa0, fa1", suffix);
+            }
+            NodeKind::Div => {
+                writeln!("  # fa0÷fa1，结果写入fa0");
+                writeln!("  fdiv.{} fa0, fa0, fa1", suffix);
+            }
+            NodeKind::Eq => {
+                writeln!("  # 判断是否fa0=fa1");
+                writeln!("  feq.{} a0, fa0, fa1", suffix);
+            }
+            NodeKind::Ne => {
+                writeln!("  # 判断是否fa0≠fa1");
+                writeln!("  feq.{} a0, fa0, fa1", suffix);
+                writeln!("  seqz a0, a0");
+            }
+            NodeKind::Lt => {
+                writeln!("  # 判断是否fa0<fa1");
+                writeln!("  flt.{} a0, fa0, fa1", suffix);
+            }
+            NodeKind::Le => {
+                writeln!("  # 判断是否fa0≤fa1");
+                writeln!("  fle.{} a0, fa0, fa1", suffix);
             }
             _ => error_token!(&node.get_token(), "invalid expression"),
         }

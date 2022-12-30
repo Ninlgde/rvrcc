@@ -553,7 +553,7 @@ pub fn add_with_type(mut lhs: NodeLink, mut rhs: NodeLink, nt: Token) -> Option<
     let lhs_t = lhs.get_type().as_ref().unwrap().clone();
     let rhs_t = rhs.get_type().as_ref().unwrap().clone();
     // num + num
-    if lhs_t.borrow().is_int() && rhs_t.borrow().is_int() {
+    if lhs_t.borrow().is_numeric() && rhs_t.borrow().is_numeric() {
         return Some(Node::new_binary(NodeKind::Add, lhs, rhs, nt));
     }
 
@@ -593,7 +593,7 @@ pub fn sub_with_type(mut lhs: NodeLink, mut rhs: NodeLink, nt: Token) -> Option<
     let lhs_t = lhs.get_type().as_ref().unwrap().clone();
     let rhs_t = rhs.get_type().as_ref().unwrap().clone();
     // num + num
-    if lhs_t.borrow().is_int() && rhs_t.borrow().is_int() {
+    if lhs_t.borrow().is_numeric() && rhs_t.borrow().is_numeric() {
         return Some(Node::new_binary(NodeKind::Sub, lhs, rhs, nt));
     }
 
