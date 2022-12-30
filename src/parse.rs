@@ -570,7 +570,7 @@ impl<'a> Parser<'a> {
                 typ = Type::new_unsigned_long()
             } else if eq(counter, vec![FLOAT]) {
                 typ = Type::new_float()
-            } else if eq(counter, vec![DOUBLE]) {
+            } else if eq(counter, vec![DOUBLE, LONG + DOUBLE]) {
                 typ = Type::new_double()
             } else {
                 error_token!(token, "invalid type")

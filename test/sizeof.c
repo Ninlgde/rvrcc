@@ -115,6 +115,9 @@ int main() {
     ASSERT(4, sizeof(1f/2));
     ASSERT(8, sizeof(1.0/2));
 
+    // [149] 将long double作为double的别名
+    ASSERT(8, sizeof(long double));
+
     printf("\033[32mOK\033[0m\n");
     return 0;
 }
