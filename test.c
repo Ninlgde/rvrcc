@@ -1,5 +1,9 @@
 
+int div_long(long a, long b) {
+    return a / b;
+}
+
 int main() {
-    int a = 2e3f==2e3;
+    int a = div_long(100L, 20L);
     a;
 }

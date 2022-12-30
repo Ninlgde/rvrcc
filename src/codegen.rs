@@ -7,9 +7,6 @@ use crate::{align_to, error_token, write_file};
 use std::fmt;
 use std::io::Write;
 
-/// 形参name
-const ARG_NAMES: [&str; 8] = ["a0", "a1", "a2", "a3", "a4", "a5", "a6", "a7"];
-
 /// 输出文件
 static mut OUTPUT: Option<Box<dyn Write>> = None;
 
@@ -177,7 +174,7 @@ impl<'a> Generator<'a> {
 
     /// 生成代码段
     fn emit_text(&mut self) {
-        for function in self.program.to_vec().iter().rev() {
+        for function in self.program.to_vec().iter() {
             let function = &*function.borrow_mut();
             match function {
                 Obj::Func {
@@ -655,18 +652,48 @@ impl<'a> Generator<'a> {
                 return;
             }
             NodeKind::FuncCall => {
-                let mut argc = 0;
-                for arg in node.args.iter() {
-                    self.gen_expr(arg);
-                    self.push();
-                    argc += 1;
-                }
+                // 计算所有参数的值，正向压栈
+                self.push_args(&node.args);
 
                 // 反向弹栈，a0->参数1，a1->参数2……
-                for i in (0..argc).rev() {
-                    self.pop(ARG_NAMES[i]);
+                let mut gp = 0;
+                let mut fp = 0;
+                let mut pi = 0;
+
+                let func_type = node.func_type.as_ref().unwrap().clone();
+                let params = &func_type.borrow().params;
+                for arg in node.args.iter() {
+                    // 如果是可变参数函数
+                    // 匹配到空参数（最后一个）的时候，将剩余的整型寄存器弹栈
+                    if func_type.borrow().is_variadic && pi > params.len() {
+                        if gp < 8 {
+                            writeln!("  # a{}传递可变实参", gp);
+                            self.pop(gp);
+                            gp += 1;
+                        }
+                        continue;
+                    }
+                    pi += 1;
+                    if arg.typ.as_ref().unwrap().borrow().is_float() {
+                        if fp < 8 {
+                            writeln!("  # fa{}传递浮点参数", fp);
+                            self.pop_float(fp);
+                            fp += 1;
+                        } else if gp < 8 {
+                            writeln!("  # a{}传递浮点参数", gp);
+                            self.pop(gp);
+                            gp += 1;
+                        }
+                    } else {
+                        if gp < 8 {
+                            writeln!("  # a{}传递整型参数", gp);
+                            self.pop(gp);
+                            gp += 1;
+                        }
+                    }
                 }
 
+                // 调用函数
                 if self.depth % 2 == 0 {
                     // 偶数深度，sp已经对齐16字节
                     writeln!("  # 调用{}函数", node.func_name);
@@ -845,7 +872,7 @@ impl<'a> Generator<'a> {
         // 递归到左节点
         self.gen_expr(node.lhs.as_ref().unwrap());
         // 将结果弹栈到a1
-        self.pop_float("fa1");
+        self.pop_float(1);
 
         // 生成各个二叉树节点
         // float对应s(single)后缀，double对应d(double)后缀
@@ -904,7 +931,7 @@ impl<'a> Generator<'a> {
         // 递归到左节点
         self.gen_expr(lhs);
         // 将结果弹栈到a1
-        self.pop("a1");
+        self.pop(1);
     }
 
     /// 计算给定节点的绝对地址
@@ -952,6 +979,30 @@ impl<'a> Generator<'a> {
         }
     }
 
+    fn push_args(&mut self, args: &Vec<NodeLink>) {
+        if args.len() == 0 {
+            return;
+        }
+
+        for arg in args.iter().rev() {
+            let is_float = arg.typ.as_ref().unwrap().borrow().is_float();
+            if is_float {
+                writeln!("\n  # ↓对浮点表达式进行计算，然后压栈↓");
+                // 计算出表达式
+                self.gen_expr(arg);
+                // 根据表达式结果的类型进行压栈
+                self.push_float();
+            } else {
+                writeln!("\n  # ↓对整型表达式进行计算，然后压栈↓");
+                // 计算出表达式
+                self.gen_expr(arg);
+                // 根据表达式结果的类型进行压栈
+                self.push();
+            }
+            writeln!("  # ↑结束压栈↑");
+        }
+    }
+
     /// 压栈，将结果临时压入栈中备用
     /// sp为栈指针，栈反向向下增长，64位下，8个字节为一个单位，所以sp-8
     /// 当前栈指针的地址就是sp，将a0的值压入栈
@@ -964,9 +1015,9 @@ impl<'a> Generator<'a> {
     }
 
     /// 弹栈，将sp指向的地址的值，弹出到a1
-    fn pop(&mut self, reg: &str) {
-        writeln!("  # 弹栈，将栈顶的值存入{}", reg);
-        writeln!("  ld {}, 0(sp)", reg);
+    fn pop(&mut self, reg: usize) {
+        writeln!("  # 弹栈，将栈顶的值存入a{}", reg);
+        writeln!("  ld a{}, 0(sp)", reg);
         writeln!("  addi sp, sp, 8");
         self.depth -= 1;
     }
@@ -980,9 +1031,9 @@ impl<'a> Generator<'a> {
     }
 
     /// 对于浮点类型进行弹栈
-    fn pop_float(&mut self, reg: &str) {
-        writeln!("  # 弹栈，将栈顶的值存入{}", reg);
-        writeln!("  fld {}, 0(sp)", reg);
+    fn pop_float(&mut self, reg: usize) {
+        writeln!("  # 弹栈，将栈顶的值存入fa{}", reg);
+        writeln!("  fld fa{}, 0(sp)", reg);
         writeln!("  addi sp, sp, 8");
         self.depth -= 1;
     }
@@ -1017,7 +1068,7 @@ impl<'a> Generator<'a> {
 
     /// 将栈顶值(为一个地址)存入a0
     fn store(&mut self, typ: TypeLink) {
-        self.pop("a1");
+        self.pop(1);
 
         let kind = &typ.borrow().kind;
         if *kind == TypeKind::Struct || *kind == TypeKind::Union {
@@ -1060,18 +1111,14 @@ impl<'a> Generator<'a> {
 
     /// 将整形寄存器的值存入栈中
     fn store_general(&mut self, register: usize, offset: isize, size: isize) {
-        writeln!(
-            "  # 将{}寄存器的值存入{}(fp)的栈地址",
-            ARG_NAMES[register],
-            offset
-        );
+        writeln!("  # 将a{}寄存器的值存入{}(fp)的栈地址", register, offset);
         writeln!("  li t0, {}", offset);
         writeln!("  add t0, fp, t0");
         match size {
-            1 => writeln!("  sb {}, 0(t0)", ARG_NAMES[register]),
-            2 => writeln!("  sh {}, 0(t0)", ARG_NAMES[register]),
-            4 => writeln!("  sw {}, 0(t0)", ARG_NAMES[register]),
-            8 => writeln!("  sd {}, 0(t0)", ARG_NAMES[register]),
+            1 => writeln!("  sb a{}, 0(t0)", register),
+            2 => writeln!("  sh a{}, 0(t0)", register),
+            4 => writeln!("  sw a{}, 0(t0)", register),
+            8 => writeln!("  sd a{}, 0(t0)", register),
             _ => {
                 unreachable!();
             }
