@@ -278,62 +278,50 @@ pub fn eval(node: &mut Box<Node>) -> i64 {
 pub fn eval0(node: &mut Box<Node>, label: &mut Option<String>) -> i64 {
     add_type(node);
 
-    match node.kind {
+    if node.typ.as_ref().unwrap().borrow().is_float() {
+        return eval_double(node) as i64;
+    }
+
+    return match node.kind {
         NodeKind::Add => {
-            return eval0(node.lhs.as_mut().unwrap(), label) + eval(node.rhs.as_mut().unwrap());
+            eval0(node.lhs.as_mut().unwrap(), label) + eval(node.rhs.as_mut().unwrap())
         }
         NodeKind::Sub => {
-            return eval0(node.lhs.as_mut().unwrap(), label) - eval(node.rhs.as_mut().unwrap());
+            eval0(node.lhs.as_mut().unwrap(), label) - eval(node.rhs.as_mut().unwrap())
         }
-        NodeKind::Mul => {
-            return eval(node.lhs.as_mut().unwrap()) * eval(node.rhs.as_mut().unwrap());
-        }
+        NodeKind::Mul => eval(node.lhs.as_mut().unwrap()) * eval(node.rhs.as_mut().unwrap()),
         NodeKind::Div => {
             if node.typ.as_ref().unwrap().borrow().is_unsigned {
                 return (eval(node.lhs.as_mut().unwrap()) as u64
                     / eval(node.rhs.as_mut().unwrap()) as u64) as i64;
             }
-            return eval(node.lhs.as_mut().unwrap()) / eval(node.rhs.as_mut().unwrap());
+            eval(node.lhs.as_mut().unwrap()) / eval(node.rhs.as_mut().unwrap())
         }
-        NodeKind::Neg => {
-            return -eval(node.lhs.as_mut().unwrap());
-        }
+        NodeKind::Neg => -eval(node.lhs.as_mut().unwrap()),
         NodeKind::Mod => {
             if node.typ.as_ref().unwrap().borrow().is_unsigned {
                 return (eval(node.lhs.as_mut().unwrap()) as u64
                     % eval(node.rhs.as_mut().unwrap()) as u64) as i64;
             }
-            return eval(node.lhs.as_mut().unwrap()) % eval(node.rhs.as_mut().unwrap());
+            eval(node.lhs.as_mut().unwrap()) % eval(node.rhs.as_mut().unwrap())
         }
-        NodeKind::BitAnd => {
-            return eval(node.lhs.as_mut().unwrap()) & eval(node.rhs.as_mut().unwrap());
-        }
-        NodeKind::BitOr => {
-            return eval(node.lhs.as_mut().unwrap()) | eval(node.rhs.as_mut().unwrap());
-        }
-        NodeKind::BitXor => {
-            return eval(node.lhs.as_mut().unwrap()) ^ eval(node.rhs.as_mut().unwrap());
-        }
+        NodeKind::BitAnd => eval(node.lhs.as_mut().unwrap()) & eval(node.rhs.as_mut().unwrap()),
+        NodeKind::BitOr => eval(node.lhs.as_mut().unwrap()) | eval(node.rhs.as_mut().unwrap()),
+        NodeKind::BitXor => eval(node.lhs.as_mut().unwrap()) ^ eval(node.rhs.as_mut().unwrap()),
         NodeKind::Shl => {
             let typ = node.typ.as_ref().unwrap().borrow();
             if typ.is_unsigned && typ.size == 8 {
                 return ((eval(node.lhs.as_mut().unwrap()) as u64)
                     << eval(node.rhs.as_mut().unwrap())) as i64;
             }
-            return eval(node.lhs.as_mut().unwrap()) << eval(node.rhs.as_mut().unwrap());
+            eval(node.lhs.as_mut().unwrap()) << eval(node.rhs.as_mut().unwrap())
         }
-        NodeKind::Shr => {
-            return eval(node.lhs.as_mut().unwrap()) >> eval(node.rhs.as_mut().unwrap());
-        }
+        NodeKind::Shr => eval(node.lhs.as_mut().unwrap()) >> eval(node.rhs.as_mut().unwrap()),
         NodeKind::Eq => {
-            return bool_to_i64(
-                eval(node.lhs.as_mut().unwrap()) == eval(node.rhs.as_mut().unwrap()),
-            );
+            bool_to_i64(eval(node.lhs.as_mut().unwrap()) == eval(node.rhs.as_mut().unwrap()))
         }
         NodeKind::Ne => {
-            return bool_to_i64(
-                eval(node.lhs.as_mut().unwrap()) != eval(node.rhs.as_mut().unwrap()),
-            )
+            bool_to_i64(eval(node.lhs.as_mut().unwrap()) != eval(node.rhs.as_mut().unwrap()))
         }
         NodeKind::Lt => {
             let r;
@@ -344,7 +332,7 @@ pub fn eval0(node: &mut Box<Node>, label: &mut Option<String>) -> i64 {
             } else {
                 r = eval(node.lhs.as_mut().unwrap()) < eval(node.rhs.as_mut().unwrap())
             }
-            return bool_to_i64(r);
+            bool_to_i64(r)
         }
         NodeKind::Le => {
             let r;
@@ -355,41 +343,35 @@ pub fn eval0(node: &mut Box<Node>, label: &mut Option<String>) -> i64 {
             } else {
                 r = eval(node.lhs.as_mut().unwrap()) <= eval(node.rhs.as_mut().unwrap())
             }
-            return bool_to_i64(r);
+            bool_to_i64(r)
         }
         NodeKind::Cond => {
             let cond = eval(node.cond.as_mut().unwrap());
-            return if cond == 1 {
+            if cond == 1 {
                 eval0(node.then.as_mut().unwrap(), label)
             } else {
                 eval0(node.els.as_mut().unwrap(), label)
-            };
+            }
         }
-        NodeKind::Comma => {
-            return eval0(node.rhs.as_mut().unwrap(), label);
-        }
+        NodeKind::Comma => eval0(node.rhs.as_mut().unwrap(), label),
         NodeKind::Not => {
-            return if eval(node.lhs.as_mut().unwrap()) != 0 {
+            if eval(node.lhs.as_mut().unwrap()) != 0 {
                 0
             } else {
                 1
-            };
+            }
         }
         NodeKind::BitNot => {
-            return !eval(node.lhs.as_mut().unwrap()); // 按位取反
+            !eval(node.lhs.as_mut().unwrap()) // 按位取反
         }
-        NodeKind::LogAnd => {
-            return bool_to_i64(
-                i64_to_bool(eval(node.lhs.as_mut().unwrap()))
-                    && i64_to_bool(eval(node.rhs.as_mut().unwrap())),
-            )
-        }
-        NodeKind::LogOr => {
-            return bool_to_i64(
-                i64_to_bool(eval(node.lhs.as_mut().unwrap()))
-                    || i64_to_bool(eval(node.rhs.as_mut().unwrap())),
-            )
-        }
+        NodeKind::LogAnd => bool_to_i64(
+            i64_to_bool(eval(node.lhs.as_mut().unwrap()))
+                && i64_to_bool(eval(node.rhs.as_mut().unwrap())),
+        ),
+        NodeKind::LogOr => bool_to_i64(
+            i64_to_bool(eval(node.lhs.as_mut().unwrap()))
+                || i64_to_bool(eval(node.rhs.as_mut().unwrap())),
+        ),
         NodeKind::Cast => {
             let t = node.typ.as_ref().unwrap().borrow();
             let r = eval0(node.lhs.as_mut().unwrap(), label);
@@ -419,11 +401,9 @@ pub fn eval0(node: &mut Box<Node>, label: &mut Option<String>) -> i64 {
                     _ => {}
                 }
             }
-            return r;
+            r
         }
-        NodeKind::Addr => {
-            return eval_rval(node.lhs.as_mut().unwrap(), label);
-        }
+        NodeKind::Addr => eval_rval(node.lhs.as_mut().unwrap(), label),
         NodeKind::Member => {
             // 未开辟Label的地址，则表明不是表达式常量
             if label.is_some() {
@@ -432,8 +412,8 @@ pub fn eval0(node: &mut Box<Node>, label: &mut Option<String>) -> i64 {
             if node.typ.as_ref().unwrap().borrow().kind != TypeKind::Array {
                 error_token!(&node.token, "invalid initializer");
             }
-            return eval_rval(node.lhs.as_mut().unwrap(), label)
-                + node.member.as_ref().unwrap().offset as i64;
+            eval_rval(node.lhs.as_mut().unwrap(), label)
+                + node.member.as_ref().unwrap().offset as i64
         }
         NodeKind::Var => {
             // 未开辟Label的地址，则表明不是表达式常量
@@ -446,16 +426,14 @@ pub fn eval0(node: &mut Box<Node>, label: &mut Option<String>) -> i64 {
             }
             let var = node.var.as_ref().unwrap().borrow();
             *label = Some(var.get_name().clone());
-            return 0;
+            0
         }
-        NodeKind::Num => {
-            return node.val;
-        }
+        NodeKind::Num => node.val,
         _ => {
             error_token!(&node.token, "invalid initializer");
-            return -1;
+            -1
         }
-    }
+    };
 }
 
 /// 计算重定位变量
@@ -482,6 +460,57 @@ fn eval_rval(node: &mut Box<Node>, label: &mut Option<String>) -> i64 {
         _ => {
             error_token!(&node.token, "invalid initializer");
             -1
+        }
+    };
+}
+
+/// 解析浮点表达式
+pub fn eval_double(node: &mut Box<Node>) -> f64 {
+    add_type(node);
+
+    let binding = node.typ.as_ref().unwrap().clone();
+    let t = binding.borrow();
+    if t.is_int() {
+        if t.is_unsigned {
+            return eval(node) as u64 as f64;
+        }
+        return eval(node) as f64;
+    }
+
+    return match node.kind {
+        NodeKind::Add => {
+            eval_double(node.lhs.as_mut().unwrap()) + eval_double(node.rhs.as_mut().unwrap())
+        }
+        NodeKind::Sub => {
+            eval_double(node.lhs.as_mut().unwrap()) - eval_double(node.rhs.as_mut().unwrap())
+        }
+        NodeKind::Mul => {
+            eval_double(node.lhs.as_mut().unwrap()) * eval_double(node.rhs.as_mut().unwrap())
+        }
+        NodeKind::Div => {
+            eval_double(node.lhs.as_mut().unwrap()) / eval_double(node.rhs.as_mut().unwrap())
+        }
+        NodeKind::Neg => -eval_double(node.lhs.as_mut().unwrap()),
+        NodeKind::Cond => {
+            let cond = eval_double(node.cond.as_mut().unwrap());
+            if cond != 0.0 {
+                eval_double(node.then.as_mut().unwrap())
+            } else {
+                eval_double(node.els.as_mut().unwrap())
+            }
+        }
+        NodeKind::Comma => eval_double(node.rhs.as_mut().unwrap()),
+        NodeKind::Cast => {
+            let lhs = node.lhs.as_mut().unwrap();
+            if lhs.typ.as_ref().unwrap().borrow().is_float() {
+                return eval_double(lhs);
+            }
+            eval(lhs) as f64
+        }
+        NodeKind::Num => node.fval,
+        _ => {
+            error_token!(&node.token, "invalid initializer");
+            -1.0
         }
     };
 }

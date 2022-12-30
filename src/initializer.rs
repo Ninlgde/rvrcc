@@ -1,7 +1,7 @@
 //! 初始化器
 
 use crate::ctype::{TypeKind, TypeLink};
-use crate::node::{add_with_type, eval0, Node, NodeKind, NodeLink};
+use crate::node::{add_with_type, eval0, eval_double, Node, NodeKind, NodeLink};
 use crate::obj::{Member, ObjLink};
 use crate::token::Token;
 use std::ptr;
@@ -323,9 +323,23 @@ pub fn write_gvar_data(
         return cur;
     }
 
+    let mut expr = init.expr.as_ref().unwrap().clone();
+    // 处理单精度浮点数
+    if t.kind == TypeKind::Float {
+        let fval = eval_double(&mut expr);
+        write_float_buf(chars, offset, fval, 4);
+        return cur;
+    }
+
+    // 处理双精度浮点数
+    if t.kind == TypeKind::Double {
+        let fval = eval_double(&mut expr);
+        write_float_buf(chars, offset, fval, 8);
+        return cur;
+    }
+
     // 预设使用到的 其他全局变量的名称
     let mut label = None;
-    let mut expr = init.expr.as_ref().unwrap().clone();
     let val = eval0(&mut expr, &mut label);
 
     // 如果不存在Label，说明可以直接计算常量表达式的值
@@ -342,10 +356,25 @@ pub fn write_gvar_data(
     }
 }
 
-/// 把val
+/// 把val写入buf
 fn write_buf(chars: &mut Vec<i8>, start: usize, val: i64, size: isize) {
     let bytes = val.to_le_bytes();
     for i in 0..size as usize {
         chars[start + i] = bytes[i] as i8;
+    }
+}
+
+fn write_float_buf(chars: &mut Vec<i8>, start: usize, fval: f64, size: isize) {
+    if size == 4 {
+        let fval = fval as f32;
+        let bytes = fval.to_le_bytes();
+        for i in 0..size as usize {
+            chars[start + i] = bytes[i] as i8;
+        }
+    } else {
+        let bytes = fval.to_le_bytes();
+        for i in 0..size as usize {
+            chars[start + i] = bytes[i] as i8;
+        }
     }
 }
