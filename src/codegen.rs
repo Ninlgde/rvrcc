@@ -315,6 +315,7 @@ impl<'a> Generator<'a> {
                 if node.cond.is_some() {
                     // 生成条件循环语句
                     self.gen_expr(node.cond.as_ref().unwrap());
+                    self.not_zero(node.cond.as_ref().unwrap().typ.as_ref().unwrap().clone());
                     // 判断结果是否为0，为0则跳转到结束部分
                     writeln!("  # 若a0为0，则跳转到循环{}的{}段", c, brk);
                     writeln!("  beqz a0, {}", brk);
@@ -352,6 +353,7 @@ impl<'a> Generator<'a> {
                 writeln!("\n# Cond语句{}", c);
                 writeln!("{}:", ctn);
                 self.gen_expr(node.cond.as_ref().unwrap());
+                self.not_zero(node.cond.as_ref().unwrap().typ.as_ref().unwrap().clone());
                 // 跳转到循环头部
                 writeln!("  # 跳转到循环{}的.L.begin.{}段", c, c);
                 writeln!("  bnez a0, .L.begin.{}", c);
@@ -367,6 +369,7 @@ impl<'a> Generator<'a> {
                 // 生成条件内语句
                 writeln!("\n# cond表达式{}", c);
                 self.gen_expr(node.cond.as_ref().unwrap());
+                self.not_zero(node.cond.as_ref().unwrap().typ.as_ref().unwrap().clone());
                 // 判断结果是否为0，为0则跳转到else标签
                 writeln!("  # 若a0为0，则跳转到分支{}的.L.else.{}段", c, c);
                 writeln!("  beqz a0, .L.else.{}", c);
@@ -587,6 +590,7 @@ impl<'a> Generator<'a> {
                 let c: u32 = self.count();
                 writeln!("\n# =====条件运算符{}===========", c);
                 self.gen_expr(node.cond.as_ref().unwrap());
+                self.not_zero(node.cond.as_ref().unwrap().typ.as_ref().unwrap().clone());
                 writeln!("  # 条件判断，为0则跳转");
                 writeln!("  beqz a0, .L.else.{}", c);
                 self.gen_expr(node.then.as_ref().unwrap());
@@ -599,6 +603,7 @@ impl<'a> Generator<'a> {
             }
             NodeKind::Not => {
                 self.gen_expr(node.lhs.as_ref().unwrap());
+                self.not_zero(node.lhs.as_ref().unwrap().typ.as_ref().unwrap().clone());
                 writeln!("  # 非运算");
                 // a0=0则置1，否则为0
                 writeln!("  seqz a0, a0");
@@ -608,10 +613,12 @@ impl<'a> Generator<'a> {
                 let c: u32 = self.count();
                 writeln!("\n# =====逻辑与{}===============", c);
                 self.gen_expr(node.lhs.as_ref().unwrap());
+                self.not_zero(node.lhs.as_ref().unwrap().typ.as_ref().unwrap().clone());
                 // 判断是否为短路操作
                 writeln!("  # 左部短路操作判断，为0则跳转");
                 writeln!("  beqz a0, .L.false.{}", c);
                 self.gen_expr(node.rhs.as_ref().unwrap());
+                self.not_zero(node.rhs.as_ref().unwrap().typ.as_ref().unwrap().clone());
                 writeln!("  # 右部判断，为0则跳转");
                 writeln!("  beqz a0, .L.false.{}", c);
                 writeln!("  li a0, 1");
@@ -625,10 +632,12 @@ impl<'a> Generator<'a> {
                 let c: u32 = self.count();
                 writeln!("\n# =====逻辑或{}===============", c);
                 self.gen_expr(node.lhs.as_ref().unwrap());
+                self.not_zero(node.lhs.as_ref().unwrap().typ.as_ref().unwrap().clone());
                 // 判断是否为短路操作
                 writeln!("  # 左部短路操作判断，不为0则跳转");
                 writeln!("  bnez a0, .L.true.{}", c);
                 self.gen_expr(node.rhs.as_ref().unwrap());
+                self.not_zero(node.rhs.as_ref().unwrap().typ.as_ref().unwrap().clone());
                 writeln!("  # 右部判断，不为0则跳转");
                 writeln!("  bnez a0, .L.true.{}", c);
                 writeln!("  li a0, 0");
@@ -1069,6 +1078,24 @@ impl<'a> Generator<'a> {
         }
     }
 
+    fn not_zero(&mut self, typ: TypeLink) {
+        match typ.borrow().kind {
+            TypeKind::Float => {
+                writeln!("  # 判断fa1是否不为0，为0置0，非0置1");
+                writeln!("  fmv.s.x fa1, zero");
+                writeln!("  feq.s a0, fa0, fa1");
+                writeln!("  xori a0, a0, 1");
+            }
+            TypeKind::Double => {
+                writeln!("  # 判断fa1是否不为0，为0置0，非0置1");
+                writeln!("  fmv.d.x fa1, zero");
+                writeln!("  feq.d a0, fa0, fa1");
+                writeln!("  xori a0, a0, 1");
+            }
+            _ => {}
+        }
+    }
+
     /// 类型转换
     fn cast(&mut self, from: TypeLink, to: TypeLink) {
         if to.borrow().kind == TypeKind::Void {
@@ -1076,6 +1103,7 @@ impl<'a> Generator<'a> {
         }
 
         if to.borrow().kind == TypeKind::Bool {
+            self.not_zero(from);
             writeln!("  # 转为bool类型：为0置0，非0置1");
             writeln!("  snez a0, a0");
             return;
