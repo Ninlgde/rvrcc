@@ -1,9 +1,5 @@
 
-int div_long(long a, long b) {
-    return a / b;
-}
+int sprintf(char *buf, char *fmt, ...);
+int strcmp(char *p, char *q);
 
-int main() {
-    int a = div_long(100L, 20L);
-    a;
-}
+int main() { char buf[100]; sprintf(buf, "%.1f", (float)3.5); strcmp(buf, "3.5"); }

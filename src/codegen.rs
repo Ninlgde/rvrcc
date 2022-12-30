@@ -680,7 +680,7 @@ impl<'a> Generator<'a> {
                 for arg in node.args.iter() {
                     // 如果是可变参数函数
                     // 匹配到空参数（最后一个）的时候，将剩余的整型寄存器弹栈
-                    if func_type.borrow().is_variadic && pi > params.len() {
+                    if func_type.borrow().is_variadic && pi >= params.len() {
                         if gp < 8 {
                             writeln!("  # a{}传递可变实参", gp);
                             self.pop(gp);

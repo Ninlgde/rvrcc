@@ -2625,6 +2625,9 @@ impl<'a> Parser<'a> {
 
                 arg = Node::new_cast(arg, param.clone());
                 i += 1;
+            } else if arg.typ.as_ref().unwrap().borrow().kind == TypeKind::Float {
+                // 若无形参类型，浮点数会被提升为double
+                arg = Node::new_cast(arg, Type::new_double());
             }
 
             add_type(&mut arg);
