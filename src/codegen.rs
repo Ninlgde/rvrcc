@@ -233,13 +233,28 @@ impl<'a> Generator<'a> {
                     writeln!("  li t0, -{}", stack_size);
                     writeln!("  add sp, sp, t0");
 
-                    let mut i = 0;
                     // 正常传递的形参
+                    let mut gp = 0;
+                    let mut fp = 0;
                     for p in params.iter().rev() {
                         let p = p.borrow();
+                        let is_float = p.get_type().borrow().is_float();
                         let size = p.get_type().borrow().size;
-                        self.store_general(i, p.get_offset(), size);
-                        i += 1;
+                        if is_float {
+                            if fp < 8 {
+                                writeln!("  # 将浮点形参{}的寄存器fa{}的值压栈", p.get_name(), fp);
+                                self.store_float(fp, p.get_offset(), size);
+                                fp += 1;
+                            } else {
+                                writeln!("  # 将浮点形参{}的寄存器a{}的值压栈", p.get_name(), gp);
+                                self.store_general(gp, p.get_offset(), size);
+                                gp += 1;
+                            }
+                        } else {
+                            writeln!("  # 将整型形参{}的寄存器a{}的值压栈", p.get_name(), gp);
+                            self.store_general(gp, p.get_offset(), size);
+                            gp += 1;
+                        }
                     }
 
                     // 可变参数
@@ -247,14 +262,14 @@ impl<'a> Generator<'a> {
                         // 可变参数存入__va_area__，注意最多为7个
                         let va_area = va_area.as_ref().unwrap().borrow();
                         let mut offset = va_area.get_offset();
-                        while i < 8 {
+                        while gp < 8 {
                             writeln!(
                                 "  # 可变参数，相对{}的偏移量为{}",
                                 va_area.get_name(),
                                 offset - va_area.get_offset()
                             );
-                            self.store_general(i, offset, 8);
-                            i += 1;
+                            self.store_general(gp, offset, 8);
+                            gp += 1;
                             offset += 8;
                         }
                     }
@@ -1125,6 +1140,21 @@ impl<'a> Generator<'a> {
         }
     }
 
+    /// 将浮点寄存器的值存入栈中
+    fn store_float(&mut self, register: usize, offset: isize, size: isize) {
+        writeln!("  # 将fa{}寄存器的值存入{}(fp)的栈地址", register, offset);
+        writeln!("  li t0, {}", offset);
+        writeln!("  add t0, fp, t0");
+        match size {
+            4 => writeln!("  fsw fa{}, 0(t0)", register),
+            8 => writeln!("  fsd fa{}, 0(t0)", register),
+            _ => {
+                unreachable!();
+            }
+        }
+    }
+
+    /// 与0进行比较，不等于0则置1
     fn not_zero(&mut self, typ: TypeLink) {
         match typ.borrow().kind {
             TypeKind::Float => {
