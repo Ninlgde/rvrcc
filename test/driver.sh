@@ -1,4 +1,5 @@
 #!/bin/bash
+rvrcc=$1
 
 # 创建一个临时文件夹，XXXXXX会被替换为随机字符串
 tmp=$(mktemp -d /tmp/rvcc-test-XXXXXX)
@@ -23,7 +24,7 @@ check() {
 # 清理掉$tmp中的out文件
 rm -f $tmp/out
 # 编译生成out文件
-./target/release/rvrcc -o $tmp/out $tmp/empty.c
+$rvrcc -o $tmp/out $tmp/empty.c
 # 条件判断，是否存在out文件
 [ -f $tmp/out ]
 # 将-o传入check函数
@@ -32,7 +33,7 @@ check -o
 # --help
 # 将--help的结果传入到grep进行 行过滤
 # -q不输出，是否匹配到存在rvrcc字符串的行结果
-./target/release/rvrcc --help 2>&1 | grep -q rvrcc
+$rvrcc --help 2>&1 | grep -q rvrcc
 # 将--help传入check函数
 check --help
 
