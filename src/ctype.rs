@@ -288,6 +288,15 @@ impl Type {
         if typ1.borrow().has_base() {
             return Self::pointer_to(typ1.borrow().base.as_ref().unwrap().clone());
         }
+
+        // 为函数指针进行常规算术转换
+        if typ1.borrow().kind == TypeKind::Func {
+            return Self::pointer_to(typ1);
+        }
+        if typ2.borrow().kind == TypeKind::Func {
+            return Self::pointer_to(typ2);
+        }
+
         // 处理浮点类型
         // 优先使用double类型
         if typ1.borrow().kind == TypeKind::Double || typ2.borrow().kind == TypeKind::Double {
