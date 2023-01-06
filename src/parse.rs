@@ -732,10 +732,13 @@ impl<'a> Parser<'a> {
             t = self.declarator(t);
             let tc = t.clone();
             let tb = tc.borrow();
+            let name = tb.name.clone();
             // T类型的数组被转换为T*
             if tb.kind == TypeKind::Array {
-                let name = tb.name.clone();
                 t = Type::pointer_to(tb.base.as_ref().unwrap().clone());
+                t.borrow_mut().set_name(name);
+            } else if tb.kind == TypeKind::Func {
+                t = Type::pointer_to(tc.clone());
                 t.borrow_mut().set_name(name);
             }
 
