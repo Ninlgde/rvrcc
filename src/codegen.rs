@@ -175,7 +175,7 @@ impl<'a> Generator<'a> {
     /// 生成代码段
     fn emit_text(&mut self) {
         for function in self.program.to_vec().iter() {
-            let function = &*function.borrow_mut();
+            let function = &*function.borrow();
             match function {
                 Obj::Func {
                     name,
@@ -669,6 +669,9 @@ impl<'a> Generator<'a> {
             NodeKind::FuncCall => {
                 // 计算所有参数的值，正向压栈
                 self.push_args(&node.args);
+                self.gen_expr(node.lhs.as_ref().unwrap());
+                // 将a0的值存入t0
+                writeln!("  mv t0, a0");
 
                 // 反向弹栈，a0->参数1，a1->参数2……
                 let mut gp = 0;
@@ -711,13 +714,13 @@ impl<'a> Generator<'a> {
                 // 调用函数
                 if self.depth % 2 == 0 {
                     // 偶数深度，sp已经对齐16字节
-                    writeln!("  # 调用{}函数", node.func_name);
-                    writeln!("  call {}", node.func_name);
+                    writeln!("  # 调用函数");
+                    writeln!("  jalr t0");
                 } else {
                     // 对齐sp到16字节的边界
-                    writeln!("  # 对齐sp到16字节的边界，并调用{}函数", node.func_name);
+                    writeln!("  # 对齐sp到16字节的边界，并调用函数");
                     writeln!("  addi sp, sp, -8");
-                    writeln!("  call {}", node.func_name);
+                    writeln!("  jalr t0");
                     writeln!("  addi sp, sp, 8");
                 }
 
@@ -969,11 +972,24 @@ impl<'a> Generator<'a> {
                         writeln!("  li t0, {}", offset);
                         writeln!("  add a0, fp, t0");
                     } else {
-                        writeln!("  # 获取全局变量{}的地址", name);
+                        let typ = node.typ.as_ref().unwrap();
+                        if typ.borrow().kind == TypeKind::Func {
+                            writeln!("  # 获取函数{}的地址", name);
+                        } else {
+                            writeln!("  # 获取全局变量{}的地址", name);
+                        }
                         writeln!("  la a0, {}", name);
                     }
                 }
-                _ => {}
+                Obj::Func { name, .. } => {
+                    let typ = node.typ.as_ref().unwrap();
+                    if typ.borrow().kind == TypeKind::Func {
+                        writeln!("  # 获取函数{}的地址", name);
+                    } else {
+                        writeln!("  # 获取全局变量{}的地址", name);
+                    }
+                    writeln!("  la a0, {}", name);
+                }
             }
         } else if node.kind == NodeKind::DeRef {
             // 解引用*
@@ -1058,6 +1074,7 @@ impl<'a> Generator<'a> {
         if typ.borrow().kind == TypeKind::Array
             || typ.borrow().kind == TypeKind::Struct
             || typ.borrow().kind == TypeKind::Union
+            || typ.borrow().kind == TypeKind::Func
         {
             return;
         } else if typ.borrow().kind == TypeKind::Float {

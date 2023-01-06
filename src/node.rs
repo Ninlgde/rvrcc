@@ -129,8 +129,6 @@ pub struct Node {
     pub(crate) inc: Option<NodeLink>,
     /// 代码块
     pub(crate) body: Vec<NodeLink>,
-    /// 变量名
-    pub(crate) func_name: String,
     /// 函数类型
     pub(crate) func_type: Option<TypeLink>,
     /// 入参
@@ -169,7 +167,6 @@ impl Node {
             init: None,
             inc: None,
             body: Vec::new(),
-            func_name: String::new(),
             func_type: None,
             args: Vec::new(),
             var: None,

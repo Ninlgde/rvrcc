@@ -239,6 +239,12 @@ impl Type {
         return self.is_int() || self.is_float();
     }
 
+    pub fn is_func(&self) -> bool {
+        self.kind == TypeKind::Func
+            || (self.kind == TypeKind::Ptr
+                && self.get_base_type().unwrap().borrow().kind == TypeKind::Func)
+    }
+
     /// 是否含有基础类型
     pub fn has_base(&self) -> bool {
         self.kind == TypeKind::Ptr || self.kind == TypeKind::Array
@@ -261,6 +267,14 @@ impl Type {
             return self.base.as_ref().unwrap().borrow().size;
         } else {
             0
+        }
+    }
+
+    pub fn get_base_type(&self) -> Option<TypeLink> {
+        if self.has_base() {
+            return Some(self.base.as_ref().unwrap().clone());
+        } else {
+            None
         }
     }
 

@@ -69,20 +69,28 @@
 //! struct_declare = struct_union_declare
 //! union_declare = struct_union_declare
 //! struct_union_declare = ident? ("{" struct_members)?
-//! postfix = "(" typename ")" "{" initializer_list "}"
-//!         | primary ("[" expr "]" | "." ident)* | "->" ident | "++" | "--")*
+//! postfix "(" typename ")" "{" initializer_list "}"
+//!         = ident "(" func_args ")" postfix_tail*
+//!         | primary postfix_tail*
+//!
+//! postfix_tail = "[" expr "]"
+//!             | "(" func_args ")"
+//!             | "." ident
+//!             | "->" ident
+//!             | "++"
+//!             | "--"
 //! primary =  "(" "{" stmt+ "}" ")"
 //!         | "(" expr ")"
 //!         | "sizeof" "(" typename ")"
 //!         | "sizeof" unary
 //!         | "_Alignof" "(" typename ")"
 //!         | "_Alignof" unary
-//!         | ident funcArgs?
+//!         | ident
 //!         | str
 //!         | num
 //! typename = declspec abstract_declarator
 //! abstract_declarator = pointers ("(" abstract_declarator ")")? type_suffix
-//! func_call = ident "(" (assign ("," assign)*)? ")"
+//! func_call = (assign ("," assign)*)? ")"
 
 use crate::ctype::{add_type, Type, TypeKind, TypeLink};
 use crate::initializer::{create_lvar_init, write_gvar_data, InitDesig, Initializer, Relocation};
@@ -96,7 +104,7 @@ use crate::keywords::{
 use crate::node::{add_with_type, eval, sub_with_type, LabelInfo, Node, NodeKind, NodeLink};
 use crate::obj::{Member, Obj, ObjLink, Scope, VarAttr, VarScope};
 use crate::token::Token;
-use crate::{align_to, error_at, error_token, vec_u8_into_i8};
+use crate::{align_to, error_token, vec_u8_into_i8};
 use std::cell::RefCell;
 use std::cmp;
 use std::rc::Rc;
@@ -2305,8 +2313,16 @@ impl<'a> Parser<'a> {
         Some(cast)
     }
 
-    /// postfix = "(" typename ")" "{" initializer_list "}"
-    ///         | primary ("[" expr "]" | "." ident)* | "->" ident | "++" | "--")*
+    /// postfix "(" typename ")" "{" initializer_list "}"
+    ///         = ident "(" func_args ")" postfix_tail*
+    ///         | primary postfix_tail*
+    ///
+    /// postfix_tail = "[" expr "]"
+    ///             | "(" func_args ")"
+    ///             | "." ident
+    ///             | "->" ident
+    ///             | "++"
+    ///             | "--"
     fn postfix(&mut self) -> Option<NodeLink> {
         //  "(" typename ")" "{" initializer_list "}"
         let (pos, token) = self.current();
@@ -2341,10 +2357,17 @@ impl<'a> Parser<'a> {
         // primary
         let mut node = self.primary().unwrap();
 
+        // ("[" expr "]")*
         loop {
             let (pos, token) = self.current();
             let nt = self.tokens[pos].clone();
-            // ("[" expr "]")*
+            // ident "(" funcArgs ")"
+            // 匹配到函数调用
+            if token.equal("(") {
+                node = self.next().func_call(node).unwrap();
+                continue;
+            }
+
             if token.equal("[") {
                 // x[y] 等价于 *(x+y)
                 let idx = self.next().expr().unwrap();
@@ -2456,22 +2479,12 @@ impl<'a> Parser<'a> {
             return Some(Node::new_unsigned_long(align, nt));
         }
 
-        // ident args?
+        // ident
         match token {
-            Token::Ident {
-                t_str,
-                offset,
-                line_no,
-            } => {
-                // 函数调用
-                // args = "(" ")"
-                if self.tokens[pos + 1].equal("(") {
-                    return self.func_call(t_str.to_string());
-                }
-
-                // ident
+            Token::Ident { t_str, .. } => {
                 // 查找变量
                 let vso = self.find_var(&t_str);
+                self.next();
                 let node;
                 if vso.is_some() {
                     let vs = vso.unwrap().clone();
@@ -2481,16 +2494,18 @@ impl<'a> Parser<'a> {
                     let enum_val = &vsb.enum_val;
                     if var.is_some() {
                         node = Node::new_var(var.as_ref().unwrap().clone(), nt);
-                        self.next();
                         return Some(node);
                     }
                     if enum_type.is_some() {
                         node = Node::new_num(*enum_val, nt);
-                        self.next();
                         return Some(node);
                     }
                 }
-                error_at!(*line_no, *offset, "undefined variable");
+                let (_, token) = self.current();
+                if token.equal(")") {
+                    error_token!(token, "implicit declaration of a function")
+                }
+                error_token!(token, "undefined variable");
                 return None;
             }
             Token::Str { val, typ, .. } => {
@@ -2565,41 +2580,27 @@ impl<'a> Parser<'a> {
         self.type_suffix(base_type)
     }
 
-    // func_call = ident "(" (assign ("," assign)*)? ")"
-    fn func_call(&mut self, func_name: String) -> Option<NodeLink> {
-        let (pos, _) = self.current();
+    // func_call = (assign ("," assign)*)? ")"
+    fn func_call(&mut self, mut func: NodeLink) -> Option<NodeLink> {
+        add_type(&mut func);
+
+        let (pos, token) = self.current();
         let nt = self.tokens[pos].clone();
-        self.next().next(); // 1. 跳到(  2.调到参数或者)
-
-        // 查找函数名
-        let vso = self.find_var(&func_name);
-        if vso.is_none() {
-            error_token!(&nt, "implicit declaration of a function");
-            unreachable!()
-        }
-        let vs = vso.unwrap().clone();
-        let var = &vs.borrow().var;
-        if var.is_none() {
-            error_token!(&nt, "not a function");
-            unreachable!()
+        let ft = func.typ.as_ref().unwrap().clone();
+        let ftyp = ft.borrow();
+        if !ftyp.is_func() {
+            error_token!(token, "not a function")
         }
 
-        let t;
-        let params;
-        // 傻屌rust的编译器一定要我把这下面拆成三行才可以,否则就报错..咱也不懂..也不敢问..回头再研究,能用就行
-        let binding = var.as_ref().unwrap().clone();
-        let bt = binding.borrow();
-        let typ = bt.get_type();
-        match typ.borrow().kind {
-            TypeKind::Func => {
-                t = typ;
-                params = t.borrow().clone().params;
-            }
-            _ => {
-                error_token!(&nt, "not a function");
-                unreachable!()
-            }
-        }
+        let typ = if ftyp.kind == TypeKind::Func {
+            ft.clone()
+        } else {
+            ftyp.get_base_type().unwrap()
+        };
+
+        let t = typ.clone();
+        // 函数形参的类型
+        let params = t.borrow().params.to_vec();
 
         let mut nodes = vec![];
 
@@ -2636,8 +2637,7 @@ impl<'a> Parser<'a> {
 
         self.skip(")");
 
-        let mut node = Node::new(NodeKind::FuncCall, nt);
-        node.func_name = func_name;
+        let mut node = Node::new_unary(NodeKind::FuncCall, func, nt);
         node.func_type = Some(t.clone());
         let tb = t.borrow();
         node.typ = Some(tb.return_type.as_ref().unwrap().clone());

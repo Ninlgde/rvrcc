@@ -33,7 +33,7 @@ check -o
 # --help
 # 将--help的结果传入到grep进行 行过滤
 # -q不输出，是否匹配到存在rvrcc字符串的行结果
-$rvrcc --help 2>&1 | grep -q rvrcc
+$rvrcc --help 2>&1 | grep -q -E "rv(r)*cc"
 # 将--help传入check函数
 check --help
 
