@@ -4,6 +4,7 @@
 #![deny(missing_docs)]
 #![deny(warnings)]
 
+mod args;
 mod codegen;
 mod ctype;
 mod error_print;
@@ -18,6 +19,8 @@ mod utils;
 
 use utils::*;
 
+pub use args::parse_args;
+pub use args::Args;
 pub use codegen::codegen;
 pub use parse::parse;
 pub use tokenize::tokenize;

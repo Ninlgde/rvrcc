@@ -71,12 +71,12 @@ stage2/%.o: stage2/%.s
 # 利用stage2的rvcc去进行测试
 stage2/test/%.exe: stage2 test/%.c
 	$(CC) -o stage2/test/$*.c -E -P -C test/$*.c
-	$(RUN) ./stage2/rvcc -o stage2/test/$*.s stage2/test/$*.c
+	$(RUN) ./stage2/rvcc -o stage2/test/$*.s stage2/test/$*.c -cc1
 	$(CC) -static -o $@ stage2/test/$*.s -xc test/common
 
 test-stage2: $(TESTS:test/%=stage2/test/%)
 	for i in $^; do echo $$i;  $(RUN) ./$$i || exit 1; echo; done
-	test/driver.sh "$(RUN) ./stage2/rvcc"
+	test/driver.sh "$(RUN) ./stage2/rvcc -cc1"
 
 # 清理标签，清理所有非源代码文件
 clean:
