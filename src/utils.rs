@@ -39,7 +39,7 @@ pub fn read_file(path: &String) -> String {
 
 /// 打开一个可写入的文件
 pub fn open_file_for_write(path: &String) -> Box<dyn Write> {
-    return if path.eq("-") {
+    return if path.eq("-") || path.eq("") {
         let f = stdout();
         Box::new(f.lock())
     } else {
@@ -56,8 +56,8 @@ pub fn write_file(file: &mut impl Write, string: &str) {
 
 /// 替换文件的后缀名
 pub fn replace_extn(path: &String, extn: &str) -> String {
-    if path.eq("-") {
-        return path.to_string();
+    if path.eq("-") || path.eq("") {
+        return "-".to_string();
     }
     let s = path.split(".");
     format!("{}{}", s.collect::<Vec<_>>()[0], extn)

@@ -36,7 +36,7 @@ rvrcc:
 
 # 测试标签，运行测试
 test/%.exe: rvrcc test/%.c
-	$(CC) -o- -E -P -C test/$*.c | ./target/release/rvrcc -o test/$*.o - -###riscv64-unknown-linux-gnu-gcc -o- -E -P -C test/sizeof.c | ./target/release/rvrcc -o test/sizeof.o - -### -cc1 - -o tmp.s
+	$(CC) -o- -E -P -C test/$*.c | ./target/release/rvrcc -o test/$*.o -
 	$(CC) -static -o $@ test/$*.o -xc test/common
 
 test: $(TESTS)
