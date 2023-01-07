@@ -51,7 +51,16 @@ pub fn open_file_for_write(path: &String) -> Box<dyn Write> {
 /// 向文件`file`写入字符串`string`
 pub fn write_file(file: &mut impl Write, string: &str) {
     file.write_all(string.as_ref())
-        .expect("write file got error");
+        .expect(format!("write file got error: {}", string).as_str());
+}
+
+/// 替换文件的后缀名
+pub fn replace_extn(path: &String, extn: &str) -> String {
+    if path.eq("-") {
+        return path.to_string();
+    }
+    let s = path.split(".");
+    format!("{}{}", s.collect::<Vec<_>>()[0], extn)
 }
 
 /// vec[u8] to vec[i8]

@@ -1214,8 +1214,8 @@ impl<'a> Generator<'a> {
 
     /// 代码段计数
     fn count(&mut self) -> u32 {
-        let c = self.counter;
         self.counter += 1;
+        let c = self.counter;
         c
     }
 }

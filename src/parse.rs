@@ -2602,8 +2602,9 @@ impl<'a> Parser<'a> {
         };
 
         let t = typ.clone();
-        // 函数形参的类型
-        let params = t.borrow().params.to_vec();
+        let binding = t.borrow();
+        // 函数形参的类型 func_call时是正向的所以需要reverse一下
+        let params: Vec<_> = binding.params.iter().rev().collect();
 
         let mut nodes = vec![];
 
@@ -2620,7 +2621,7 @@ impl<'a> Parser<'a> {
             add_type(&mut arg);
 
             if i < params.len() {
-                let param = &params[i];
+                let param = params[i];
                 if param.borrow().kind == TypeKind::Struct || param.borrow().kind == TypeKind::Union
                 {
                     error_token!(&arg.token, "passing struct or union is not supported yet");

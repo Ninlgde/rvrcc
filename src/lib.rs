@@ -21,11 +21,13 @@ use utils::*;
 
 pub use args::parse_args;
 pub use args::Args;
+pub use args::TempFile;
 pub use codegen::codegen;
 pub use parse::parse;
 pub use tokenize::tokenize;
 pub use tokenize::tokenize_file;
 pub use utils::open_file_for_write;
+pub use utils::replace_extn;
 pub use utils::write_file;
 
 /// 输入(stdin or file)

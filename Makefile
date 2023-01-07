@@ -36,8 +36,8 @@ rvrcc:
 
 # 测试标签，运行测试
 test/%.exe: rvrcc test/%.c
-	$(CC) -o- -E -P -C test/$*.c | ./target/release/rvrcc -o test/$*.s -
-	$(CC) -static -o $@ test/$*.s -xc test/common
+	$(CC) -o- -E -P -C test/$*.c | ./target/release/rvrcc -o test/$*.o - -###riscv64-unknown-linux-gnu-gcc -o- -E -P -C test/sizeof.c | ./target/release/rvrcc -o test/sizeof.o - -### -cc1 - -o tmp.s
+	$(CC) -static -o $@ test/$*.o -xc test/common
 
 test: $(TESTS)
 	for i in $^; do echo "\033[34m"$$i"\033[0m"; $(RUN) ./$$i || exit 1; echo; done
@@ -56,22 +56,19 @@ $(STAGE2_SRCS):
 stage2: $(STAGE2_SRCS) stage2/rvcc
 
 stage2/rvcc: $(OBJS:%=stage2/%)
-	$(CC) $(CFLAGS) -static -o $@ $^ $(LDFLAGS)
+	$(CC) $(CFLAGS) -static -o $@ $^
 
-# 利用stage1的rvcc去将rvcc的源代码编译为stage2的汇编文件
-stage2/%.s: rvrcc self.py stage2/%.c
+# 利用stage1的rvcc去将rvcc的源代码编译为stage2的可重定位文件
+stage2/%.o: rvrcc self.py stage2/%.c
 	mkdir -p stage2/test
-	./self.py stage2/rvcc.h stage2/$*.c > stage2/$*.c
-	./target/release/rvrcc -o stage2/$*.s stage2/$*.c
-
-# stage2的汇编编译为可重定位文件
-stage2/%.o: stage2/%.s
-	$(CC) -c stage2/$*.s -o stage2/$*.o
+	./self.py stage2/rvcc.h stage2/$*.c > stage2/$*.c2
+	mv stage2/$*.c2 stage2/$*.c
+	./target/release/rvrcc -o stage2/$*.o stage2/$*.c -###
 
 # 利用stage2的rvcc去进行测试
 stage2/test/%.exe: stage2 test/%.c
 	$(CC) -o stage2/test/$*.c -E -P -C test/$*.c
-	$(RUN) ./stage2/rvcc -o stage2/test/$*.s stage2/test/$*.c -cc1
+	$(RUN) ./stage2/rvcc -o stage2/test/$*.o stage2/test/$*.c -cc1 stage2/test/$*.c -o stage2/test/$*.s
 	$(CC) -static -o $@ stage2/test/$*.s -xc test/common
 
 test-stage2: $(TESTS:test/%=stage2/test/%)
