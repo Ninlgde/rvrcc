@@ -63,6 +63,21 @@ pub fn replace_extn(path: &String, extn: &str) -> String {
     format!("{}{}", s.collect::<Vec<_>>()[0], extn)
 }
 
+/// 查找文件
+pub fn find_file(pattern: String) -> String {
+    let files = glob::glob(pattern.as_str()).expect("Failed to read glob pattern");
+    // 选择最后一条
+    let last = files.last().unwrap();
+    match last {
+        Ok(path) => {
+            return path.to_str().unwrap().to_string();
+        }
+        Err(_) => {
+            panic!("Failed to read glob pattern")
+        }
+    }
+}
+
 /// vec[u8] to vec[i8]
 pub fn vec_u8_into_i8(v: Vec<u8>) -> Vec<i8> {
     // ideally we'd use Vec::into_raw_parts, but it's unstable,

@@ -19,7 +19,9 @@ pub struct Args {
     /// ###选项
     pub opt_hash_hash_hash: bool,
     /// -S选项
-    pub opt_s: bool,
+    pub opt_cap_s: bool,
+    /// -c选项
+    pub opt_c: bool,
 }
 
 impl Args {
@@ -32,7 +34,8 @@ impl Args {
             inputs: vec![],
             opt_cc1: false,
             opt_hash_hash_hash: false,
-            opt_s: false,
+            opt_cap_s: false,
+            opt_c: false,
         }
     }
 
@@ -88,7 +91,14 @@ impl Args {
 
             // 解析-S
             if arg.eq("-S") {
-                result.opt_s = true;
+                result.opt_cap_s = true;
+                i += 1;
+                continue;
+            }
+
+            // 解析-c
+            if arg.eq("-c") {
+                result.opt_c = true;
                 i += 1;
                 continue;
             }
@@ -144,7 +154,8 @@ fn print_usage(status: i32) {
     exit(status);
 }
 
-/// 编译产生的零时文件
+/// 编译产生的临时文件
+#[derive(Clone)]
 pub struct TempFile {
     /// 文件名
     path: String,
@@ -153,8 +164,8 @@ pub struct TempFile {
 }
 
 impl TempFile {
-    /// 创建名为path的零时文件,auto_del标记是否在离开生命周期后删除文件
-    pub fn new(path: &str, auto_del: bool) -> TempFile {
+    /// 创建名为path的临时文件,auto_del标记是否在离开生命周期后删除文件
+    pub fn new(path: &str, auto_del: bool, cleaner: &mut TempFileCleaner) -> String {
         let ptr = CString::new(path).unwrap().into_raw();
         let fd = unsafe { libc::mkstemp(ptr) };
         let path = unsafe { CString::from_raw(ptr) };
@@ -163,28 +174,50 @@ impl TempFile {
             panic!("mkstemp failed")
         }
 
-        TempFile {
-            path: path.into_string().unwrap(),
+        let result = path.into_string().unwrap();
+        let tf = TempFile {
+            path: result.to_string(),
             auto_del,
-        }
+        };
+        cleaner.add(tf);
+        result
     }
 
-    /// 创建rvrcc的零时文件
-    pub fn new_tmp() -> TempFile {
-        TempFile::new("/tmp/rvrcc-XXXXXXXX", true)
+    /// 创建rvrcc的临时文件
+    pub fn new_tmp(cleaner: &mut TempFileCleaner) -> String {
+        TempFile::new("/tmp/rvrcc-XXXXXXXX", true, cleaner)
     }
 
-    /// 获取零时文件路径
+    /// 获取临时文件路径
     pub fn get_path(&self) -> String {
         self.path.to_string()
     }
 }
 
-impl Drop for TempFile {
+/// 临时文件清理器
+pub struct TempFileCleaner {
+    temps: Vec<TempFile>,
+}
+
+impl TempFileCleaner {
+    /// 创建清理器
+    pub fn new() -> TempFileCleaner {
+        TempFileCleaner { temps: Vec::new() }
+    }
+
+    /// 添加临时文件
+    fn add(&mut self, tmp: TempFile) {
+        self.temps.push(tmp)
+    }
+}
+
+impl Drop for TempFileCleaner {
     fn drop(&mut self) {
-        // eprintln!("dorp temp file {}", self.auto_del);
-        if self.auto_del {
-            let _ = remove_file(&self.path);
+        for temp in &self.temps {
+            // eprintln!("dorp temp file {}", &temp.path);
+            if temp.auto_del {
+                remove_file(&temp.path).unwrap();
+            }
         }
     }
 }

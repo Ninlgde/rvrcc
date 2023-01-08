@@ -1,6 +1,11 @@
 #!/bin/bash
 rvrcc=$1
 
+# riscv目录
+RISCV=/Users/malikma/Desktop/source/opt/riscv_linux
+# run
+RUN="spike --isa=rv64gc $RISCV/riscv64-unknown-linux-gnu/bin/pk"
+
 # 创建一个临时文件夹，XXXXXX会被替换为随机字符串
 tmp=$(mktemp -d /tmp/rvcc-test-XXXXXX)
 # 清理工作
@@ -24,7 +29,7 @@ check() {
 # 清理掉$tmp中的out文件
 rm -f $tmp/out
 # 编译生成out文件
-$rvrcc -o $tmp/out $tmp/empty.c
+$rvrcc -c -o $tmp/out $tmp/empty.c
 # 条件判断，是否存在out文件
 [ -f $tmp/out ]
 # 将-o传入check函数
@@ -44,11 +49,11 @@ check -S
 # 默认输出的文件
 rm -f $tmp/out.o $tmp/out.s
 echo 'int main() {}' >$tmp/out.c
-($rvrcc $tmp/out.c >$tmp/out.o)
+($rvrcc -c $tmp/out.c >$tmp/out.o)
 [ -f $tmp/out.o ]
 check 'default output file'
 
-($rvrcc -S $tmp/out.c >$tmp/out.s)
+($rvrcc -c -S $tmp/out.c >$tmp/out.s)
 [ -f $tmp/out.s ]
 check 'default output file'
 
@@ -56,15 +61,45 @@ check 'default output file'
 rm -f $tmp/foo.o $tmp/bar.o
 echo 'int x;' > $tmp/foo.c
 echo 'int y;' > $tmp/bar.c
-(cd $tmp; $OLDPWD/$rvrcc $tmp/foo.c $tmp/bar.c)
+(cd $tmp; $OLDPWD/$rvrcc -c $tmp/foo.c $tmp/bar.c)
 [ -f $tmp/foo.o ] && [ -f $tmp/bar.o ]
 check 'multiple input files'
 
 rm -f $tmp/foo.s $tmp/bar.s
 echo 'int x;' > $tmp/foo.c
 echo 'int y;' > $tmp/bar.c
-(cd $tmp; $OLDPWD/$rvrcc -S $tmp/foo.c $tmp/bar.c)
+(cd $tmp; $OLDPWD/$rvrcc -c -S $tmp/foo.c $tmp/bar.c)
 [ -f $tmp/foo.s ] && [ -f $tmp/bar.s ]
 check 'multiple input files'
+
+# [157] 无-c时调用ld
+# 调用链接器
+rm -f $tmp/foo
+echo 'int main() { return 0; }' | $rvrcc -o $tmp/foo -
+if [ "$RISCV" = "" ];then
+  $tmp/foo
+else
+  $RUN $tmp/foo
+fi
+check linker
+
+rm -f $tmp/foo
+echo 'int bar(); int main() { return bar(); }' > $tmp/foo.c
+echo 'int bar() { return 42; }' > $tmp/bar.c
+$rvrcc -o $tmp/foo $tmp/foo.c $tmp/bar.c
+if [ "$RISCV" = "" ];then
+  $tmp/foo
+else
+  $RUN $tmp/foo
+fi
+[ "$?" = 42 ]
+check linker
+
+# 生成a.out
+rm -f $tmp/a.out
+echo 'int main() {}' > $tmp/foo.c
+(cd $tmp; $OLDPWD/$rvrcc foo.c)
+[ -f $tmp/a.out ]
+check a.out
 
 echo OK

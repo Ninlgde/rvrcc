@@ -23,20 +23,13 @@ OBJS=$(STAGE2_SRCS:.c=.o)
 # 所有的可重定位文件依赖于rvcc.h的头文件
 $(OBJS): ../rvcc/rvcc.h
 
-hh:
-	echo $(SRCS)
-	echo $(STAGE2_SRCS)
-	echo $(OBJS:%=stage2/%)
-	echo $(OBJS)
-	echo %.o
-
 # rvrcc标签，使用cargo build 创建可执行文件
 rvrcc:
 	@cargo build --release
 
 # 测试标签，运行测试
 test/%.exe: rvrcc test/%.c
-	$(CC) -o- -E -P -C test/$*.c | ./target/release/rvrcc -o test/$*.o -
+	$(CC) -o- -E -P -C test/$*.c | ./target/release/rvrcc -c -o test/$*.o -
 	$(CC) -static -o $@ test/$*.o -xc test/common
 
 test: $(TESTS)
@@ -63,12 +56,12 @@ stage2/%.o: rvrcc self.py stage2/%.c
 	mkdir -p stage2/test
 	./self.py stage2/rvcc.h stage2/$*.c > stage2/$*.c2
 	mv stage2/$*.c2 stage2/$*.c
-	./target/release/rvrcc -o stage2/$*.o stage2/$*.c -###
+	./target/release/rvrcc -c -o stage2/$*.o stage2/$*.c -###
 
 # 利用stage2的rvcc去进行测试
 stage2/test/%.exe: stage2 test/%.c
 	$(CC) -o stage2/test/$*.c -E -P -C test/$*.c
-	$(RUN) ./stage2/rvcc -o stage2/test/$*.o stage2/test/$*.c -cc1 stage2/test/$*.c -o stage2/test/$*.s
+	$(RUN) ./stage2/rvcc -c stage2/test/$*.c -cc1 -cc1-input stage2/test/$*.c -cc1-output stage2/test/$*.s
 	$(CC) -static -o $@ stage2/test/$*.s -xc test/common
 
 test-stage2: $(TESTS:test/%=stage2/test/%)
