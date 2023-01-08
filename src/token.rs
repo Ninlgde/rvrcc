@@ -1,146 +1,321 @@
 use crate::ctype::{Type, TypeLink};
 use crate::keywords::KW_TYPENAME;
 
-/// token 文法终结符
-#[derive(Clone)]
-pub enum Token {
+// pub enum Token {
+//     /// 未定义
+//     Undefined,
+//     /// id
+//     Ident {
+//         /// token 名
+//         t_str: String,
+//         /// 在解析的字符串内的位置
+//         offset: usize,
+//         /// 行号
+//         line_no: usize,
+//     },
+//     /// 操作符如： + -
+//     Punct {
+//         /// token 名
+//         t_str: String,
+//         /// 在解析的字符串内的位置
+//         offset: usize,
+//         /// 行号
+//         line_no: usize,
+//     },
+//     /// 关键字
+//     Keyword {
+//         /// token 名
+//         t_str: String,
+//         /// 在解析的字符串内的位置
+//         offset: usize,
+//         /// 行号
+//         line_no: usize,
+//     },
+//     /// 数字
+//     Num {
+//         /// 值
+//         val: i64,
+//         /// TK_NUM浮点值
+//         fval: f64,
+//         /// 类型
+//         typ: TypeLink,
+//         /// token 名
+//         t_str: String,
+//         /// 在解析的字符串内的位置
+//         offset: usize,
+//         /// 行号
+//         line_no: usize,
+//     },
+//     /// 字符串
+//     Str {
+//         /// 值
+//         val: Vec<u8>,
+//         /// 类型
+//         typ: TypeLink,
+//         /// 在解析的字符串内的位置
+//         offset: usize,
+//         /// 行号
+//         line_no: usize,
+//     },
+//     /// 文件终止符，即文件的最后
+//     Eof {
+//         offset: usize,
+//         /// 行号
+//         line_no: usize,
+//     },
+// }
+//
+// impl Token {
+//     /// 获取token在输入文件中的offset
+//     pub fn get_offset(&self) -> usize {
+//         match self {
+//             Self::Ident { offset, .. } => *offset,
+//             Self::Punct { offset, .. } => *offset,
+//             Self::Keyword { offset, .. } => *offset,
+//             Self::Num { offset, .. } => *offset,
+//             Self::Str { offset, .. } => *offset,
+//             Self::Eof { offset, .. } => *offset,
+//             _ => 0,
+//         }
+//     }
+//
+//     /// 获取token在输入文件中的行号
+//     pub fn get_line_no(&self) -> usize {
+//         match self {
+//             Self::Ident { line_no, .. } => *line_no,
+//             Self::Punct { line_no, .. } => *line_no,
+//             Self::Keyword { line_no, .. } => *line_no,
+//             Self::Num { line_no, .. } => *line_no,
+//             Self::Str { line_no, .. } => *line_no,
+//             Self::Eof { line_no, .. } => *line_no,
+//             _ => 0,
+//         }
+//     }
+//
+//     /// 是否是eof
+//     pub fn at_eof(&self) -> bool {
+//         matches!(self, Self::Eof { .. })
+//     }
+//
+//     /// 是否是id
+//     pub fn is_ident(&self) -> bool {
+//         matches!(self, Self::Ident { .. })
+//     }
+//
+//     /// 是否是字符串
+//     pub fn is_string(&self) -> bool {
+//         matches!(self, Self::Str { .. })
+//     }
+//
+//     pub fn is_null(&self) -> bool {
+//         matches!(self, Self::Undefined { .. })
+//     }
+//
+//     /// 获取字符串
+//     pub fn get_string(&self) -> (Vec<u8>, TypeLink) {
+//         match self {
+//             Self::Str { val, typ, .. } => return (val.to_vec(), typ.clone()),
+//             _ => (vec![], Type::new_char()),
+//         }
+//     }
+//
+//     /// 获取终结符的name
+//     pub fn get_name(&self) -> String {
+//         match self {
+//             Self::Ident { t_str, .. } => t_str.to_string(),
+//             Self::Punct { t_str, .. } => t_str.to_string(),
+//             Self::Keyword { t_str, .. } => t_str.to_string(),
+//             Self::Num { t_str, .. } => t_str.to_string(),
+//             _ => "".to_string(),
+//         }
+//     }
+//
+//     /// 判断终结符的name是相等
+//     pub fn equal(&self, s: &str) -> bool {
+//         match self {
+//             Token::Punct { t_str, .. } => t_str.eq(s),
+//             Token::Keyword { t_str, .. } => t_str.eq(s),
+//             Token::Ident { t_str, .. } => t_str.eq(s),
+//             Token::Num { t_str, .. } => t_str.eq(s),
+//             _ => false,
+//         }
+//     }
+//
+//     /// 是否是KW_TYPENAME中定义的typename
+//     pub fn is_typename(&self) -> bool {
+//         for name in KW_TYPENAME {
+//             if self.equal(name) {
+//                 return true;
+//             }
+//         }
+//         false
+//     }
+// }
+
+/// c类型的种类
+#[derive(Clone, PartialEq, Eq)]
+pub enum TokenKind {
     /// 未定义
     Undefined,
     /// id
-    Ident {
-        /// token 名
-        t_str: String,
-        /// 在解析的字符串内的位置
-        offset: usize,
-        /// 行号
-        line_no: usize,
-    },
+    Ident,
     /// 操作符如： + -
-    Punct {
-        /// token 名
-        t_str: String,
-        /// 在解析的字符串内的位置
-        offset: usize,
-        /// 行号
-        line_no: usize,
-    },
+    Punct,
     /// 关键字
-    Keyword {
-        /// token 名
-        t_str: String,
-        /// 在解析的字符串内的位置
-        offset: usize,
-        /// 行号
-        line_no: usize,
-    },
+    Keyword,
     /// 数字
-    Num {
-        /// 值
-        val: i64,
-        /// TK_NUM浮点值
-        fval: f64,
-        /// 类型
-        typ: TypeLink,
-        /// token 名
-        t_str: String,
-        /// 在解析的字符串内的位置
-        offset: usize,
-        /// 行号
-        line_no: usize,
-    },
+    Num,
     /// 字符串
-    Str {
-        /// 值
-        val: Vec<u8>,
-        /// 类型
-        typ: TypeLink,
-        /// 在解析的字符串内的位置
-        offset: usize,
-        /// 行号
-        line_no: usize,
-    },
+    Str,
     /// 文件终止符，即文件的最后
-    Eof {
-        offset: usize,
-        /// 行号
-        line_no: usize,
-    },
+    Eof,
+}
+
+/// token 文法终结符
+#[derive(Clone)]
+pub struct Token {
+    pub(crate) kind: TokenKind,
+    /// token 名
+    name: String,
+    /// 在解析的字符串内的位置
+    offset: usize,
+    /// 行号
+    line_no: usize,
+    /// 值
+    pub(crate) ival: i64,
+    /// TK_NUM浮点值
+    pub(crate) fval: f64,
+    /// 类型
+    pub(crate) typ: Option<TypeLink>,
+    /// 值
+    pub(crate) val: Vec<u8>,
 }
 
 impl Token {
+    /// 构造undefined
+    pub fn null() -> Self {
+        Token {
+            kind: TokenKind::Undefined,
+            name: "".to_string(),
+            offset: 0,
+            line_no: 0,
+            ival: 0,
+            fval: 0.0,
+            typ: None,
+            val: vec![],
+        }
+    }
+
+    /// 构造方法
+    pub fn new(kind: TokenKind, name: String, offset: usize, line_no: usize) -> Self {
+        let mut token = Token::null();
+        token.kind = kind;
+        token.name = name;
+        token.offset = offset;
+        token.line_no = line_no;
+        token
+    }
+
+    /// 构造num
+    pub fn new_num(
+        name: String,
+        offset: usize,
+        line_no: usize,
+        ival: i64,
+        fval: f64,
+        typ: TypeLink,
+    ) -> Self {
+        let mut token = Token::new(TokenKind::Num, name, offset, line_no);
+        token.ival = ival;
+        token.fval = fval;
+        token.typ = Some(typ);
+        token
+    }
+
+    pub fn new_str(offset: usize, line_no: usize, val: Vec<u8>, typ: TypeLink) -> Self {
+        let mut token = Token::null();
+        token.kind = TokenKind::Str;
+        token.offset = offset;
+        token.line_no = line_no;
+        token.val = val;
+        token.typ = Some(typ);
+        token
+    }
+
+    pub fn new_char_literal(offset: usize, line_no: usize, c: char) -> Self {
+        let mut token = Token::null();
+        token.kind = TokenKind::Num;
+        token.offset = offset;
+        token.line_no = line_no;
+        token.ival = c as i64;
+        token.typ = Some(Type::new_int());
+        token
+    }
+
+    pub fn new_ident(name: String, offset: usize, line_no: usize) -> Self {
+        Token::new(TokenKind::Ident, name, offset, line_no)
+    }
+
+    pub fn new_punct(name: String, offset: usize, line_no: usize) -> Self {
+        Token::new(TokenKind::Punct, name, offset, line_no)
+    }
+
+    pub fn new_eof(offset: usize, line_no: usize) -> Self {
+        Token::new(TokenKind::Eof, "".to_string(), offset, line_no)
+    }
+
     /// 获取token在输入文件中的offset
     pub fn get_offset(&self) -> usize {
-        match self {
-            Self::Ident { offset, .. } => *offset,
-            Self::Punct { offset, .. } => *offset,
-            Self::Keyword { offset, .. } => *offset,
-            Self::Num { offset, .. } => *offset,
-            Self::Str { offset, .. } => *offset,
-            Self::Eof { offset, .. } => *offset,
-            _ => 0,
-        }
+        self.offset
     }
 
     /// 获取token在输入文件中的行号
     pub fn get_line_no(&self) -> usize {
-        match self {
-            Self::Ident { line_no, .. } => *line_no,
-            Self::Punct { line_no, .. } => *line_no,
-            Self::Keyword { line_no, .. } => *line_no,
-            Self::Num { line_no, .. } => *line_no,
-            Self::Str { line_no, .. } => *line_no,
-            Self::Eof { line_no, .. } => *line_no,
-            _ => 0,
-        }
+        self.line_no
     }
 
     /// 是否是eof
     pub fn at_eof(&self) -> bool {
-        matches!(self, Self::Eof { .. })
+        self.kind == TokenKind::Eof
     }
 
     /// 是否是id
     pub fn is_ident(&self) -> bool {
-        matches!(self, Self::Ident { .. })
+        self.kind == TokenKind::Ident
     }
 
     /// 是否是字符串
     pub fn is_string(&self) -> bool {
-        matches!(self, Self::Str { .. })
+        self.kind == TokenKind::Str
     }
 
+    /// 是否是空token
     pub fn is_null(&self) -> bool {
-        matches!(self, Self::Undefined { .. })
+        self.kind == TokenKind::Undefined
+    }
+
+    /// 是否是数字
+    pub fn is_num(&self) -> bool {
+        self.kind == TokenKind::Num
     }
 
     /// 获取字符串
     pub fn get_string(&self) -> (Vec<u8>, TypeLink) {
-        match self {
-            Self::Str { val, typ, .. } => return (val.to_vec(), typ.clone()),
-            _ => (vec![], Type::new_char()),
-        }
+        (self.val.to_vec(), self.typ.as_ref().unwrap().clone())
+    }
+
+    pub fn get_num(&self) -> (i64, f64, TypeLink) {
+        (self.ival, self.fval, self.typ.as_ref().unwrap().clone())
     }
 
     /// 获取终结符的name
-    pub fn get_name(&self) -> String {
-        match self {
-            Self::Ident { t_str, .. } => t_str.to_string(),
-            Self::Punct { t_str, .. } => t_str.to_string(),
-            Self::Keyword { t_str, .. } => t_str.to_string(),
-            Self::Num { t_str, .. } => t_str.to_string(),
-            _ => "".to_string(),
-        }
+    pub fn get_name(&self) -> &String {
+        &self.name
     }
 
     /// 判断终结符的name是相等
     pub fn equal(&self, s: &str) -> bool {
-        match self {
-            Token::Punct { t_str, .. } => t_str.eq(s),
-            Token::Keyword { t_str, .. } => t_str.eq(s),
-            Token::Ident { t_str, .. } => t_str.eq(s),
-            Token::Num { t_str, .. } => t_str.eq(s),
-            _ => false,
-        }
+        self.name.eq(s)
     }
 
     /// 是否是KW_TYPENAME中定义的typename

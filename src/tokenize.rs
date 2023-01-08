@@ -1,6 +1,6 @@
 use crate::ctype::{Type, TypeLink};
 use crate::keywords::KEYWORDS;
-use crate::token::Token;
+use crate::token::{Token, TokenKind};
 use crate::{error_at, read_file, slice_to_string, FILE_NAME, INPUT};
 
 /// 对文件的终结符解析
@@ -81,15 +81,8 @@ pub fn tokenize(path: String, input: String) -> Vec<Token> {
             // 否则下述操作将使第一个Token的地址不在Head中。
             let (val, fval, typ) = read_number(&chars, &mut pos);
             let t_str = slice_to_string(&chars, old_pos, pos);
-            let t = Token::Num {
-                val,
-                t_str,
-                offset: old_pos,
-                line_no,
-                typ,
-                fval,
-            };
-            tokens.push(t);
+            let token = Token::new_num(t_str, old_pos, line_no, val, fval, typ);
+            tokens.push(token);
             continue;
         }
 
@@ -99,13 +92,8 @@ pub fn tokenize(path: String, input: String) -> Vec<Token> {
             val.push('\0' as u8);
             let len = val.len();
             let typ = Type::array_of(Type::new_char(), len as isize);
-            let t = Token::Str {
-                val,
-                typ,
-                offset: old_pos,
-                line_no,
-            };
-            tokens.push(t);
+            let token = Token::new_str(old_pos, line_no, val, typ);
+            tokens.push(token);
             pos += 1; // 跳过"
             continue;
         }
@@ -113,33 +101,16 @@ pub fn tokenize(path: String, input: String) -> Vec<Token> {
         // 解析字符字面量
         if c == '\'' {
             let c = read_char_literal(&chars, &mut pos);
-            tokens.push(Token::Num {
-                val: c as i64,
-                t_str: "".to_string(),
-                offset: old_pos,
-                line_no,
-                typ: Type::new_int(),
-                fval: 0.0,
-            });
+            let token = Token::new_char_literal(old_pos, line_no, c);
+            tokens.push(token);
             continue;
         }
 
         read_ident(&chars, &mut pos);
         if old_pos != pos {
             let t_str = slice_to_string(&chars, old_pos, pos);
-            if KEYWORDS.contains(&&*t_str) {
-                tokens.push(Token::Keyword {
-                    t_str,
-                    offset: old_pos,
-                    line_no,
-                })
-            } else {
-                tokens.push(Token::Ident {
-                    t_str,
-                    offset: old_pos,
-                    line_no,
-                });
-            }
+            let t = Token::new_ident(t_str, old_pos, line_no);
+            tokens.push(t);
             continue;
         }
 
@@ -147,11 +118,8 @@ pub fn tokenize(path: String, input: String) -> Vec<Token> {
         read_punct(&chars, &mut pos);
         if pos != old_pos {
             let t_str = slice_to_string(&chars, old_pos, pos);
-            tokens.push(Token::Punct {
-                t_str,
-                offset: old_pos,
-                line_no,
-            });
+            let t = Token::new_punct(t_str, old_pos, line_no);
+            tokens.push(t);
             continue;
         }
 
@@ -160,13 +128,20 @@ pub fn tokenize(path: String, input: String) -> Vec<Token> {
     }
 
     // 解析结束，增加一个EOF，表示终止符。
-    tokens.push(Token::Eof {
-        offset: pos,
-        line_no,
-    });
+    tokens.push(Token::new_eof(pos, line_no));
 
     // Head无内容，所以直接返回Next
     tokens
+}
+
+// 将所有关键字的终结符，都标记为KEYWORD
+pub fn convert_keywords(tokens: &mut Vec<Token>) {
+    for token in tokens.iter_mut() {
+        let name = token.get_name();
+        if KEYWORDS.contains(&name.as_str()) {
+            token.kind = TokenKind::Keyword;
+        }
+    }
 }
 
 /// 判断chars中pos开头的字符是否与sub字符串匹配

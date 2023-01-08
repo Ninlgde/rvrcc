@@ -80,9 +80,9 @@ impl Type {
     fn new(kind: TypeKind, size: isize, align: isize) -> Self {
         Self {
             kind,
-            name: Token::Undefined,
+            name: Token::null(),
             name_string: "".to_string(),
-            name_pos: Token::Undefined,
+            name_pos: Token::null(),
             size,
             align,
             is_unsigned: false,
@@ -258,7 +258,7 @@ impl Type {
     /// 通过`Token`设置type的`name`和`name_string`
     pub fn set_name(&mut self, token: Token) {
         self.name = token.clone();
-        self.name_string = token.get_name();
+        self.name_string = token.get_name().to_string();
     }
 
     /// 指针和数组类型获取基础类型的size

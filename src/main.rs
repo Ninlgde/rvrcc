@@ -11,8 +11,8 @@
 //! ld链接为可执行文件
 
 use rvrcc::{
-    codegen, find_file, open_file_for_write, parse, parse_args, replace_extn, tokenize_file,
-    write_file, Args, TempFile, TempFileCleaner,
+    codegen, find_file, open_file_for_write, parse, parse_args, preprocess, replace_extn,
+    tokenize_file, write_file, Args, TempFile, TempFileCleaner,
 };
 use std::env;
 use std::path::Path;
@@ -138,6 +138,7 @@ fn main() {
 fn cc1(args: Args) {
     // tokenize 输入文件
     let tokens = tokenize_file(args.base.to_string());
+    let tokens = preprocess(tokens);
     // 将token列表解析成ast
     let mut program = parse(&tokens);
 

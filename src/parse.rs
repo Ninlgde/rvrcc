@@ -342,18 +342,16 @@ impl<'a> Parser<'a> {
 
     /// 在域中找token相关的typedef
     fn find_typedef(&self, token: &Token) -> Option<TypeLink> {
-        match token {
-            Token::Ident { t_str, .. } => {
-                let vs = self.find_var(t_str);
-                if let Some(vs) = vs {
-                    let typedef = &vs.borrow().typedef;
-                    if typedef.is_some() {
-                        let var = typedef.as_ref().unwrap().clone();
-                        return Some(var);
-                    }
+        if token.is_ident() {
+            let name = token.get_name();
+            let vs = self.find_var(name);
+            if let Some(vs) = vs {
+                let typedef = &vs.borrow().typedef;
+                if typedef.is_some() {
+                    let var = typedef.as_ref().unwrap().clone();
+                    return Some(var);
                 }
             }
-            _ => {}
         }
         return None;
     }
@@ -639,7 +637,7 @@ impl<'a> Parser<'a> {
             return typ;
         }
 
-        let mut name = Token::Undefined;
+        let mut name = Token::null();
         let name_pos = token.clone();
         if token.is_ident() {
             name = token.clone();
@@ -2093,7 +2091,7 @@ impl<'a> Parser<'a> {
             }
             i += 1;
             let (_, token) = self.current(); // 重新取,可能被跳过了,
-            let name = token.get_name();
+            let name = token.get_name().to_string();
             self.next(); // 跳过name
 
             // 判断是否存在赋值
@@ -2111,7 +2109,7 @@ impl<'a> Parser<'a> {
         }
 
         if tag.is_some() {
-            let tag_name = tag.unwrap().get_name();
+            let tag_name = tag.unwrap().get_name().to_string();
             self.push_tag_scope(tag_name, typ.clone())
         }
 
@@ -2228,7 +2226,7 @@ impl<'a> Parser<'a> {
         let (_, tag_token) = self.current();
         if tag_token.is_ident() {
             tag = Some(tag_token.clone());
-            name = Some(tag_token.get_name());
+            name = Some(tag_token.get_name().to_string());
             self.next();
         }
 
@@ -2483,63 +2481,55 @@ impl<'a> Parser<'a> {
         }
 
         // ident
-        match token {
-            Token::Ident { t_str, .. } => {
-                // 查找变量
-                let vso = self.find_var(&t_str);
-                self.next();
-                let node;
-                if vso.is_some() {
-                    let vs = vso.unwrap().clone();
-                    let vsb = vs.borrow();
-                    let var = &vsb.var;
-                    let enum_type = &vsb.enum_type;
-                    let enum_val = &vsb.enum_val;
-                    if var.is_some() {
-                        node = Node::new_var(var.as_ref().unwrap().clone(), nt);
-                        return Some(node);
-                    }
-                    if enum_type.is_some() {
-                        node = Node::new_num(*enum_val, nt);
-                        return Some(node);
-                    }
+        if token.is_ident() {
+            let name = token.get_name();
+            // 查找变量
+            let vso = self.find_var(name);
+            self.next();
+            let node;
+            if vso.is_some() {
+                let vs = vso.unwrap().clone();
+                let vsb = vs.borrow();
+                let var = &vsb.var;
+                let enum_type = &vsb.enum_type;
+                let enum_val = &vsb.enum_val;
+                if var.is_some() {
+                    node = Node::new_var(var.as_ref().unwrap().clone(), nt);
+                    return Some(node);
                 }
-                let (_, token) = self.current();
-                if token.equal(")") {
-                    error_token!(token, "implicit declaration of a function")
+                if enum_type.is_some() {
+                    node = Node::new_num(*enum_val, nt);
+                    return Some(node);
                 }
-                error_token!(token, "undefined variable");
-                return None;
             }
-            Token::Str { val, typ, .. } => {
-                let var = self.new_string_literal(vec_u8_into_i8(val.to_vec()), typ.clone());
-                let node = Node::new_var(var, nt);
-                self.next();
-                return Some(node);
+            let (_, token) = self.current();
+            if token.equal(")") {
+                error_token!(token, "implicit declaration of a function")
             }
-            Token::Num {
-                val,
-                fval,
-                typ,
-                t_str: _t_str,
-                offset: _offset,
-                ..
-            } => {
-                let mut node;
-                if typ.borrow().is_float() {
-                    // 浮点数节点
-                    node = Node::new(NodeKind::Num, nt);
-                    node.fval = *fval;
-                } else {
-                    // 整型节点
-                    node = Node::new_num(*val, nt);
-                }
-                // 设置类型为终结符的类型
-                node.typ = Some(typ.clone());
-                self.next();
-                return Some(node);
+            error_token!(token, "undefined variable");
+            return None;
+        } else if token.is_string() {
+            let (val, typ) = token.get_string();
+            let var = self.new_string_literal(vec_u8_into_i8(val.to_vec()), typ.clone());
+            let node = Node::new_var(var, nt);
+            self.next();
+            return Some(node);
+        } else if token.is_num() {
+            let (val, fval, typ) = token.get_num();
+
+            let mut node;
+            if typ.borrow().is_float() {
+                // 浮点数节点
+                node = Node::new(NodeKind::Num, nt);
+                node.fval = fval;
+            } else {
+                // 整型节点
+                node = Node::new_num(val, nt);
             }
-            _ => {}
+            // 设置类型为终结符的类型
+            node.typ = Some(typ.clone());
+            self.next();
+            return Some(node);
         }
 
         let (_, token) = self.current();
