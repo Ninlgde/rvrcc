@@ -1,3 +1,4 @@
+use crate::token::Token;
 use std::fs::File;
 use std::io::{stdout, Read, Write};
 use std::path::Path;
@@ -80,8 +81,9 @@ pub fn find_file(pattern: String) -> String {
     }
 }
 
-/// 获取目录名
-pub fn dirname(path: String) -> String {
+/// 获取绝对目录名
+pub fn dirname_absolute(path: String) -> String {
+    // eprintln!("dirname_absolute : {}", path);
     // 先取自己的绝对路径
     let dir = Path::new(&path);
     let dir = fs::canonicalize(dir).expect("error path");
@@ -91,6 +93,28 @@ pub fn dirname(path: String) -> String {
     let dir = fs::canonicalize(dir).expect("error path");
     let dir = dir.to_str().unwrap();
     dir.to_string()
+}
+
+/// 获取相对目录名
+pub fn dirname_relative(path: String) -> String {
+    // eprintln!("dirname_relative : {}", path);
+    let dir = Path::new(&path).parent().unwrap();
+    if dir.to_str().unwrap().eq("") {
+        // 当前目录
+        return ".".to_string();
+    }
+    let dir = dir.to_str().unwrap();
+    dir.to_string()
+}
+
+/// 获取目录名
+pub fn dirname(path: String) -> String {
+    // eprintln!("dirname : {}", path);
+    return if path.starts_with("/") {
+        dirname_absolute(path)
+    } else {
+        dirname_relative(path)
+    };
 }
 
 /// vec[u8] to vec[i8]
@@ -128,4 +152,23 @@ pub fn vec_i8_into_u8(v: Vec<i8>) -> Vec<u8> {
 
     // finally, adopt the data into a new Vec
     unsafe { Vec::from_raw_parts(p as *mut u8, len, cap) }
+}
+
+/// 当指定-E选项时，打印出所有终结符
+pub fn print_tokens(mut write_file: Box<dyn Write>, tokens: Vec<Token>) {
+    // 记录行数
+    let mut line = 1;
+    // let file = write_file.as_mut();
+    // 遍历读取终结符
+    for token in tokens {
+        // 位于行首打印出换行符
+        if line > 1 && token.at_bol() {
+            write!(write_file, "\n").unwrap();
+        }
+        // 打印出空格和终结符
+        write!(write_file, " {}", token.get_name()).unwrap();
+        line += 1;
+    }
+    // 文件以换行符结尾
+    write!(write_file, "\n").unwrap();
 }

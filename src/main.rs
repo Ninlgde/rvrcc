@@ -11,8 +11,8 @@
 //! ld链接为可执行文件
 
 use rvrcc::{
-    codegen, dirname, find_file, open_file_for_write, parse, parse_args, preprocess, replace_extn,
-    tokenize_file, Args, TempFile, TempFileCleaner,
+    codegen, dirname, find_file, open_file_for_write, parse, parse_args, preprocess, print_tokens,
+    replace_extn, tokenize_file, Args, TempFile, TempFileCleaner,
 };
 use std::env;
 use std::path::Path;
@@ -36,9 +36,12 @@ fn main() {
         exit(0);
     }
 
-    // 当前不能指定-c、-S后，将多个输入文件，输出到一个文件中
-    if args.inputs.len() > 1 && !args.opt_o.eq("") && (args.opt_c || args.opt_cap_s) {
-        panic!("cannot specify '-o' with '-c' or '-S' with multiple files");
+    // 当前不能指定-c、-S、-E后，将多个输入文件，输出到一个文件中
+    if args.inputs.len() > 1
+        && !args.opt_o.eq("")
+        && (args.opt_c || args.opt_s_cap || args.opt_e_cap)
+    {
+        panic!("cannot specify '-o' with '-c', '-S' or '-E' with multiple files");
     }
 
     let mut ld_args = vec![];
@@ -46,7 +49,7 @@ fn main() {
     for input in args.inputs.iter() {
         let output = if !args.opt_o.eq("") {
             args.opt_o.to_string()
-        } else if args.opt_cap_s {
+        } else if args.opt_s_cap {
             // 若未指定输出的汇编文件名，则输出到后缀为.s的同名文件中
             replace_extn(input, ".s")
         } else {
@@ -63,7 +66,7 @@ fn main() {
         // 处理.s文件
         if input.ends_with(".s") {
             // 如果没有指定-S，那么需要进行汇编
-            if !args.opt_cap_s {
+            if !args.opt_s_cap {
                 assemble(
                     input.to_string(),
                     output.to_string(),
@@ -79,7 +82,19 @@ fn main() {
             panic!("unknown file extension: {}", input);
         }
 
-        if args.opt_cap_s {
+        // 只进行解析
+        if args.opt_e_cap {
+            run_cc1(
+                arg_strs.to_vec(),
+                Some(input.to_string()),
+                None,
+                args.opt_hash_hash_hash,
+            );
+            continue;
+        }
+
+        // 如果有-S选项，那么执行调用cc1程序
+        if args.opt_s_cap {
             run_cc1(
                 arg_strs.to_vec(),
                 Some(input.to_string()),
@@ -145,6 +160,14 @@ fn cc1(args: Args) {
 
     // 预处理
     let tokens = preprocess(&mut tokens);
+
+    if args.opt_e_cap {
+        // 打开输出文件
+        let file = open_file_for_write(&args.opt_o);
+        print_tokens(file, tokens);
+        return;
+    }
+
     // 将token列表解析成ast
     let mut program = parse(&tokens);
 

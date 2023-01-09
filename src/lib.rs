@@ -32,6 +32,7 @@ pub use tokenize::tokenize_file;
 pub use utils::dirname;
 pub use utils::find_file;
 pub use utils::open_file_for_write;
+pub use utils::print_tokens;
 pub use utils::replace_extn;
 pub use utils::write_file;
 

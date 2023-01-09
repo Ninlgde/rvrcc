@@ -19,9 +19,11 @@ pub struct Args {
     /// ###选项
     pub opt_hash_hash_hash: bool,
     /// -S选项
-    pub opt_cap_s: bool,
+    pub opt_s_cap: bool,
     /// -c选项
     pub opt_c: bool,
+    /// -E选项
+    pub opt_e_cap: bool,
 }
 
 impl Args {
@@ -34,8 +36,9 @@ impl Args {
             inputs: vec![],
             opt_cc1: false,
             opt_hash_hash_hash: false,
-            opt_cap_s: false,
+            opt_s_cap: false,
             opt_c: false,
+            opt_e_cap: false,
         }
     }
 
@@ -91,7 +94,7 @@ impl Args {
 
             // 解析-S
             if arg.eq("-S") {
-                result.opt_cap_s = true;
+                result.opt_s_cap = true;
                 i += 1;
                 continue;
             }
@@ -99,6 +102,13 @@ impl Args {
             // 解析-c
             if arg.eq("-c") {
                 result.opt_c = true;
+                i += 1;
+                continue;
+            }
+
+            // 解析-E
+            if arg.eq("-E") {
+                result.opt_e_cap = true;
                 i += 1;
                 continue;
             }

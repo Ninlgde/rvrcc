@@ -98,8 +98,13 @@ impl<'a> Preprocessor<'a> {
                     error_token!(token, "expected a filename");
                 }
 
-                let dir = dirname(token.get_file_name());
-                let path = format!("{}/{}", dir, token.get_string_literal());
+                let filename = token.get_string_literal();
+                let path = if filename.starts_with("/") {
+                    filename.to_string()
+                } else {
+                    let dir = dirname(token.get_file_name());
+                    format!("{}/{}", dir, filename)
+                };
                 let include_tokens = tokenize_file(path);
                 if include_tokens.len() == 0 {
                     error_token!(token, "include got error");

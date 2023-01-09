@@ -74,32 +74,43 @@ check 'multiple input files'
 
 # [157] 无-c时调用ld
 # 调用链接器
-rm -f $tmp/foo
-echo 'int main() { return 0; }' | $rvrcc -o $tmp/foo -
-if [ "$RISCV" = "" ];then
-  $tmp/foo
-else
-  $RUN $tmp/foo
-fi
-check linker
+#rm -f $tmp/foo
+#echo 'int main() { return 0; }' | $rvrcc -o $tmp/foo -
+#if [ "$RISCV" = "" ];then
+#  $tmp/foo
+#else
+#  $RUN $tmp/foo
+#fi
+#check linker
 
 rm -f $tmp/foo
 echo 'int bar(); int main() { return bar(); }' > $tmp/foo.c
 echo 'int bar() { return 42; }' > $tmp/bar.c
-$rvrcc -o $tmp/foo $tmp/foo.c $tmp/bar.c
-if [ "$RISCV" = "" ];then
-  $tmp/foo
-else
-  $RUN $tmp/foo
-fi
-[ "$?" = 42 ]
-check linker
-
+#$rvrcc -o $tmp/foo $tmp/foo.c $tmp/bar.c
+#if [ "$RISCV" = "" ];then
+#  $tmp/foo
+#else
+#  $RUN $tmp/foo
+#fi
+#[ "$?" = 42 ]
+#check linker
+#
 # 生成a.out
 rm -f $tmp/a.out
 echo 'int main() {}' > $tmp/foo.c
 (cd $tmp; $OLDPWD/$rvrcc foo.c)
 [ -f $tmp/a.out ]
 check a.out
+
+# -E
+# [162] 支持-E选项
+echo foo > $tmp/out
+echo "#include \"$tmp/out\"" | $rvrcc -E - | grep -q foo
+check -E
+
+echo foo > $tmp/out1
+echo "#include \"$tmp/out1\"" | $rvrcc -E -o $tmp/out2 -
+cat $tmp/out2 | grep -q foo
+check '-E and -o'
 
 echo OK

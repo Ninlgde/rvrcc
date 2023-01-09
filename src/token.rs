@@ -327,6 +327,10 @@ impl Token {
 
     /// 获取终结符的name
     pub fn get_name(&self) -> String {
+        if self.is_string() {
+            // 字面量 转换转义字符
+            return format!("{:?}", self.get_string_literal());
+        }
         let inner = self.inner.borrow();
         inner.name.to_string()
     }
