@@ -215,10 +215,18 @@ impl<'a> Preprocessor<'a> {
     }
 
     /// #if为空时，一直跳过到#endif
+    /// 其中嵌套的#if语句也一起跳过
     fn skip_cond_incl(&mut self) {
         while !self.finished() {
             let (pos, token) = self.current();
             let next = &self.tokens[pos + 1];
+            // 跳过#if语句
+            if token.is_hash() && next.equal("if") {
+                self.next().next().skip_cond_incl();
+                self.next();
+                continue;
+            }
+            // #endif
             if token.is_hash() && next.equal("endif") {
                 return;
             }
