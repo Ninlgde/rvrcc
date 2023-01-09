@@ -111,9 +111,27 @@ impl<'a> Preprocessor<'a> {
                 // 计算常量表达式
                 let val = self.eval_const_expr();
                 // 将Tok压入#if栈中
-                self.push_cond_incl(start);
+                self.push_cond_incl(start, val != 0);
                 // 处理#if后值为假的情况，全部跳过
                 if val == 0 {
+                    self.skip_cond_incl();
+                }
+                continue;
+            }
+
+            // 匹配#else
+            if token.equal("else") {
+                if self.cond_incls.len() == 0
+                    || self.cond_incls.last().unwrap().ctx == CondInclKind::Else
+                {
+                    error_token!(&start, "stray #else");
+                }
+                self.cond_incls.last_mut().unwrap().ctx = CondInclKind::Else;
+                // 走到行首
+                self.next().skip_line();
+
+                // 处理之前有值为真的情况，则#else全部跳过
+                if self.cond_incls.last().unwrap().included {
                     self.skip_cond_incl();
                 }
                 continue;
@@ -209,8 +227,12 @@ impl<'a> Preprocessor<'a> {
     }
 
     /// 压入#if栈中
-    fn push_cond_incl(&mut self, token: Token) {
-        let ci = CondIncl { token };
+    fn push_cond_incl(&mut self, token: Token, included: bool) {
+        let ci = CondIncl {
+            ctx: CondInclKind::Then,
+            token,
+            included,
+        };
         self.cond_incls.push(ci);
     }
 
@@ -222,12 +244,30 @@ impl<'a> Preprocessor<'a> {
             let next = &self.tokens[pos + 1];
             // 跳过#if语句
             if token.is_hash() && next.equal("if") {
-                self.next().next().skip_cond_incl();
-                self.next();
+                self.next().next().skip_cond_incl2();
+                continue;
+            }
+            // #endif
+            if token.is_hash() && (next.equal("else") || next.equal("endif")) {
+                break;
+            }
+            self.next();
+        }
+    }
+
+    /// 跳过#if和#endif
+    fn skip_cond_incl2(&mut self) {
+        while !self.finished() {
+            let (pos, token) = self.current();
+            let next = &self.tokens[pos + 1];
+            // 跳过#if语句
+            if token.is_hash() && next.equal("if") {
+                self.next().next().skip_cond_incl2();
                 continue;
             }
             // #endif
             if token.is_hash() && next.equal("endif") {
+                self.next().next();
                 return;
             }
             self.next();
@@ -235,6 +275,18 @@ impl<'a> Preprocessor<'a> {
     }
 }
 
+#[derive(Clone, PartialEq, Eq)]
+enum CondInclKind {
+    Then,
+    Else,
+}
+
+/// #if可以嵌套，所以使用栈来保存嵌套的#if
 struct CondIncl {
+    /// 类型
+    ctx: CondInclKind,
+    /// 对应的终结符
     token: Token,
+    /// 是否被包含
+    included: bool,
 }
