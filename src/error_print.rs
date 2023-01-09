@@ -1,7 +1,7 @@
 //! 错误打印相关宏
 
 use crate::token::Token;
-use crate::{slice_to_string, FILE_NAME, INPUT};
+use crate::{slice_to_string, INPUT};
 use std::fmt;
 
 /// 根据偏移位置计算出行号和行的起始与结束
@@ -42,23 +42,26 @@ fn find_line_info(chars: &Vec<u8>, s_line_no: usize, offset: usize) -> (usize, u
 
 /// 字符解析出错，并退出程序
 pub fn print_with_error(mut line_no: usize, offset: usize, args: fmt::Arguments) {
-    let input = unsafe { INPUT.to_string().into_bytes() };
-    let file_name = unsafe { FILE_NAME.to_string() };
-    let (n_line_no, line_start, line_end) = find_line_info(&input, line_no, offset);
-    line_no = if line_no == 0 { n_line_no } else { line_no };
+    unsafe {
+        let file = INPUT.as_ref().unwrap().clone();
+        let input = file.borrow().content.to_string().into_bytes();
+        let file_name = file.borrow().name.to_string();
+        let (n_line_no, line_start, line_end) = find_line_info(&input, line_no, offset);
+        line_no = if line_no == 0 { n_line_no } else { line_no };
 
-    let file_lineno = format!("{}:{}: ", file_name, line_no);
-    let line = slice_to_string(&input, line_start, line_end);
-    // 计算错误信息位置，在当前行内的偏移量+前面输出了多少个字符
-    let pos = offset - line_start + file_lineno.len();
+        let file_lineno = format!("{}:{}: ", file_name, line_no);
+        let line = slice_to_string(&input, line_start, line_end);
+        // 计算错误信息位置，在当前行内的偏移量+前面输出了多少个字符
+        let pos = offset - line_start + file_lineno.len();
 
-    // 输出 文件名:错误行
-    print!("{}", file_lineno);
-    // 输出line的行内所有字符（不含换行符）
-    print!("{}\n", line);
-    print!("{:1$}^", "", pos);
-    print!(" {}\n", args);
-    panic!("error at offset: {}", offset);
+        // 输出 文件名:错误行
+        print!("{}", file_lineno);
+        // 输出line的行内所有字符（不含换行符）
+        print!("{}\n", line);
+        print!("{:1$}^", "", pos);
+        print!(" {}\n", args);
+        panic!("error at offset: {}", offset);
+    }
 }
 
 /// Tok解析出错，并退出程序

@@ -27,6 +27,13 @@ $(OBJS): ../rvcc/rvcc.h
 rvrcc:
 	@cargo build --release
 
+# 只使用rvcc进行宏的测试
+test/macro.exe: rvrcc test/macro.c
+	./target/release/rvrcc -c -o test/macro.o test/macro.c
+	$(CC) -static -o $@ test/macro.o -xc test/common
+	$(RUN) ./test/macro.exe
+#	$(RISCV)/bin/riscv64-unknown-linux-gnu-gcc -o $@ test/macro.o -xc test/common
+
 # 测试标签，运行测试
 test/%.exe: rvrcc test/%.c
 	$(CC) -o- -E -P -C test/$*.c | ./target/release/rvrcc -c -o test/$*.o -
@@ -57,6 +64,13 @@ stage2/%.o: rvrcc self.py stage2/%.c
 	./self.py stage2/rvcc.h stage2/$*.c > stage2/$*.c2
 	mv stage2/$*.c2 stage2/$*.c
 	./target/release/rvrcc -c -o stage2/$*.o stage2/$*.c -###
+
+# 只使用stage2的rvcc进行宏的测试
+stage2/test/macro.exe: stage2 test/macro.c
+	mkdir -p stage2/test
+	$(RUN) ./stage2/rvcc -c test/macro.c -cc1 -cc1-input test/macro.c -cc1-output stage2/test/macro.s
+	$(CC) -static -o $@ stage2/test/macro.s -xc test/common
+	$(RUN) ./stage2/test/macro.exe
 
 # 利用stage2的rvcc去进行测试
 stage2/test/%.exe: stage2 test/%.c

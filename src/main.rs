@@ -11,8 +11,8 @@
 //! ld链接为可执行文件
 
 use rvrcc::{
-    codegen, find_file, open_file_for_write, parse, parse_args, preprocess, replace_extn,
-    tokenize_file, write_file, Args, TempFile, TempFileCleaner,
+    codegen, dirname, find_file, open_file_for_write, parse, parse_args, preprocess, replace_extn,
+    tokenize_file, Args, TempFile, TempFileCleaner,
 };
 use std::env;
 use std::path::Path;
@@ -137,15 +137,19 @@ fn main() {
 
 fn cc1(args: Args) {
     // tokenize 输入文件
-    let tokens = tokenize_file(args.base.to_string());
-    let tokens = preprocess(tokens);
+    let mut tokens = tokenize_file(args.base.to_string());
+    // 终结符流生成失败，对应文件报错
+    if tokens.len() == 0 {
+        panic!("{}: got error", args.base)
+    }
+
+    // 预处理
+    let tokens = preprocess(&mut tokens);
     // 将token列表解析成ast
     let mut program = parse(&tokens);
 
     // 打开输出文件
-    let mut file = open_file_for_write(&args.output_file);
-    // 写入文件名
-    write_file(&mut file, format!(".file 1 \"{}\"\n", args.base).as_str());
+    let file = open_file_for_write(&args.output_file);
     // 根据ast,向输出文件中写入相关汇编
     codegen(&mut program, file);
 }
@@ -291,12 +295,7 @@ fn find_gcc_lib_path() -> String {
         RISCV_HOME
     );
     let lib_path = find_file(lib_path_pattern);
-    Path::new(&lib_path)
-        .parent()
-        .unwrap()
-        .to_str()
-        .unwrap()
-        .to_string()
+    dirname(lib_path)
 }
 
 fn file_exists(file: String) -> bool {

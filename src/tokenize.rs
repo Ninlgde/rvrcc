@@ -1,26 +1,37 @@
 use crate::ctype::{Type, TypeLink};
 use crate::keywords::KEYWORDS;
-use crate::token::{Token, TokenKind};
-use crate::{error_at, read_file, slice_to_string, FILE_NAME, INPUT};
+use crate::token::{File, Token};
+use crate::{error_at, read_file, slice_to_string, FileLink, INPUT, INPUTS};
 
+static mut FILE_NO: usize = 0;
 /// 对文件的终结符解析
 pub fn tokenize_file(path: String) -> Vec<Token> {
-    let input = read_file(&path);
+    let content = read_file(&path);
+    if content.eq("") {
+        return Vec::new();
+    }
+    // 文件编号
+    let file_no = unsafe { FILE_NO };
+    // 文件路径，文件编号从1开始，文件内容
+    let file = File::new_link(path, file_no + 1, content);
+    unsafe {
+        INPUTS.push(file.clone());
+        FILE_NO += 1;
+    }
     // tokenize
-    tokenize(path, input)
+    tokenize(file)
 }
 
 /// 终结符解析
-pub fn tokenize(path: String, input: String) -> Vec<Token> {
+pub fn tokenize(input: FileLink) -> Vec<Token> {
     unsafe {
-        FILE_NAME = path.to_string();
-        INPUT = input.to_string();
+        INPUT = Some(input.clone());
     }
 
     let mut tokens: Vec<Token> = vec![];
 
     // 讲输入字符串转为字符vec,方便处理
-    let chars = input.into_bytes();
+    let chars = input.borrow().content.to_string().into_bytes();
     let mut pos = 0;
     let mut line_no = 1usize;
     let mut at_bol = true;
@@ -150,7 +161,7 @@ pub fn convert_keywords(tokens: &mut Vec<Token>) {
     for token in tokens.iter_mut() {
         let name = token.get_name();
         if KEYWORDS.contains(&name.as_str()) {
-            token.kind = TokenKind::Keyword;
+            token.to_keyword();
         }
     }
 }

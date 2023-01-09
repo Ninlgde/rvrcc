@@ -3,7 +3,7 @@
 use crate::ctype::{TypeKind, TypeLink};
 use crate::node::{NodeKind, NodeLink};
 use crate::obj::{Obj, ObjLink};
-use crate::{align_to, error_token, write_file};
+use crate::{align_to, error_token, write_file, INPUTS};
 use std::fmt;
 use std::io::Write;
 
@@ -67,6 +67,11 @@ impl<'a> Generator<'a> {
 
     /// 生成
     pub fn generate(&mut self) {
+        unsafe {
+            for input in INPUTS.iter() {
+                writeln!("  .file {} \"{}\"", input.borrow().no, input.borrow().name);
+            }
+        }
         self.assign_lvar_offsets();
         self.emit_data();
         self.emit_text();
@@ -304,7 +309,8 @@ impl<'a> Generator<'a> {
 
     /// 生成语句
     fn gen_stmt(&mut self, node: &NodeLink) {
-        writeln!("  .loc 1 {}", node.get_token().get_line_no());
+        let token = node.get_token();
+        writeln!("  .loc {} {}", token.get_file_no(), token.get_line_no());
 
         match node.kind {
             // 生成for或while循环语句
@@ -475,7 +481,8 @@ impl<'a> Generator<'a> {
     /// 生成表达式
     fn gen_expr(&mut self, node: &NodeLink) {
         // .loc 文件编号 行号
-        writeln!("  .loc 1 {}", node.get_token().get_line_no());
+        let token = node.get_token();
+        writeln!("  .loc {} {}", token.get_file_no(), token.get_line_no());
 
         match node.kind {
             NodeKind::NullExpr => {

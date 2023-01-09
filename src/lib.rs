@@ -20,6 +20,7 @@ mod utils;
 
 use utils::*;
 
+use crate::token::FileLink;
 pub use args::parse_args;
 pub use args::Args;
 pub use args::TempFile;
@@ -27,15 +28,15 @@ pub use args::TempFileCleaner;
 pub use codegen::codegen;
 pub use parse::parse;
 pub use preprocess::preprocess;
-pub use tokenize::tokenize;
 pub use tokenize::tokenize_file;
+pub use utils::dirname;
 pub use utils::find_file;
 pub use utils::open_file_for_write;
 pub use utils::replace_extn;
 pub use utils::write_file;
 
 /// 输入(stdin or file)
-pub static mut INPUT: String = String::new();
+pub static mut INPUT: Option<FileLink> = None;
 
-/// 输入文件名称
-pub static mut FILE_NAME: String = String::new();
+/// 输入文件列表
+pub static mut INPUTS: Vec<FileLink> = vec![];

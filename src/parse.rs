@@ -344,7 +344,7 @@ impl<'a> Parser<'a> {
     fn find_typedef(&self, token: &Token) -> Option<TypeLink> {
         if token.is_ident() {
             let name = token.get_name();
-            let vs = self.find_var(name);
+            let vs = self.find_var(&name);
             if let Some(vs) = vs {
                 let typedef = &vs.borrow().typedef;
                 if typedef.is_some() {
@@ -2484,7 +2484,7 @@ impl<'a> Parser<'a> {
         if token.is_ident() {
             let name = token.get_name();
             // 查找变量
-            let vso = self.find_var(name);
+            let vso = self.find_var(&name);
             self.next();
             let node;
             if vso.is_some() {

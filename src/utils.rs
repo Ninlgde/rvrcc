@@ -1,6 +1,7 @@
 use std::fs::File;
-use std::io;
 use std::io::{stdout, Read, Write};
+use std::path::Path;
+use std::{fs, io};
 
 /// 从chars中拷贝[start, end)的字符
 pub fn slice_to_string(chars: &Vec<u8>, start: usize, end: usize) -> String {
@@ -28,7 +29,8 @@ pub fn read_file(path: &String) -> String {
             .read_to_string(&mut buffer)
             .expect("Error while reading file");
     } else {
-        let mut file = File::open(path.to_string()).expect("File not found");
+        let mut file =
+            File::open(path.to_string()).expect(format!("Open file ({}) failed", path).as_str());
         // read to file
         file.read_to_string(&mut buffer)
             .expect("Error while reading file");
@@ -76,6 +78,19 @@ pub fn find_file(pattern: String) -> String {
             panic!("Failed to read glob pattern")
         }
     }
+}
+
+/// 获取目录名
+pub fn dirname(path: String) -> String {
+    // 先取自己的绝对路径
+    let dir = Path::new(&path);
+    let dir = fs::canonicalize(dir).expect("error path");
+    let dir = dir.to_str().unwrap();
+    // 再通过自己的绝对路径找到dir的绝对路径
+    let dir = Path::new(dir).parent().unwrap();
+    let dir = fs::canonicalize(dir).expect("error path");
+    let dir = dir.to_str().unwrap();
+    dir.to_string()
 }
 
 /// vec[u8] to vec[i8]
