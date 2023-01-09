@@ -115,7 +115,7 @@ pub fn parse(tokens: &Vec<Token>) -> Vec<ObjLink> {
     parser.parse()
 }
 
-struct Parser<'a> {
+pub(crate) struct Parser<'a> {
     /// 终结符列表
     tokens: &'a Vec<Token>,
     /// 游标
@@ -143,7 +143,7 @@ struct Parser<'a> {
 }
 
 impl<'a> Parser<'a> {
-    fn new(tokens: &'a Vec<Token>) -> Self {
+    pub(crate) fn new(tokens: &'a Vec<Token>) -> Self {
         Self {
             tokens,
             cursor: 0,
@@ -161,7 +161,7 @@ impl<'a> Parser<'a> {
     }
 
     /// 获取当前游标和游标所指的token
-    fn current(&self) -> (usize, &Token) {
+    pub(crate) fn current(&self) -> (usize, &Token) {
         (self.cursor, &self.tokens[self.cursor])
     }
 
@@ -169,6 +169,16 @@ impl<'a> Parser<'a> {
     fn next(&mut self) -> &mut Self {
         self.cursor += 1;
         self
+    }
+
+    /// 获取idx指向的token
+    fn get_token(&self, mut idx: usize) -> &Token {
+        if idx >= self.tokens.len() {
+            // 正常情况下 是不会超出的
+            // 但是在预处理时可能会, 所以超出的一律已eof来作数
+            idx = self.tokens.len() - 1;
+        }
+        &self.tokens[idx]
     }
 
     /// 语法解析入口函数
@@ -699,7 +709,7 @@ impl<'a> Parser<'a> {
     fn func_params(&mut self, typ: TypeLink) -> TypeLink {
         // "void"
         let (pos, token) = self.current();
-        let next = &self.tokens[pos + 1];
+        let next = self.get_token(pos + 1);
         if token.equal(KW_VOID) && next.equal(")") {
             self.next().next();
             return Type::func_type(typ, vec![], false);
@@ -771,7 +781,7 @@ impl<'a> Parser<'a> {
                 break;
             }
             let mut node;
-            if self.is_typename(token) && !self.tokens[pos + 1].equal(":") {
+            if self.is_typename(token) && !self.get_token(pos + 1).equal(":") {
                 let mut attr = Some(VarAttr::new());
                 let base_type = self.declspec(&mut attr);
 
@@ -1473,7 +1483,7 @@ impl<'a> Parser<'a> {
         // "goto" ident ";"
         if token.equal(KW_GOTO) {
             let mut node = Node::new(NodeKind::Goto, nt.clone());
-            let label = self.tokens[pos + 1].get_name().to_string();
+            let label = self.get_token(pos + 1).get_name().to_string();
             let label = LabelInfo::new_goto(label, nt.clone());
             node.label_info = Some(label.clone());
             self.gotos.insert(0, label);
@@ -1508,7 +1518,7 @@ impl<'a> Parser<'a> {
         }
 
         // ident ":" stmt
-        if token.is_ident() && self.tokens[pos + 1].equal(":") {
+        if token.is_ident() && self.get_token(pos + 1).equal(":") {
             let mut node = Node::new(NodeKind::Label, nt.clone());
             let label = nt.get_name().to_string();
             let unique_label = self.new_unique_name();
@@ -1548,7 +1558,7 @@ impl<'a> Parser<'a> {
     }
 
     /// 解析常量表达式
-    fn const_expr(&mut self) -> i64 {
+    pub(crate) fn const_expr(&mut self) -> i64 {
         // 进行常量表达式的构造
         let mut node = self.conditional().unwrap();
 
@@ -1953,7 +1963,7 @@ impl<'a> Parser<'a> {
     /// cast = "(" typeName ")" cast | unary
     fn cast(&mut self) -> Option<NodeLink> {
         let (pos, token) = self.current();
-        let next = &self.tokens[pos + 1];
+        let next = self.get_token(pos + 1);
         if token.equal("(") && self.is_typename(next) {
             let typ = self.next().typename();
             self.skip(")");
@@ -2328,7 +2338,7 @@ impl<'a> Parser<'a> {
         //  "(" typename ")" "{" initializer_list "}"
         let (pos, token) = self.current();
         let start = token.clone();
-        let next = &self.tokens[pos + 1];
+        let next = self.get_token(pos + 1);
         if token.equal("(") && self.is_typename(next) {
             // 复合字面量
             let typ = self.next().typename();
@@ -2427,7 +2437,7 @@ impl<'a> Parser<'a> {
         // "(" "{" stmt+ "}" ")"
         let (pos, token) = self.current();
         let nt = self.tokens[pos].clone();
-        let next = &self.tokens[pos + 1];
+        let next = self.get_token(pos + 1);
         if token.equal("(") && next.equal("{") {
             // This is a GNU statement expresssion.
             self.next().next();
@@ -2445,7 +2455,7 @@ impl<'a> Parser<'a> {
         }
 
         // "sizeof" "(" typename ")"
-        let next_next = &self.tokens[pos + 2];
+        let next_next = self.get_token(pos + 2);
         if token.equal(KW_SIZEOF) && next.equal("(") && self.is_typename(next_next) {
             self.next().next();
             let typ = self.typename();
@@ -2724,7 +2734,7 @@ impl<'a> Parser<'a> {
     /// 判断是否终结符匹配到了结尾
     fn is_end(&mut self) -> bool {
         let (pos, token) = self.current();
-        let next = &self.tokens[pos + 1];
+        let next = self.get_token(pos + 1);
         // "}" | ",}"
         return token.equal("}") || (token.equal(",") && next.equal("}"));
     }
@@ -2740,7 +2750,7 @@ impl<'a> Parser<'a> {
         }
 
         // ",}"
-        let next = &self.tokens[pos + 1];
+        let next = self.get_token(pos + 1);
         if token.equal(",") && next.equal("}") {
             self.next().next();
             return true;

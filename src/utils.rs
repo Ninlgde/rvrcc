@@ -161,6 +161,9 @@ pub fn print_tokens(mut write_file: Box<dyn Write>, tokens: Vec<Token>) {
     // let file = write_file.as_mut();
     // 遍历读取终结符
     for token in tokens {
+        if token.at_eof() {
+            break;
+        }
         // 位于行首打印出换行符
         if line > 1 && token.at_bol() {
             write!(write_file, "\n").unwrap();
