@@ -181,6 +181,8 @@ pub struct Token {
     offset: usize,
     /// 行号
     line_no: usize,
+    /// 终结符在行首（begin of line）时为true
+    pub(crate) at_bol: bool,
     /// 值
     pub(crate) ival: i64,
     /// TK_NUM浮点值
@@ -199,6 +201,7 @@ impl Token {
             name: "".to_string(),
             offset: 0,
             line_no: 0,
+            at_bol: false,
             ival: 0,
             fval: 0.0,
             typ: None,
@@ -207,8 +210,9 @@ impl Token {
     }
 
     /// 构造方法
-    pub fn new(kind: TokenKind, name: String, offset: usize, line_no: usize) -> Self {
+    pub fn new(at_bol: bool, kind: TokenKind, name: String, offset: usize, line_no: usize) -> Self {
         let mut token = Token::null();
+        token.at_bol = at_bol;
         token.kind = kind;
         token.name = name;
         token.offset = offset;
@@ -218,6 +222,7 @@ impl Token {
 
     /// 构造num
     pub fn new_num(
+        at_bol: bool,
         name: String,
         offset: usize,
         line_no: usize,
@@ -225,16 +230,24 @@ impl Token {
         fval: f64,
         typ: TypeLink,
     ) -> Self {
-        let mut token = Token::new(TokenKind::Num, name, offset, line_no);
+        let mut token = Token::new(at_bol, TokenKind::Num, name, offset, line_no);
         token.ival = ival;
         token.fval = fval;
         token.typ = Some(typ);
         token
     }
 
-    pub fn new_str(offset: usize, line_no: usize, val: Vec<u8>, typ: TypeLink) -> Self {
+    /// 构造str
+    pub fn new_str(
+        at_bol: bool,
+        offset: usize,
+        line_no: usize,
+        val: Vec<u8>,
+        typ: TypeLink,
+    ) -> Self {
         let mut token = Token::null();
         token.kind = TokenKind::Str;
+        token.at_bol = at_bol;
         token.offset = offset;
         token.line_no = line_no;
         token.val = val;
@@ -242,9 +255,11 @@ impl Token {
         token
     }
 
-    pub fn new_char_literal(offset: usize, line_no: usize, c: char) -> Self {
+    /// 构造字符字面量
+    pub fn new_char_literal(at_bol: bool, offset: usize, line_no: usize, c: char) -> Self {
         let mut token = Token::null();
         token.kind = TokenKind::Num;
+        token.at_bol = at_bol;
         token.offset = offset;
         token.line_no = line_no;
         token.ival = c as i64;
@@ -252,16 +267,19 @@ impl Token {
         token
     }
 
-    pub fn new_ident(name: String, offset: usize, line_no: usize) -> Self {
-        Token::new(TokenKind::Ident, name, offset, line_no)
+    /// 构造标识符
+    pub fn new_ident(at_bol: bool, name: String, offset: usize, line_no: usize) -> Self {
+        Token::new(at_bol, TokenKind::Ident, name, offset, line_no)
     }
 
-    pub fn new_punct(name: String, offset: usize, line_no: usize) -> Self {
-        Token::new(TokenKind::Punct, name, offset, line_no)
+    /// 构造punct
+    pub fn new_punct(at_bol: bool, name: String, offset: usize, line_no: usize) -> Self {
+        Token::new(at_bol, TokenKind::Punct, name, offset, line_no)
     }
 
-    pub fn new_eof(offset: usize, line_no: usize) -> Self {
-        Token::new(TokenKind::Eof, "".to_string(), offset, line_no)
+    /// 构造eof
+    pub fn new_eof(at_bol: bool, offset: usize, line_no: usize) -> Self {
+        Token::new(at_bol, TokenKind::Eof, "".to_string(), offset, line_no)
     }
 
     /// 获取token在输入文件中的offset
@@ -297,6 +315,11 @@ impl Token {
     /// 是否是数字
     pub fn is_num(&self) -> bool {
         self.kind == TokenKind::Num
+    }
+
+    /// 是否行首是#号
+    pub fn is_hash(&self) -> bool {
+        self.at_bol && self.equal("#")
     }
 
     /// 获取字符串

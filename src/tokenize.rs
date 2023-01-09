@@ -23,6 +23,7 @@ pub fn tokenize(path: String, input: String) -> Vec<Token> {
     let chars = input.into_bytes();
     let mut pos = 0;
     let mut line_no = 1usize;
+    let mut at_bol = true;
 
     while pos < chars.len() {
         // 跳过行注释
@@ -33,7 +34,8 @@ pub fn tokenize(path: String, input: String) -> Vec<Token> {
                 let c = chars[pos] as char;
                 pos += 1;
                 if c == '\n' {
-                    line_no += 1; // 单核注释 行号+1
+                    line_no += 1;
+                    at_bol = true;
                     break;
                 }
             }
@@ -56,6 +58,7 @@ pub fn tokenize(path: String, input: String) -> Vec<Token> {
                 let c = chars[pos] as char;
                 if c == '\n' {
                     line_no += 1;
+                    at_bol = true;
                 }
                 pos += 1;
             }
@@ -65,7 +68,10 @@ pub fn tokenize(path: String, input: String) -> Vec<Token> {
         let c = chars[pos] as char;
         // 统计代码里的回车
         if c == '\n' {
+            pos += 1;
             line_no += 1;
+            at_bol = true;
+            continue;
         }
         let old_pos = pos;
         // 跳过所有空白符如：空格、回车
@@ -81,8 +87,9 @@ pub fn tokenize(path: String, input: String) -> Vec<Token> {
             // 否则下述操作将使第一个Token的地址不在Head中。
             let (val, fval, typ) = read_number(&chars, &mut pos);
             let t_str = slice_to_string(&chars, old_pos, pos);
-            let token = Token::new_num(t_str, old_pos, line_no, val, fval, typ);
+            let token = Token::new_num(at_bol, t_str, old_pos, line_no, val, fval, typ);
             tokens.push(token);
+            at_bol = false;
             continue;
         }
 
@@ -92,8 +99,9 @@ pub fn tokenize(path: String, input: String) -> Vec<Token> {
             val.push('\0' as u8);
             let len = val.len();
             let typ = Type::array_of(Type::new_char(), len as isize);
-            let token = Token::new_str(old_pos, line_no, val, typ);
+            let token = Token::new_str(at_bol, old_pos, line_no, val, typ);
             tokens.push(token);
+            at_bol = false;
             pos += 1; // 跳过"
             continue;
         }
@@ -101,16 +109,18 @@ pub fn tokenize(path: String, input: String) -> Vec<Token> {
         // 解析字符字面量
         if c == '\'' {
             let c = read_char_literal(&chars, &mut pos);
-            let token = Token::new_char_literal(old_pos, line_no, c);
+            let token = Token::new_char_literal(at_bol, old_pos, line_no, c);
             tokens.push(token);
+            at_bol = false;
             continue;
         }
 
         read_ident(&chars, &mut pos);
         if old_pos != pos {
             let t_str = slice_to_string(&chars, old_pos, pos);
-            let t = Token::new_ident(t_str, old_pos, line_no);
+            let t = Token::new_ident(at_bol, t_str, old_pos, line_no);
             tokens.push(t);
+            at_bol = false;
             continue;
         }
 
@@ -118,8 +128,9 @@ pub fn tokenize(path: String, input: String) -> Vec<Token> {
         read_punct(&chars, &mut pos);
         if pos != old_pos {
             let t_str = slice_to_string(&chars, old_pos, pos);
-            let t = Token::new_punct(t_str, old_pos, line_no);
+            let t = Token::new_punct(at_bol, t_str, old_pos, line_no);
             tokens.push(t);
+            at_bol = false;
             continue;
         }
 
@@ -128,7 +139,7 @@ pub fn tokenize(path: String, input: String) -> Vec<Token> {
     }
 
     // 解析结束，增加一个EOF，表示终止符。
-    tokens.push(Token::new_eof(pos, line_no));
+    tokens.push(Token::new_eof(at_bol, pos, line_no));
 
     // Head无内容，所以直接返回Next
     tokens
