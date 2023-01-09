@@ -119,6 +119,26 @@ impl<'a> Preprocessor<'a> {
                 continue;
             }
 
+            // 匹配#elif
+            if token.equal("elif") {
+                if self.cond_incls.len() == 0
+                    || self.cond_incls.last().unwrap().ctx == CondInclKind::Else
+                {
+                    error_token!(&start, "stray #elif");
+                }
+                let last = self.cond_incls.last_mut().unwrap();
+                last.ctx = CondInclKind::Elif;
+
+                if !last.included && self.eval_const_expr() != 0 {
+                    // 处理之前的值都为假且当前#elif为真的情况
+                    self.cond_incls.last_mut().unwrap().included = true;
+                } else {
+                    // 否则其他的情况，全部跳过
+                    self.skip_cond_incl();
+                }
+                continue;
+            }
+
             // 匹配#else
             if token.equal("else") {
                 if self.cond_incls.len() == 0
@@ -248,7 +268,8 @@ impl<'a> Preprocessor<'a> {
                 continue;
             }
             // #endif
-            if token.is_hash() && (next.equal("else") || next.equal("endif")) {
+            if token.is_hash() && (next.equal("elif") || next.equal("else") || next.equal("endif"))
+            {
                 break;
             }
             self.next();
@@ -278,6 +299,7 @@ impl<'a> Preprocessor<'a> {
 #[derive(Clone, PartialEq, Eq)]
 enum CondInclKind {
     Then,
+    Elif,
     Else,
 }
 
