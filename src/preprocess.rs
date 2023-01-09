@@ -2,7 +2,7 @@
 
 use crate::token::Token;
 use crate::tokenize::convert_keywords;
-use crate::{dirname, error_token, tokenize_file};
+use crate::{dirname, error_token, tokenize_file, warn_token};
 
 /// 预处理器入口函数
 pub fn preprocess(tokens: &mut Vec<Token>) -> Vec<Token> {
@@ -63,6 +63,22 @@ impl<'a> Preprocessor<'a> {
         }
     }
 
+    /// 一些预处理器允许#include等指示，在换行前有多余的终结符
+    /// 此函数跳过这些终结符
+    fn skip_line(&mut self) {
+        let token = self.current();
+        if token.at_bol() {
+            return;
+        }
+
+        warn_token!(token, "extra token");
+
+        while !self.current().at_bol() {
+            self.next();
+        }
+    }
+
+    /// 处理
     fn process(&mut self) -> Vec<Token> {
         while !self.finished() {
             let mut token = self.current();
@@ -88,8 +104,10 @@ impl<'a> Preprocessor<'a> {
                 if include_tokens.len() == 0 {
                     error_token!(token, "include got error");
                 }
-
-                self.next().append_tokens(include_tokens);
+                // 处理多余的终结符
+                self.next().skip_line();
+                // 将Tok2接续到Tok->Next的位置
+                self.append_tokens(include_tokens);
                 continue;
             }
 

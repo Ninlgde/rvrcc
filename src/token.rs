@@ -233,6 +233,12 @@ impl Token {
         inner.to_keyword();
     }
 
+    /// 获取文件
+    pub fn get_file(&self) -> Option<FileLink> {
+        let inner = self.inner.borrow();
+        Some(inner.file.as_ref().unwrap().clone())
+    }
+
     /// 获取文件编号
     pub fn get_file_no(&self) -> usize {
         let inner = self.inner.borrow();

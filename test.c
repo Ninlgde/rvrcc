@@ -5,7 +5,7 @@ int strcmp(char *p, char *q);
 int memcmp(char *p, char *q, long n);
 
 // [160] 支持 #include "..."
-#include "test/include1.h"
+#include "test/include1.h"  aaa bbb ccc
 
 // [159] 支持空指示
 #
