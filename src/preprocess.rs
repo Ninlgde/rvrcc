@@ -536,14 +536,20 @@ impl<'a> Preprocessor<'a> {
     fn read_macro_arg_one(&mut self) -> MacroArg {
         let mut tokens = vec![];
 
+        let mut level = 0;
         // 读取实参对应的终结符
         loop {
             let token = self.current_token();
-            if token.equal(",") || token.equal(")") {
+            if level == 0 && (token.equal(",") || token.equal(")")) {
                 break;
             }
             if token.at_bol() {
                 error_token!(token, "premature end of input");
+            }
+            if token.equal("(") {
+                level += 1;
+            } else if token.equal(")") {
+                level -= 1;
             }
             // 将标识符加入到链表中
             tokens.push(Token::form(token));
