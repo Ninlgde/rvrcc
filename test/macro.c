@@ -15,6 +15,9 @@ int memcmp(char *p, char *q, long n);
 // [172] 支持 #define 零参宏函数
 int ret3(void) { return 3; }
 
+// [176] 宏函数中只展开一次
+int dbl(int x) { return x * x; }
+
 int main() {
     printf("[160] 支持 #include \"...\"");
     assert(5, include1, "include1");
@@ -242,6 +245,13 @@ int main() {
 
 #define M8(x, y) x *y
     assert(12, M8((2, 3), 4), "M8((2,3), 4)");
+
+    printf("[176] 宏函数中只展开一次\n");
+#define dbl(x) M10(x) * x
+#define M10(x) dbl(x) + 3
+#define M11(x) dbl(x) + 3
+    assert(10, dbl(2), "dbl(2)");
+    assert(21, M11(3), "M11(2)");
 
     printf("OK\n");
     return 0;

@@ -97,11 +97,16 @@ impl<'a> Preprocessor<'a> {
 
     /// 跳过某个名为`s`的token,如果不是则报错. 功效类似assert
     fn skip(&mut self, s: &str) {
+        self.require(s);
+        self.next();
+    }
+
+    /// 必须是名为`s`的token
+    fn require(&self, s: &str) {
         let (_, token) = self.current();
         if !token.equal(s) {
             error_token!(token, "expect '{}'", s);
         }
-        self.next();
     }
 
     /// 处理
@@ -450,22 +455,17 @@ impl<'a> Preprocessor<'a> {
             return false;
         }
         let macro_ = macro_.unwrap();
+        let macro_name = macro_.get_name();
         // 为宏变量时
         if macro_.is_obj_like() {
             // 展开过一次的宏变量，就加入到隐藏集当中
-            let name = macro_.get_name();
             let token = self.current_token_mut();
-            token.add_hide_set(HideSet::new(name));
+            token.add_hide_set(HideSet::new(macro_name));
 
             // 处理此宏变量之后，传递隐藏集给之后的终结符
             let hs = token.get_hide_set();
             let body = macro_.get_body();
-            let mut rb = vec![];
-            for token in body.iter() {
-                let mut nt = Token::form(token);
-                nt.add_hide_set(hs);
-                rb.push(nt);
-            }
+            let rb = add_hide_set(body, hs);
             self.next().append_tokens(rb);
             return true;
         }
@@ -477,10 +477,23 @@ impl<'a> Preprocessor<'a> {
         }
 
         // 处理宏函数，并连接到Tok之后
-        // 读取宏函数实参
+        // 读取宏函数实参，这里是宏函数的隐藏集
+        let macro_token = self.current_token().clone();
         let args = self.read_macro_args(&macro_.get_params());
-        let tokens = subst(self, macro_.get_body(), args);
-        self.append_tokens(tokens);
+        // 这里返回的是右括号，这里是宏参数的隐藏集
+        let r_paren = self.current_token().clone();
+        // 宏函数间可能具有不同的隐藏集，新的终结符就不知道应该使用哪个隐藏集。
+        // 我们取宏终结符和右括号的交集，并将其用作新的隐藏集。
+        let hs = HideSet::intersection(macro_token.get_hide_set(), r_paren.get_hide_set());
+
+        // 将当前函数名加入隐藏集
+        let hs = HideSet::union(hs, HideSet::new(macro_name.to_string()));
+        // 替换宏函数内的形参为实参
+        let body = subst(self, macro_.get_body(), args);
+        // 为宏函数内部设置隐藏集
+        let body = add_hide_set(body, hs);
+        // 将设置好的宏函数内部连接到终结符链表中
+        self.next().append_tokens(body);
         true
     }
 
@@ -584,9 +597,19 @@ impl<'a> Preprocessor<'a> {
         if args.len() < params.len() {
             error_token!(&start, "too many arguments");
         }
-        self.skip(")");
+        self.require(")");
         args
     }
+}
+
+fn add_hide_set(body: Vec<Token>, hs: *mut HideSet) -> Vec<Token> {
+    let mut rb = vec![];
+    for token in body.iter() {
+        let mut nt = Token::form(token);
+        nt.add_hide_set(hs);
+        rb.push(nt);
+    }
+    rb
 }
 
 /// 遍历查找实参

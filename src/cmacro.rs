@@ -191,6 +191,26 @@ impl HideSet {
         }
     }
 
+    /// 取两个隐藏集的交集
+    pub fn intersection(mut head1: *mut Self, head2: *mut Self) -> *mut Self {
+        unsafe {
+            let new_head = Self::head();
+
+            // 遍历Hs1，如果Hs2也有，那么就加入链表当中
+            while !head1.is_null() {
+                let name = (*head1).name.to_string();
+                if Self::contain(head2, &name) {
+                    let new_node = HideSet::new(name);
+                    (*new_node).next = (*new_head).next;
+                    (*new_head).next = new_node;
+                }
+                head1 = (*head1).next;
+            }
+
+            new_head
+        }
+    }
+
     /// 打印列表
     #[allow(dead_code)]
     pub fn print(mut head: *mut Self, prefix: &str) {
