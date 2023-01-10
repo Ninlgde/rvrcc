@@ -43,6 +43,16 @@ impl<'a> Preprocessor<'a> {
         }
     }
 
+    fn from(processor: &Self, tokens: &'a mut Vec<Token>) -> Self {
+        Self {
+            tokens,
+            cursor: 0,
+            result: vec![],
+            cond_incls: processor.cond_incls.to_vec(),
+            macros: processor.macros.to_vec(),
+        }
+    }
+
     /// 处理
     fn process(&mut self) -> Vec<Token> {
         // 处理宏和指示
@@ -54,6 +64,12 @@ impl<'a> Preprocessor<'a> {
             error_token!(&last.token, "unterminated conditional directive");
         }
 
+        self.result.to_vec()
+    }
+
+    fn process_without_check(&mut self) -> Vec<Token> {
+        // 处理宏和指示
+        self.process0();
         self.result.to_vec()
     }
 
@@ -272,7 +288,10 @@ impl<'a> Preprocessor<'a> {
         let (_, start) = self.current();
         let start = start.clone(); // clone走,否则触发借用error
                                    // 解析#if后的常量表达式
-        let tokens = self.next().copy_line();
+        let mut tokens = self.next().copy_line();
+        // 对于宏变量进行解析
+        let mut processor = Preprocessor::from(self, &mut tokens);
+        let tokens = processor.process_without_check();
         if tokens.len() <= 1 {
             error_token!(&start, "no expression");
         }
@@ -389,6 +408,7 @@ enum CondInclKind {
 }
 
 /// #if可以嵌套，所以使用栈来保存嵌套的#if
+#[derive(Clone)]
 struct CondIncl {
     /// 类型
     ctx: CondInclKind,
