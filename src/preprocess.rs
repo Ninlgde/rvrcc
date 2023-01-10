@@ -95,6 +95,15 @@ impl<'a> Preprocessor<'a> {
         self
     }
 
+    /// 跳过某个名为`s`的token,如果不是则报错. 功效类似assert
+    fn skip(&mut self, s: &str) {
+        let (_, token) = self.current();
+        if !token.equal(s) {
+            error_token!(token, "expect '{}'", s);
+        }
+        self.next();
+    }
+
     /// 处理
     fn process0(&mut self) {
         while !self.finished() {
@@ -140,16 +149,8 @@ impl<'a> Preprocessor<'a> {
 
             // 匹配#define
             if token.equal("define") {
-                let token = self.next().current_token();
-                // 如果匹配到的不是标识符就报错
-                if !token.is_ident() {
-                    error_token!(token, "macro name must be an identifier");
-                }
-                // 获取name 和 本行后的token
-                let name = token.get_name();
-                let body = self.next().copy_line();
-                // 增加宏变量
-                self.add_macro(name.as_str(), body);
+                // 读取宏定义
+                self.next().read_macro_definition();
                 continue;
             }
 
@@ -321,7 +322,7 @@ impl<'a> Preprocessor<'a> {
             self.next();
         }
 
-        result.push(Token::new_eof(false, 0, 0));
+        result.push(Token::new_eof(0, 0));
         result
     }
 
@@ -420,20 +421,20 @@ impl<'a> Preprocessor<'a> {
     }
 
     /// 新增宏变量，压入宏变量栈中
-    fn add_macro(&mut self, name: &str, body: Vec<Token>) {
-        let macro_ = Macro::new(name, body, false);
+    fn add_macro(&mut self, name: &str, is_obj_like: bool, body: Vec<Token>) {
+        let macro_ = Macro::new(name, body, false, is_obj_like);
         self.macros.push(macro_);
     }
 
     /// 压入一个被标记删除的宏变量
     fn add_delete_macro(&mut self, name: &str) {
-        let macro_ = Macro::new(name, vec![], true);
+        let macro_ = Macro::new(name, vec![], true, true);
         self.macros.push(macro_);
     }
 
     /// 如果是宏变量并展开成功，返回真
     fn expand_macro(&mut self) -> bool {
-        let token = self.current_token();
+        let (pos, token) = self.current();
         // 判断是否处于隐藏集之中
         if token.contain_hide_set() {
             return false;
@@ -443,22 +444,59 @@ impl<'a> Preprocessor<'a> {
             return false;
         }
         let macro_ = macro_.unwrap();
-        // 展开过一次的宏变量，就加入到隐藏集当中
-        let name = macro_.get_name();
-        let token = self.current_token_mut();
-        token.add_hide_set(HideSet::new(name));
+        // 为宏变量时
+        if macro_.is_obj_like() {
+            // 展开过一次的宏变量，就加入到隐藏集当中
+            let name = macro_.get_name();
+            let token = self.current_token_mut();
+            token.add_hide_set(HideSet::new(name));
 
-        // 处理此宏变量之后，传递隐藏集给之后的终结符
-        let hs = token.get_hide_set();
-        let body = macro_.get_body();
-        let mut rb = vec![];
-        for token in body.iter() {
-            let mut nt = Token::form(token);
-            nt.add_hide_set(hs);
-            rb.push(nt);
+            // 处理此宏变量之后，传递隐藏集给之后的终结符
+            let hs = token.get_hide_set();
+            let body = macro_.get_body();
+            let mut rb = vec![];
+            for token in body.iter() {
+                let mut nt = Token::form(token);
+                nt.add_hide_set(hs);
+                rb.push(nt);
+            }
+            self.next().append_tokens(rb);
+            return true;
         }
-        self.next().append_tokens(rb);
+
+        // 如果宏函数后面没有参数列表，就处理为正常的标识符
+        let next = &self.tokens[pos + 1];
+        if !next.equal("(") {
+            return false;
+        }
+
+        // 处理宏函数的)"，并连接到Tok之后
+        self.next().next().skip(")");
+        self.append_tokens(macro_.get_body());
         true
+    }
+
+    /// 读取宏定义
+    fn read_macro_definition(&mut self) {
+        let token = self.current_token();
+        // 如果匹配到的不是标识符就报错
+        if !token.is_ident() {
+            error_token!(token, "macro name must be an identifier");
+        }
+        let name = token.get_name();
+        let token = self.next().current_token();
+
+        // 判断是宏变量还是宏函数，括号前没有空格则为宏函数
+        let obj_like = if !token.has_space() && token.equal("(") {
+            // 增加宏函数
+            self.next().skip(")");
+            false
+        } else {
+            // 增加宏变量
+            true
+        };
+        let body = self.copy_line();
+        self.add_macro(&name, obj_like, body);
     }
 }
 

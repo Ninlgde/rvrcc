@@ -36,6 +36,8 @@ pub struct TokenInner {
     file: Option<FileLink>,
     /// 终结符在行首（begin of line）时为true
     at_bol: bool,
+    /// 终结符前是否有空格
+    has_space: bool,
     /// 值
     ival: i64,
     /// TK_NUM浮点值
@@ -63,6 +65,7 @@ impl TokenInner {
             line_no: other.borrow().line_no,
             file: Some(other.borrow().file.as_ref().unwrap().clone()),
             at_bol: other.borrow().at_bol,
+            has_space: other.borrow().has_space,
             ival: other.borrow().ival,
             fval: other.borrow().fval,
             typ,
@@ -80,6 +83,7 @@ impl TokenInner {
             line_no: 0,
             file: Some(unsafe { INPUT.as_ref().unwrap().clone() }),
             at_bol: false,
+            has_space: false,
             ival: 0,
             fval: 0.0,
             typ: None,
@@ -89,8 +93,16 @@ impl TokenInner {
     }
 
     /// 构造方法
-    fn new(kind: TokenKind, at_bol: bool, name: String, offset: usize, line_no: usize) -> Self {
+    fn new(
+        kind: TokenKind,
+        has_space: bool,
+        at_bol: bool,
+        name: String,
+        offset: usize,
+        line_no: usize,
+    ) -> Self {
         let mut token = Self::null();
+        token.has_space = has_space;
         token.at_bol = at_bol;
         token.kind = kind;
         token.name = name;
@@ -102,6 +114,7 @@ impl TokenInner {
 
     /// 构造num
     fn new_num(
+        has_space: bool,
         at_bol: bool,
         name: String,
         offset: usize,
@@ -110,7 +123,7 @@ impl TokenInner {
         fval: f64,
         typ: TypeLink,
     ) -> Self {
-        let mut token = Self::new(TokenKind::Num, at_bol, name, offset, line_no);
+        let mut token = Self::new(TokenKind::Num, has_space, at_bol, name, offset, line_no);
         token.ival = ival;
         token.fval = fval;
         token.typ = Some(typ);
@@ -118,9 +131,17 @@ impl TokenInner {
     }
 
     /// 构造str
-    fn new_str(at_bol: bool, offset: usize, line_no: usize, chars: Vec<u8>, typ: TypeLink) -> Self {
+    fn new_str(
+        has_space: bool,
+        at_bol: bool,
+        offset: usize,
+        line_no: usize,
+        chars: Vec<u8>,
+        typ: TypeLink,
+    ) -> Self {
         let mut token = Self::null();
         token.kind = TokenKind::Str;
+        token.has_space = has_space;
         token.at_bol = at_bol;
         token.offset = offset;
         token.line_no = line_no;
@@ -130,9 +151,16 @@ impl TokenInner {
     }
 
     /// 构造字符字面量
-    fn new_char_literal(at_bol: bool, offset: usize, line_no: usize, c: char) -> Self {
+    fn new_char_literal(
+        has_space: bool,
+        at_bol: bool,
+        offset: usize,
+        line_no: usize,
+        c: char,
+    ) -> Self {
         let mut token = Self::null();
         token.kind = TokenKind::Num;
+        token.has_space = has_space;
         token.at_bol = at_bol;
         token.offset = offset;
         token.line_no = line_no;
@@ -212,15 +240,23 @@ impl Token {
     }
 
     /// 构造方法
-    pub fn new(kind: TokenKind, at_bol: bool, name: String, offset: usize, line_no: usize) -> Self {
+    pub fn new(
+        kind: TokenKind,
+        has_space: bool,
+        at_bol: bool,
+        name: String,
+        offset: usize,
+        line_no: usize,
+    ) -> Self {
         let inner = Rc::new(RefCell::new(TokenInner::new(
-            kind, at_bol, name, offset, line_no,
+            kind, has_space, at_bol, name, offset, line_no,
         )));
         Token { inner }
     }
 
     /// 构造num
     pub fn new_num(
+        has_space: bool,
         at_bol: bool,
         name: String,
         offset: usize,
@@ -230,13 +266,14 @@ impl Token {
         typ: TypeLink,
     ) -> Self {
         let inner = Rc::new(RefCell::new(TokenInner::new_num(
-            at_bol, name, offset, line_no, ival, fval, typ,
+            has_space, at_bol, name, offset, line_no, ival, fval, typ,
         )));
         Token { inner }
     }
 
     /// 构造str
     pub fn new_str(
+        has_space: bool,
         at_bol: bool,
         offset: usize,
         line_no: usize,
@@ -244,32 +281,57 @@ impl Token {
         typ: TypeLink,
     ) -> Self {
         let inner = Rc::new(RefCell::new(TokenInner::new_str(
-            at_bol, offset, line_no, val, typ,
+            has_space, at_bol, offset, line_no, val, typ,
         )));
         Token { inner }
     }
 
     /// 构造字符字面量
-    pub fn new_char_literal(at_bol: bool, offset: usize, line_no: usize, c: char) -> Self {
+    pub fn new_char_literal(
+        has_space: bool,
+        at_bol: bool,
+        offset: usize,
+        line_no: usize,
+        c: char,
+    ) -> Self {
         let inner = Rc::new(RefCell::new(TokenInner::new_char_literal(
-            at_bol, offset, line_no, c,
+            has_space, at_bol, offset, line_no, c,
         )));
         Token { inner }
     }
 
     /// 构造标识符
-    pub fn new_ident(at_bol: bool, name: String, offset: usize, line_no: usize) -> Self {
-        Token::new(TokenKind::Ident, at_bol, name, offset, line_no)
+    pub fn new_ident(
+        has_space: bool,
+        at_bol: bool,
+        name: String,
+        offset: usize,
+        line_no: usize,
+    ) -> Self {
+        Token::new(TokenKind::Ident, has_space, at_bol, name, offset, line_no)
     }
 
     /// 构造punct
-    pub fn new_punct(at_bol: bool, name: String, offset: usize, line_no: usize) -> Self {
-        Token::new(TokenKind::Punct, at_bol, name, offset, line_no)
+    pub fn new_punct(
+        has_space: bool,
+        at_bol: bool,
+        name: String,
+        offset: usize,
+        line_no: usize,
+    ) -> Self {
+        Token::new(TokenKind::Punct, has_space, at_bol, name, offset, line_no)
     }
 
     /// 构造eof
-    pub fn new_eof(at_bol: bool, offset: usize, line_no: usize) -> Self {
-        Token::new(TokenKind::Eof, at_bol, "".to_string(), offset, line_no)
+    pub fn new_eof(offset: usize, line_no: usize) -> Self {
+        Token::new(
+            TokenKind::Eof,
+            false,
+            false,
+            "".to_string(),
+            offset,
+            line_no,
+        )
     }
 
     /// 转化成keyword
@@ -348,6 +410,11 @@ impl Token {
     pub fn is_hash(&self) -> bool {
         let inner = self.inner.borrow();
         inner.at_bol && self.equal("#")
+    }
+
+    pub fn has_space(&self) -> bool {
+        let inner = self.inner.borrow();
+        inner.has_space
     }
 
     /// 获取字符串

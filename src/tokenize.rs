@@ -35,6 +35,7 @@ pub fn tokenize(input: FileLink) -> Vec<Token> {
     let mut pos = 0;
     let mut line_no = 1usize;
     let mut at_bol = true;
+    let mut has_space = false;
 
     while pos < chars.len() {
         // 跳过行注释
@@ -50,6 +51,7 @@ pub fn tokenize(input: FileLink) -> Vec<Token> {
                     break;
                 }
             }
+            has_space = true;
             continue;
         }
 
@@ -73,6 +75,7 @@ pub fn tokenize(input: FileLink) -> Vec<Token> {
                 }
                 pos += 1;
             }
+            has_space = true;
             continue;
         }
 
@@ -82,12 +85,14 @@ pub fn tokenize(input: FileLink) -> Vec<Token> {
             pos += 1;
             line_no += 1;
             at_bol = true;
+            has_space = true;
             continue;
         }
         let old_pos = pos;
         // 跳过所有空白符如：空格、回车
         if c.is_whitespace() {
             pos += 1;
+            has_space = true;
             continue;
         }
 
@@ -97,10 +102,11 @@ pub fn tokenize(input: FileLink) -> Vec<Token> {
             // 我们不使用Head来存储信息，仅用来表示链表入口，这样每次都是存储在Cur->Next
             // 否则下述操作将使第一个Token的地址不在Head中。
             let (val, fval, typ) = read_number(&chars, &mut pos);
-            let t_str = slice_to_string(&chars, old_pos, pos);
-            let token = Token::new_num(at_bol, t_str, old_pos, line_no, val, fval, typ);
+            let name = slice_to_string(&chars, old_pos, pos);
+            let token = Token::new_num(has_space, at_bol, name, old_pos, line_no, val, fval, typ);
             tokens.push(token);
             at_bol = false;
+            has_space = false;
             continue;
         }
 
@@ -110,9 +116,10 @@ pub fn tokenize(input: FileLink) -> Vec<Token> {
             val.push('\0' as u8);
             let len = val.len();
             let typ = Type::array_of(Type::new_char(), len as isize);
-            let token = Token::new_str(at_bol, old_pos, line_no, val, typ);
+            let token = Token::new_str(has_space, at_bol, old_pos, line_no, val, typ);
             tokens.push(token);
             at_bol = false;
+            has_space = false;
             pos += 1; // 跳过"
             continue;
         }
@@ -120,28 +127,31 @@ pub fn tokenize(input: FileLink) -> Vec<Token> {
         // 解析字符字面量
         if c == '\'' {
             let c = read_char_literal(&chars, &mut pos);
-            let token = Token::new_char_literal(at_bol, old_pos, line_no, c);
+            let token = Token::new_char_literal(has_space, at_bol, old_pos, line_no, c);
             tokens.push(token);
             at_bol = false;
+            has_space = false;
             continue;
         }
 
         read_ident(&chars, &mut pos);
         if old_pos != pos {
-            let t_str = slice_to_string(&chars, old_pos, pos);
-            let t = Token::new_ident(at_bol, t_str, old_pos, line_no);
+            let name = slice_to_string(&chars, old_pos, pos);
+            let t = Token::new_ident(has_space, at_bol, name, old_pos, line_no);
             tokens.push(t);
             at_bol = false;
+            has_space = false;
             continue;
         }
 
         // 解析操作符
         read_punct(&chars, &mut pos);
         if pos != old_pos {
-            let t_str = slice_to_string(&chars, old_pos, pos);
-            let t = Token::new_punct(at_bol, t_str, old_pos, line_no);
+            let name = slice_to_string(&chars, old_pos, pos);
+            let t = Token::new_punct(has_space, at_bol, name, old_pos, line_no);
             tokens.push(t);
             at_bol = false;
+            has_space = false;
             continue;
         }
 
@@ -150,7 +160,7 @@ pub fn tokenize(input: FileLink) -> Vec<Token> {
     }
 
     // 解析结束，增加一个EOF，表示终止符。
-    tokens.push(Token::new_eof(at_bol, pos, line_no));
+    tokens.push(Token::new_eof(pos, line_no));
 
     // Head无内容，所以直接返回Next
     tokens

@@ -11,15 +11,18 @@ struct MacroInner {
     body: Vec<Token>,
     /// 是否被删除了
     deleted: bool,
+    /// 宏变量为真，或者宏函数为假
+    is_obj_like: bool,
 }
 
 impl MacroInner {
     /// 构造inner
-    pub fn new(name: &str, body: Vec<Token>, deleted: bool) -> Self {
+    pub fn new(name: &str, body: Vec<Token>, deleted: bool, is_obj_like: bool) -> Self {
         MacroInner {
             name: name.to_string(),
             body,
             deleted,
+            is_obj_like,
         }
     }
 }
@@ -40,9 +43,14 @@ impl Clone for Macro {
 
 impl Macro {
     /// 创建宏
-    pub fn new(name: &str, body: Vec<Token>, deleted: bool) -> Self {
+    pub fn new(name: &str, body: Vec<Token>, deleted: bool, is_obj_like: bool) -> Self {
         Self {
-            inner: Rc::new(RefCell::new(MacroInner::new(name, body, deleted))),
+            inner: Rc::new(RefCell::new(MacroInner::new(
+                name,
+                body,
+                deleted,
+                is_obj_like,
+            ))),
         }
     }
 
@@ -68,6 +76,12 @@ impl Macro {
     pub fn deleted(&self) -> bool {
         let inner = self.inner.borrow();
         inner.deleted
+    }
+
+    /// 是否为宏变量
+    pub fn is_obj_like(&self) -> bool {
+        let inner = self.inner.borrow();
+        inner.is_obj_like
     }
 }
 

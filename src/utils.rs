@@ -168,8 +168,12 @@ pub fn print_tokens(mut write_file: Box<dyn Write>, tokens: Vec<Token>) {
         if line > 1 && token.at_bol() {
             write!(write_file, "\n").unwrap();
         }
-        // 打印出空格和终结符
-        write!(write_file, " {}", token.get_name()).unwrap();
+        // 打印出需要空格的位置
+        if token.has_space() && !token.at_bol() {
+            write!(write_file, " ").unwrap();
+        }
+        // 打印出终结符
+        write!(write_file, "{}", token.get_name()).unwrap();
         line += 1;
     }
     // 文件以换行符结尾
