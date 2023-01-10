@@ -1,6 +1,6 @@
 //! 预处理
 
-use crate::cmacro::{HideSet, Macro};
+use crate::cmacro::{HideSet, Macro, MacroArg, MacroParam};
 use crate::parse::Parser;
 use crate::token::Token;
 use crate::tokenize::convert_keywords;
@@ -421,14 +421,20 @@ impl<'a> Preprocessor<'a> {
     }
 
     /// 新增宏变量，压入宏变量栈中
-    fn add_macro(&mut self, name: &str, is_obj_like: bool, body: Vec<Token>) {
-        let macro_ = Macro::new(name, body, false, is_obj_like);
+    fn add_macro(
+        &mut self,
+        name: &str,
+        is_obj_like: bool,
+        body: Vec<Token>,
+        params: Vec<MacroParam>,
+    ) {
+        let macro_ = Macro::new(name, body, params, false, is_obj_like);
         self.macros.push(macro_);
     }
 
     /// 压入一个被标记删除的宏变量
     fn add_delete_macro(&mut self, name: &str) {
-        let macro_ = Macro::new(name, vec![], true, true);
+        let macro_ = Macro::new(name, vec![], vec![], true, true);
         self.macros.push(macro_);
     }
 
@@ -470,9 +476,11 @@ impl<'a> Preprocessor<'a> {
             return false;
         }
 
-        // 处理宏函数的)"，并连接到Tok之后
-        self.next().next().skip(")");
-        self.append_tokens(macro_.get_body());
+        // 处理宏函数，并连接到Tok之后
+        // 读取宏函数实参
+        let args = self.read_macro_args(&macro_.get_params());
+        let tokens = subst(self, macro_.get_body(), args);
+        self.append_tokens(tokens);
         true
     }
 
@@ -487,17 +495,127 @@ impl<'a> Preprocessor<'a> {
         let token = self.next().current_token();
 
         // 判断是宏变量还是宏函数，括号前没有空格则为宏函数
-        let obj_like = if !token.has_space() && token.equal("(") {
+        if !token.has_space() && token.equal("(") {
+            // 构造形参
+            let params = self.next().read_macro_params();
+            let body = self.copy_line();
             // 增加宏函数
-            self.next().skip(")");
-            false
+            self.add_macro(&name, false, body, params);
         } else {
             // 增加宏变量
-            true
+            let body = self.copy_line();
+            self.add_macro(&name, true, body, vec![]);
         };
-        let body = self.copy_line();
-        self.add_macro(&name, obj_like, body);
     }
+
+    /// 读取宏形参
+    fn read_macro_params(&mut self) -> Vec<MacroParam> {
+        let mut params = vec![];
+
+        while !self.current_token().equal(")") {
+            if params.len() > 0 {
+                self.skip(",");
+            }
+            let token = self.current_token();
+            // 如果不是标识符报错
+            if !token.is_ident() {
+                error_token!(token, "expected an identifier");
+            }
+            // 创建macro param
+            let param = MacroParam {
+                name: token.get_name(),
+            };
+            params.push(param);
+            self.next();
+        }
+        self.next();
+        params
+    }
+
+    /// 读取单个宏实参
+    fn read_macro_arg_one(&mut self) -> MacroArg {
+        let mut tokens = vec![];
+
+        // 读取实参对应的终结符
+        loop {
+            let token = self.current_token();
+            if token.equal(",") || token.equal(")") {
+                break;
+            }
+            if token.at_bol() {
+                error_token!(token, "premature end of input");
+            }
+            // 将标识符加入到链表中
+            tokens.push(Token::form(token));
+            self.next();
+        }
+        // 加入EOF终结
+        tokens.push(Token::new_eof(0, 0));
+
+        MacroArg {
+            name: "".to_string(),
+            tokens,
+        }
+    }
+
+    fn read_macro_args(&mut self, params: &Vec<MacroParam>) -> Vec<MacroArg> {
+        let start = self.current_token().clone();
+        self.next().next();
+
+        let mut args = vec![];
+        // 遍历形参，然后对应着加入到实参链表中
+        for param in params.iter() {
+            if args.len() > 0 {
+                self.skip(",");
+            }
+            // 读取单个实参
+            let mut arg = self.read_macro_arg_one();
+            // 设置为对应的形参名称
+            arg.name = param.name.to_string();
+            args.push(arg);
+        }
+
+        if args.len() < params.len() {
+            error_token!(&start, "too many arguments");
+        }
+        self.skip(")");
+        args
+    }
+}
+
+/// 遍历查找实参
+fn find_arg(args: &Vec<MacroArg>, token: &Token) -> Option<MacroArg> {
+    for arg in args.iter() {
+        if token.equal(arg.name.as_str()) {
+            return Some(arg.clone());
+        }
+    }
+    None
+}
+
+/// 将宏函数形参替换为指定的实参
+fn subst(processor: &Preprocessor, body: Vec<Token>, args: Vec<MacroArg>) -> Vec<Token> {
+    let mut tokens = vec![];
+
+    // 遍历将形参替换为实参的终结符链表
+    for token in body.iter() {
+        // 查找实参
+        let arg = find_arg(&args, token);
+        if arg.is_some() {
+            let arg = arg.unwrap();
+            let mut arg_tokens = arg.tokens.to_vec();
+            let mut processor = Preprocessor::from(processor, &mut arg_tokens);
+            let pts = processor.process_without_check();
+            for pt in pts.iter() {
+                tokens.push(Token::form(pt));
+            }
+            continue;
+        }
+        // 处理非宏的终结符
+        tokens.push(Token::form(token));
+    }
+
+    tokens
 }
 
 #[derive(Clone, PartialEq, Eq)]

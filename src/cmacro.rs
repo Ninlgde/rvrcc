@@ -3,12 +3,29 @@ use std::cell::RefCell;
 use std::ptr;
 use std::rc::Rc;
 
+/// 宏函数形参
+#[derive(Clone)]
+pub struct MacroParam {
+    /// 名称
+    pub(crate) name: String,
+}
+
+#[derive(Clone)]
+pub struct MacroArg {
+    /// 名称
+    pub(crate) name: String,
+    /// 对应的终结符链表
+    pub(crate) tokens: Vec<Token>,
+}
+
 /// 定义的宏变量
 struct MacroInner {
     /// 名称
     name: String,
     /// 对应的终结符
     body: Vec<Token>,
+    /// 宏函数参数
+    params: Vec<MacroParam>,
     /// 是否被删除了
     deleted: bool,
     /// 宏变量为真，或者宏函数为假
@@ -17,10 +34,17 @@ struct MacroInner {
 
 impl MacroInner {
     /// 构造inner
-    pub fn new(name: &str, body: Vec<Token>, deleted: bool, is_obj_like: bool) -> Self {
+    pub fn new(
+        name: &str,
+        body: Vec<Token>,
+        params: Vec<MacroParam>,
+        deleted: bool,
+        is_obj_like: bool,
+    ) -> Self {
         MacroInner {
             name: name.to_string(),
             body,
+            params,
             deleted,
             is_obj_like,
         }
@@ -43,11 +67,18 @@ impl Clone for Macro {
 
 impl Macro {
     /// 创建宏
-    pub fn new(name: &str, body: Vec<Token>, deleted: bool, is_obj_like: bool) -> Self {
+    pub fn new(
+        name: &str,
+        body: Vec<Token>,
+        params: Vec<MacroParam>,
+        deleted: bool,
+        is_obj_like: bool,
+    ) -> Self {
         Self {
             inner: Rc::new(RefCell::new(MacroInner::new(
                 name,
                 body,
+                params,
                 deleted,
                 is_obj_like,
             ))),
@@ -70,6 +101,12 @@ impl Macro {
     pub fn get_body(&self) -> Vec<Token> {
         let inner = self.inner.borrow();
         inner.body.to_vec()
+    }
+
+    /// 宏函数参数
+    pub fn get_params(&self) -> Vec<MacroParam> {
+        let inner = self.inner.borrow();
+        inner.params.to_vec()
     }
 
     /// 是否被标记删除
