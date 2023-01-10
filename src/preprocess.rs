@@ -4,6 +4,8 @@ use crate::parse::Parser;
 use crate::token::Token;
 use crate::tokenize::convert_keywords;
 use crate::{dirname, error_token, tokenize_file, warn_token};
+use std::cell::RefCell;
+use std::rc::Rc;
 
 /// 预处理器入口函数
 pub fn preprocess(tokens: &mut Vec<Token>) -> Vec<Token> {
@@ -25,6 +27,8 @@ struct Preprocessor<'a> {
     result: Vec<Token>,
     /// 全局的#if保存栈
     cond_incls: Vec<CondIncl>,
+    /// 宏变量栈
+    macros: Vec<Macro>,
 }
 
 impl<'a> Preprocessor<'a> {
@@ -35,6 +39,7 @@ impl<'a> Preprocessor<'a> {
             cursor: 0,
             result: vec![],
             cond_incls: vec![],
+            macros: vec![],
         }
     }
 
@@ -71,6 +76,11 @@ impl<'a> Preprocessor<'a> {
     /// 处理
     fn process0(&mut self) {
         while !self.finished() {
+            // 如果是个宏变量，那么就展开
+            if self.expand_macro() {
+                continue;
+            }
+
             let token = self.current_token();
             if !token.is_hash() {
                 // 如果不是#号开头则添加
@@ -103,6 +113,21 @@ impl<'a> Preprocessor<'a> {
                 self.next().skip_line();
                 // 将Tok2接续到Tok->Next的位置
                 self.append_tokens(include_tokens);
+                continue;
+            }
+
+            // 匹配#define
+            if token.equal("define") {
+                let token = self.next().current_token();
+                // 如果匹配到的不是标识符就报错
+                if !token.is_ident() {
+                    error_token!(token, "macro name must be an identifier");
+                }
+                // 获取name 和 本行后的token
+                let name = token.get_name();
+                let body = self.next().copy_line();
+                // 增加宏变量
+                self.add_macro(name.as_str(), body);
                 continue;
             }
 
@@ -294,6 +319,40 @@ impl<'a> Preprocessor<'a> {
             self.next();
         }
     }
+
+    /// 通过token查找宏
+    fn find_macro(&self, token: &Token) -> Option<Macro> {
+        if !token.is_ident() {
+            return None;
+        }
+
+        let name = token.get_name();
+        // 栈需要倒序查找,越top越优先
+        for macro_ in self.macros.iter().rev() {
+            if macro_.eq(name.as_str()) {
+                return Some(macro_.clone());
+            }
+        }
+        None
+    }
+
+    /// 新增宏变量，压入宏变量栈中
+    fn add_macro(&mut self, name: &str, body: Vec<Token>) {
+        let macro_ = Macro::new(name, body);
+        self.macros.push(macro_);
+    }
+
+    /// 如果是宏变量就展开，返回真
+    /// 否则返回空和假
+    fn expand_macro(&mut self) -> bool {
+        let token = self.current_token();
+        let macro_ = self.find_macro(token);
+        if macro_.is_none() {
+            return false;
+        }
+        self.next().append_tokens(macro_.unwrap().get_body());
+        true
+    }
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -311,4 +370,50 @@ struct CondIncl {
     token: Token,
     /// 是否被包含
     included: bool,
+}
+
+/// 定义的宏变量
+struct MacroInner {
+    /// 名称
+    name: String,
+    /// 对应的终结符
+    body: Vec<Token>,
+}
+
+/// 定义的宏变量
+struct Macro {
+    inner: Rc<RefCell<MacroInner>>,
+}
+
+/// 实现clone
+impl Clone for Macro {
+    fn clone(&self) -> Self {
+        Macro {
+            inner: self.inner.clone(),
+        }
+    }
+}
+
+impl Macro {
+    /// 创建宏
+    fn new(name: &str, body: Vec<Token>) -> Self {
+        Self {
+            inner: Rc::new(RefCell::new(MacroInner {
+                name: name.to_string(),
+                body,
+            })),
+        }
+    }
+
+    /// 是否相等
+    fn eq(&self, name: &str) -> bool {
+        let inner = self.inner.borrow();
+        inner.name.eq(name)
+    }
+
+    /// 获取宏内容
+    fn get_body(&self) -> Vec<Token> {
+        let inner = self.inner.borrow();
+        inner.body.to_vec()
+    }
 }

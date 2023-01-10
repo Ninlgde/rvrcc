@@ -41,13 +41,13 @@ pub struct TokenInner {
     fval: f64,
     /// 类型
     typ: Option<TypeLink>,
-    /// 值
-    val: Vec<u8>,
+    /// 字符串字面量
+    chars: Vec<u8>,
 }
 
 impl TokenInner {
     /// 构造undefined
-    pub fn null() -> Self {
+    fn null() -> Self {
         TokenInner {
             kind: TokenKind::Undefined,
             name: "".to_string(),
@@ -58,12 +58,12 @@ impl TokenInner {
             ival: 0,
             fval: 0.0,
             typ: None,
-            val: vec![],
+            chars: vec![],
         }
     }
 
     /// 构造方法
-    pub fn new(kind: TokenKind, at_bol: bool, name: String, offset: usize, line_no: usize) -> Self {
+    fn new(kind: TokenKind, at_bol: bool, name: String, offset: usize, line_no: usize) -> Self {
         let mut token = Self::null();
         token.at_bol = at_bol;
         token.kind = kind;
@@ -75,7 +75,7 @@ impl TokenInner {
     }
 
     /// 构造num
-    pub fn new_num(
+    fn new_num(
         at_bol: bool,
         name: String,
         offset: usize,
@@ -92,25 +92,19 @@ impl TokenInner {
     }
 
     /// 构造str
-    pub fn new_str(
-        at_bol: bool,
-        offset: usize,
-        line_no: usize,
-        val: Vec<u8>,
-        typ: TypeLink,
-    ) -> Self {
+    fn new_str(at_bol: bool, offset: usize, line_no: usize, chars: Vec<u8>, typ: TypeLink) -> Self {
         let mut token = Self::null();
         token.kind = TokenKind::Str;
         token.at_bol = at_bol;
         token.offset = offset;
         token.line_no = line_no;
-        token.val = val;
+        token.chars = chars;
         token.typ = Some(typ);
         token
     }
 
     /// 构造字符字面量
-    pub fn new_char_literal(at_bol: bool, offset: usize, line_no: usize, c: char) -> Self {
+    fn new_char_literal(at_bol: bool, offset: usize, line_no: usize, c: char) -> Self {
         let mut token = Self::null();
         token.kind = TokenKind::Num;
         token.at_bol = at_bol;
@@ -122,24 +116,24 @@ impl TokenInner {
     }
 
     /// 转化成keyword
-    pub fn to_keyword(&mut self) {
+    fn to_keyword(&mut self) {
         self.kind = TokenKind::Keyword
     }
 
     /// 获取文件编号
-    pub fn get_file_no(&self) -> usize {
+    fn get_file_no(&self) -> usize {
         self.file.as_ref().unwrap().borrow().no
     }
 
     /// 获取文件名
-    pub fn get_file_name(&self) -> String {
+    fn get_file_name(&self) -> String {
         self.file.as_ref().unwrap().borrow().name.to_string()
     }
 
     /// 获取字符串字面量
-    pub fn get_string_literal(&self) -> String {
+    fn get_string_literal(&self) -> String {
         // 最后添加了\0 所以在转换rust string的时候要忽略掉
-        String::from_utf8_lossy(&self.val[0..self.val.len() - 1]).to_string()
+        String::from_utf8_lossy(&self.chars[0..self.chars.len() - 1]).to_string()
     }
 }
 
@@ -308,7 +302,7 @@ impl Token {
     /// 获取字符串
     pub fn get_string(&self) -> (Vec<u8>, TypeLink) {
         let inner = self.inner.borrow();
-        (inner.val.to_vec(), inner.typ.as_ref().unwrap().clone())
+        (inner.chars.to_vec(), inner.typ.as_ref().unwrap().clone())
     }
 
     /// 获取字符串字面量
