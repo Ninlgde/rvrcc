@@ -182,6 +182,42 @@ impl<'a> Preprocessor<'a> {
                 continue;
             }
 
+            // 匹配#ifdef
+            if token.equal("ifdef") {
+                let t = self.current_token().clone();
+                // 查找宏变量
+                self.next();
+                let next = self.current_token();
+                let defined = self.find_macro(next);
+                // 压入#if栈
+                self.push_cond_incl(t, defined.is_some());
+                // 跳到行首
+                self.next().skip_line();
+                // 如果没被定义，那么应该跳过这个部分
+                if defined.is_none() {
+                    self.skip_cond_incl();
+                }
+                continue;
+            }
+
+            // 匹配#ifndef
+            if token.equal("ifndef") {
+                let t = self.current_token().clone();
+                // 查找宏变量
+                self.next();
+                let next = self.current_token();
+                let defined = self.find_macro(next);
+                // 压入#if栈，此时不存在时则设为真
+                self.push_cond_incl(t, defined.is_none());
+                // 跳到行首
+                self.next().skip_line();
+                // 如果被定义了，那么应该跳过这个部分
+                if defined.is_some() {
+                    self.skip_cond_incl();
+                }
+                continue;
+            }
+
             // 匹配#elif
             if token.equal("elif") {
                 if self.cond_incls.len() == 0
@@ -329,7 +365,8 @@ impl<'a> Preprocessor<'a> {
             let (pos, token) = self.current();
             let next = &self.tokens[pos + 1];
             // 跳过#if语句
-            if token.is_hash() && next.equal("if") {
+            if token.is_hash() && (next.equal("if") || next.equal("ifdef") || next.equal("ifndef"))
+            {
                 self.next().next().skip_cond_incl2();
                 continue;
             }
@@ -348,7 +385,8 @@ impl<'a> Preprocessor<'a> {
             let (pos, token) = self.current();
             let next = &self.tokens[pos + 1];
             // 跳过#if语句
-            if token.is_hash() && next.equal("if") {
+            if token.is_hash() && (next.equal("if") || next.equal("ifdef") || next.equal("ifndef"))
+            {
                 self.next().next().skip_cond_incl2();
                 continue;
             }
