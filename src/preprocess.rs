@@ -131,6 +131,22 @@ impl<'a> Preprocessor<'a> {
                 continue;
             }
 
+            // 匹配#undef
+            if token.equal("undef") {
+                let token = self.next().current_token();
+                // 如果匹配到的不是标识符就报错
+                if !token.is_ident() {
+                    error_token!(token, "macro name must be an identifier");
+                }
+                // 获取name
+                let name = token.get_name();
+                // 跳到行首
+                self.next().skip_line();
+                // 压入一个被标记删除的宏变量
+                self.add_delete_macro(name.as_str());
+                continue;
+            }
+
             // 匹配#if
             if token.equal("if") {
                 // 计算常量表达式
@@ -329,7 +345,11 @@ impl<'a> Preprocessor<'a> {
         let name = token.get_name();
         // 栈需要倒序查找,越top越优先
         for macro_ in self.macros.iter().rev() {
+            // 相等且未被标记删除,才返回
             if macro_.eq(name.as_str()) {
+                if macro_.deleted() {
+                    return None;
+                }
                 return Some(macro_.clone());
             }
         }
@@ -338,7 +358,13 @@ impl<'a> Preprocessor<'a> {
 
     /// 新增宏变量，压入宏变量栈中
     fn add_macro(&mut self, name: &str, body: Vec<Token>) {
-        let macro_ = Macro::new(name, body);
+        let macro_ = Macro::new(name, body, false);
+        self.macros.push(macro_);
+    }
+
+    /// 压入一个被标记删除的宏变量
+    fn add_delete_macro(&mut self, name: &str) {
+        let macro_ = Macro::new(name, vec![], true);
         self.macros.push(macro_);
     }
 
@@ -378,6 +404,8 @@ struct MacroInner {
     name: String,
     /// 对应的终结符
     body: Vec<Token>,
+    /// 是否被删除了
+    deleted: bool,
 }
 
 /// 定义的宏变量
@@ -396,11 +424,12 @@ impl Clone for Macro {
 
 impl Macro {
     /// 创建宏
-    fn new(name: &str, body: Vec<Token>) -> Self {
+    fn new(name: &str, body: Vec<Token>, deleted: bool) -> Self {
         Self {
             inner: Rc::new(RefCell::new(MacroInner {
                 name: name.to_string(),
                 body,
+                deleted,
             })),
         }
     }
@@ -415,5 +444,11 @@ impl Macro {
     fn get_body(&self) -> Vec<Token> {
         let inner = self.inner.borrow();
         inner.body.to_vec()
+    }
+
+    /// 是否被标记删除
+    fn deleted(&self) -> bool {
+        let inner = self.inner.borrow();
+        inner.deleted
     }
 }
