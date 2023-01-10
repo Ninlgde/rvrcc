@@ -2,8 +2,8 @@
 
 use crate::cmacro::{HideSet, Macro, MacroArg, MacroParam};
 use crate::parse::Parser;
-use crate::token::Token;
-use crate::tokenize::convert_keywords;
+use crate::token::{File, Token};
+use crate::tokenize::{convert_keywords, tokenize};
 use crate::{dirname, error_token, tokenize_file, warn_token};
 
 /// 预处理器入口函数
@@ -627,7 +627,21 @@ fn subst(processor: &Preprocessor, body: Vec<Token>, args: Vec<MacroArg>) -> Vec
     let mut tokens = vec![];
 
     // 遍历将形参替换为实参的终结符链表
-    for token in body.iter() {
+    let mut i = 0;
+    while i < body.len() {
+        let token = &body[i];
+        // #宏实参 会被替换为相应的字符串
+        if token.equal("#") {
+            let hash = &body[i + 1];
+            let arg = find_arg(&args, hash);
+            if arg.is_none() {
+                error_token!(token, "'#' is not followed by a macro parameter");
+            }
+            tokens.push(stringize(token, &arg.as_ref().unwrap().tokens));
+            i += 2;
+            continue;
+        }
+
         // 查找实参
         let arg = find_arg(&args, token);
         if arg.is_some() {
@@ -638,13 +652,45 @@ fn subst(processor: &Preprocessor, body: Vec<Token>, args: Vec<MacroArg>) -> Vec
             for pt in pts.iter() {
                 tokens.push(Token::form(pt));
             }
+            i += 1;
             continue;
         }
         // 处理非宏的终结符
         tokens.push(Token::form(token));
+        i += 1;
     }
 
     tokens
+}
+
+/// 将终结符链表中的所有终结符都连接起来，然后返回一个新的字符串
+pub fn join_tokens(tokens: &Vec<Token>) -> String {
+    let mut buf = String::new();
+    for token in tokens.iter() {
+        if buf.len() != 0 && token.has_space() {
+            buf.push_str(" ");
+        }
+        buf.push_str(token.get_name().as_str());
+    }
+
+    buf
+}
+
+/// 将所有实参中的终结符连接起来，然后返回一个字符串的终结符
+pub fn stringize(hash: &Token, tokens: &Vec<Token>) -> Token {
+    // 创建一个字符串的终结符
+    let string = join_tokens(tokens);
+    // 我们需要一个位置用来报错，所以使用了宏的名字
+    new_str_token(string, hash)
+}
+
+/// 构建一个新的字符串的终结符
+pub fn new_str_token(s: String, tmpl: &Token) -> Token {
+    // 将字符串加上双引号
+    let buf = format!("{:?}", s);
+    // 将字符串和相应的宏名称传入词法分析，去进行解析
+    let file = File::new_link(tmpl.get_file_name(), tmpl.get_file_no(), buf);
+    tokenize(file)[0].clone()
 }
 
 #[derive(Clone, PartialEq, Eq)]
