@@ -1,3 +1,4 @@
+use crate::cmacro::HideSet;
 use crate::ctype::{Type, TypeLink};
 use crate::keywords::KW_TYPENAME;
 use crate::INPUT;
@@ -43,9 +44,33 @@ pub struct TokenInner {
     typ: Option<TypeLink>,
     /// 字符串字面量
     chars: Vec<u8>,
+    /// 数字
+    hide_set: *mut HideSet,
 }
 
 impl TokenInner {
+    /// copy from other token
+    pub fn form(other: &Rc<RefCell<TokenInner>>) -> Self {
+        let typ = if other.borrow().typ.is_some() {
+            Some(other.borrow().typ.as_ref().unwrap().clone())
+        } else {
+            None
+        };
+        TokenInner {
+            kind: other.borrow().kind.clone(),
+            name: other.borrow().name.clone(),
+            offset: other.borrow().offset,
+            line_no: other.borrow().line_no,
+            file: Some(other.borrow().file.as_ref().unwrap().clone()),
+            at_bol: other.borrow().at_bol,
+            ival: other.borrow().ival,
+            fval: other.borrow().fval,
+            typ,
+            chars: other.borrow().chars.clone(),
+            hide_set: other.borrow().hide_set,
+        }
+    }
+
     /// 构造undefined
     fn null() -> Self {
         TokenInner {
@@ -59,6 +84,7 @@ impl TokenInner {
             fval: 0.0,
             typ: None,
             chars: vec![],
+            hide_set: HideSet::head(),
         }
     }
 
@@ -135,6 +161,23 @@ impl TokenInner {
         // 最后添加了\0 所以在转换rust string的时候要忽略掉
         String::from_utf8_lossy(&self.chars[0..self.chars.len() - 1]).to_string()
     }
+
+    /// 获取隐藏集
+    /// 不带头指针
+    fn get_hide_set(&self) -> *mut HideSet {
+        unsafe { (*self.hide_set).next }
+    }
+
+    /// 遍历Tok之后的所有终结符，将隐藏集Hs都赋给每个终结符
+    fn add_hide_set(&mut self, new_head: *mut HideSet) {
+        self.hide_set = HideSet::union(self.get_hide_set(), new_head);
+    }
+
+    /// 判断是否处于隐藏集之中
+    fn contain_hide_set(&self) -> bool {
+        let head = self.get_hide_set();
+        HideSet::contain(head, &self.name)
+    }
 }
 
 /// token 文法终结符
@@ -154,6 +197,14 @@ impl Clone for Token {
 }
 
 impl Token {
+    /// copy from other token
+    pub fn form(other: &Self) -> Self {
+        let token = other.inner.clone();
+        Token {
+            inner: Rc::new(RefCell::new(TokenInner::form(&token))),
+        }
+    }
+
     /// 构造undefined
     pub fn null() -> Self {
         let inner = Rc::new(RefCell::new(TokenInner::null()));
@@ -343,6 +394,24 @@ impl Token {
             }
         }
         false
+    }
+
+    /// 获取隐藏集
+    pub fn get_hide_set(&self) -> *mut HideSet {
+        let inner = self.inner.borrow();
+        inner.get_hide_set()
+    }
+
+    /// 遍历Tok之后的所有终结符，将隐藏集Hs都赋给每个终结符
+    pub fn add_hide_set(&mut self, new_head: *mut HideSet) {
+        let mut inner = self.inner.borrow_mut();
+        inner.add_hide_set(new_head);
+    }
+
+    /// 判断是否处于隐藏集之中
+    pub fn contain_hide_set(&self) -> bool {
+        let inner = self.inner.borrow();
+        inner.contain_hide_set()
     }
 }
 

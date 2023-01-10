@@ -1,11 +1,10 @@
 //! 预处理
 
+use crate::cmacro::{HideSet, Macro};
 use crate::parse::Parser;
 use crate::token::Token;
 use crate::tokenize::convert_keywords;
 use crate::{dirname, error_token, tokenize_file, warn_token};
-use std::cell::RefCell;
-use std::rc::Rc;
 
 /// 预处理器入口函数
 pub fn preprocess(tokens: &mut Vec<Token>) -> Vec<Token> {
@@ -43,6 +42,7 @@ impl<'a> Preprocessor<'a> {
         }
     }
 
+    /// 从其他预处理构造新的处理器
     fn from(processor: &Self, tokens: &'a mut Vec<Token>) -> Self {
         Self {
             tokens,
@@ -67,6 +67,7 @@ impl<'a> Preprocessor<'a> {
         self.result.to_vec()
     }
 
+    /// 处理,但不检查#if堆栈
     fn process_without_check(&mut self) -> Vec<Token> {
         // 处理宏和指示
         self.process0();
@@ -81,6 +82,11 @@ impl<'a> Preprocessor<'a> {
     /// 获取当前游标的token
     fn current_token(&self) -> &Token {
         &self.tokens[self.cursor]
+    }
+
+    /// 获取当前游标的token
+    fn current_token_mut(&mut self) -> &mut Token {
+        &mut self.tokens[self.cursor]
     }
 
     /// 游标指向下一个
@@ -247,9 +253,9 @@ impl<'a> Preprocessor<'a> {
 
     /// 向结果添加tokens
     fn append_tokens(&mut self, tokens: Vec<Token>) {
-        for token in tokens.into_iter().rev() {
+        for token in tokens.iter().rev() {
             if !token.at_eof() {
-                self.tokens.insert(self.cursor, token);
+                self.tokens.insert(self.cursor, Token::form(token));
             }
         }
     }
@@ -275,7 +281,7 @@ impl<'a> Preprocessor<'a> {
         let mut result = vec![];
 
         while !self.current_token().at_bol() {
-            result.push(self.current_token().clone());
+            result.push(Token::form(self.current_token()));
             self.next();
         }
 
@@ -387,15 +393,33 @@ impl<'a> Preprocessor<'a> {
         self.macros.push(macro_);
     }
 
-    /// 如果是宏变量就展开，返回真
-    /// 否则返回空和假
+    /// 如果是宏变量并展开成功，返回真
     fn expand_macro(&mut self) -> bool {
         let token = self.current_token();
+        // 判断是否处于隐藏集之中
+        if token.contain_hide_set() {
+            return false;
+        }
         let macro_ = self.find_macro(token);
         if macro_.is_none() {
             return false;
         }
-        self.next().append_tokens(macro_.unwrap().get_body());
+        let macro_ = macro_.unwrap();
+        // 展开过一次的宏变量，就加入到隐藏集当中
+        let name = macro_.get_name();
+        let token = self.current_token_mut();
+        token.add_hide_set(HideSet::new(name));
+
+        // 处理此宏变量之后，传递隐藏集给之后的终结符
+        let hs = token.get_hide_set();
+        let body = macro_.get_body();
+        let mut rb = vec![];
+        for token in body.iter() {
+            let mut nt = Token::form(token);
+            nt.add_hide_set(hs);
+            rb.push(nt);
+        }
+        self.next().append_tokens(rb);
         true
     }
 }
@@ -416,59 +440,4 @@ struct CondIncl {
     token: Token,
     /// 是否被包含
     included: bool,
-}
-
-/// 定义的宏变量
-struct MacroInner {
-    /// 名称
-    name: String,
-    /// 对应的终结符
-    body: Vec<Token>,
-    /// 是否被删除了
-    deleted: bool,
-}
-
-/// 定义的宏变量
-struct Macro {
-    inner: Rc<RefCell<MacroInner>>,
-}
-
-/// 实现clone
-impl Clone for Macro {
-    fn clone(&self) -> Self {
-        Macro {
-            inner: self.inner.clone(),
-        }
-    }
-}
-
-impl Macro {
-    /// 创建宏
-    fn new(name: &str, body: Vec<Token>, deleted: bool) -> Self {
-        Self {
-            inner: Rc::new(RefCell::new(MacroInner {
-                name: name.to_string(),
-                body,
-                deleted,
-            })),
-        }
-    }
-
-    /// 是否相等
-    fn eq(&self, name: &str) -> bool {
-        let inner = self.inner.borrow();
-        inner.name.eq(name)
-    }
-
-    /// 获取宏内容
-    fn get_body(&self) -> Vec<Token> {
-        let inner = self.inner.borrow();
-        inner.body.to_vec()
-    }
-
-    /// 是否被标记删除
-    fn deleted(&self) -> bool {
-        let inner = self.inner.borrow();
-        inner.deleted
-    }
 }

@@ -5,6 +5,7 @@
 #![deny(warnings)]
 
 mod args;
+mod cmacro;
 mod codegen;
 mod ctype;
 mod error_print;
