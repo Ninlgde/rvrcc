@@ -325,14 +325,7 @@ impl Token {
 
     /// 构造eof
     pub fn new_eof(offset: usize, line_no: usize) -> Self {
-        Token::new(
-            TokenKind::Eof,
-            false,
-            false,
-            "".to_string(),
-            offset,
-            line_no,
-        )
+        Token::new(TokenKind::Eof, false, true, "".to_string(), offset, line_no)
     }
 
     /// 转化成keyword

@@ -36,7 +36,7 @@ test/macro.exe: rvrcc test/macro.c
 
 # 测试标签，运行测试
 test/%.exe: rvrcc test/%.c
-	$(CC) -o- -E -P -C test/$*.c | ./target/release/rvrcc -c -o test/$*.o -
+	./target/release/rvrcc -c -o test/$*.o test/$*.c
 	$(CC) -static -o $@ test/$*.o -xc test/common
 
 test: $(TESTS)
