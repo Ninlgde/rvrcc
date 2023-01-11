@@ -178,3 +178,57 @@ pub fn print_tokens(mut write_file: Box<dyn Write>, tokens: Vec<Token>) {
     // 文件以换行符结尾
     write!(write_file, "\n").unwrap();
 }
+
+// 移除续行，即反斜杠+换行符的形式
+pub fn remove_backslash_newline(input: String) -> String {
+    let mut chars = input.into_bytes();
+    // 旧字符串的索引I（从0开始）
+    // 新字符串的索引J（从0开始）
+    // 因为J始终<=I，所以二者共用空间，不会有问题
+    let mut i = 0;
+    let mut j = 0;
+    // 为了维持行号不变，这里记录了删除的行数
+    let mut n = 0;
+
+    while i < chars.len() {
+        // 如果是 '\\'和'\n'
+        if chars[i] == 0x5c && chars[i + 1] == 0x0a {
+            // I跳过这两个字符
+            i += 2;
+            // 删除的行数+1
+            n += 1;
+        }
+        // 如果是换行符
+        else if chars[i] == 0x0a {
+            // P[J]='\n'
+            // I、J都+1
+            chars[j] = chars[i];
+            i += 1;
+            j += 1;
+            // 如果删除过N个续行，那么在这里增加N个换行
+            // 以保证行号不变
+            while n > 0 {
+                chars[j] = 0x0a;
+                j += 1;
+                n -= 1;
+            }
+        }
+        // 其他情况，P[J]=P[I]
+        // I、J都+1
+        else {
+            chars[j] = chars[i];
+            i += 1;
+            j += 1;
+        }
+    }
+
+    // 如果最后还删除过N个续行，那么在这里增加N个换行
+    while n > 0 {
+        chars[j] = 0x0a;
+        j += 1;
+        n -= 1;
+    }
+
+    // 截取[0..j) 返回字符串
+    String::from_utf8_lossy(&chars[0..j]).to_string()
+}

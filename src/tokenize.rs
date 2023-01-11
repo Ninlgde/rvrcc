@@ -1,7 +1,9 @@
 use crate::ctype::{Type, TypeLink};
 use crate::keywords::KEYWORDS;
 use crate::token::{File, Token};
-use crate::{error_at, read_file, slice_to_string, FileLink, INPUT, INPUTS};
+use crate::{
+    error_at, read_file, remove_backslash_newline, slice_to_string, FileLink, INPUT, INPUTS,
+};
 
 static mut FILE_NO: usize = 0;
 /// 对文件的终结符解析
@@ -10,6 +12,7 @@ pub fn tokenize_file(path: String) -> Vec<Token> {
     if content.eq("") {
         return Vec::new();
     }
+    let content = remove_backslash_newline(content);
     // 文件编号
     let file_no = unsafe { FILE_NO };
     // 文件路径，文件编号从1开始，文件内容
