@@ -327,13 +327,20 @@ impl<'a> Preprocessor<'a> {
         let mut tokens = self.next().read_const_expr();
         // 对于宏变量进行解析
         let mut processor = Preprocessor::from(self, &mut tokens);
-        let tokens = processor.process_without_check();
-        if tokens.len() <= 1 {
+        let mut expr = processor.process_without_check();
+        if expr.len() <= 1 {
             error_token!(&start, "no expression");
         }
 
+        for ex in expr.iter_mut() {
+            if ex.is_ident() {
+                let nt = new_num_token(0, ex);
+                *ex = nt;
+            }
+        }
+
         // 计算常量表达式的值
-        let mut parser = Parser::new(&tokens);
+        let mut parser = Parser::new(&expr);
         let val = parser.const_expr();
         let (_, pt) = parser.current();
         if !pt.at_eof() {
