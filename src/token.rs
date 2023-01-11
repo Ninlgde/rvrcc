@@ -1,7 +1,7 @@
 use crate::cmacro::HideSet;
 use crate::ctype::{Type, TypeLink};
 use crate::keywords::KW_TYPENAME;
-use crate::INPUT;
+use crate::{error_token, INPUT};
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -496,5 +496,67 @@ impl File {
 
     pub fn new_link(name: String, no: usize, content: String) -> FileLink {
         Rc::new(RefCell::new(File::new(name, no, content)))
+    }
+}
+
+/// token vector 的各种操作
+pub trait TokenVecOps {
+    /// 获取所有token的接口
+    fn get_tokens(&self) -> &Vec<Token>;
+    /// 获取当前游标的接口
+    fn get_cursor(&self) -> usize;
+    /// 游标向后移动的接口
+    fn inc_cursor(&mut self, step: usize);
+
+    /// 获取idx指向的token
+    fn get_token(&self, mut idx: usize) -> &Token {
+        let tokens = self.get_tokens();
+        if idx >= tokens.len() {
+            // 正常情况下 是不会超出的
+            // 但是在预处理时可能会, 所以超出的一律已eof来作数
+            idx = tokens.len() - 1;
+        }
+        &tokens[idx]
+    }
+
+    /// 获取当前游标和游标所指的token
+    fn current(&self) -> (usize, &Token) {
+        (self.get_cursor(), self.current_token())
+    }
+
+    /// 获取当前游标的token
+    fn current_token(&self) -> &Token {
+        let tokens = self.get_tokens();
+        &tokens[self.get_cursor()]
+    }
+
+    /// 游标指向下一个
+    fn next(&mut self) -> &mut Self {
+        self.inc_cursor(1);
+        self
+    }
+
+    /// 跳过某个名为`s`的token,如果不是则报错. 功效类似assert
+    fn skip(&mut self, s: &str) {
+        self.require(s);
+        self.next();
+    }
+
+    /// 必须是名为`s`的token
+    fn require(&self, s: &str) {
+        let token = self.current_token();
+        if !token.equal(s) {
+            error_token!(token, "expect '{}'", s);
+        }
+    }
+
+    /// 消费token,如果与`s`相等,则跳过并返回true,否则不跳过返回false
+    fn consume(&mut self, s: &str) -> bool {
+        let token = self.current_token();
+        if token.equal(s) {
+            self.next();
+            return true;
+        }
+        return false;
     }
 }

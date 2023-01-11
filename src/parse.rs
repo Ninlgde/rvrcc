@@ -103,7 +103,7 @@ use crate::keywords::{
 };
 use crate::node::{add_with_type, eval, sub_with_type, LabelInfo, Node, NodeKind, NodeLink};
 use crate::obj::{Member, Obj, ObjLink, Scope, VarAttr, VarScope};
-use crate::token::Token;
+use crate::token::{Token, TokenVecOps};
 use crate::{align_to, error_token, vec_u8_into_i8};
 use std::cell::RefCell;
 use std::cmp;
@@ -142,6 +142,23 @@ pub(crate) struct Parser<'a> {
     cur_switch: Option<NodeLink>,
 }
 
+impl TokenVecOps for Parser<'_> {
+    /// 获取所有token的接口
+    fn get_tokens(&self) -> &Vec<Token> {
+        self.tokens
+    }
+
+    /// 获取当前游标的接口
+    fn get_cursor(&self) -> usize {
+        self.cursor
+    }
+
+    /// 游标向后移动的接口
+    fn inc_cursor(&mut self, step: usize) {
+        self.cursor += step;
+    }
+}
+
 impl<'a> Parser<'a> {
     pub(crate) fn new(tokens: &'a Vec<Token>) -> Self {
         Self {
@@ -158,27 +175,6 @@ impl<'a> Parser<'a> {
             ctn_label: String::new(),
             cur_switch: None,
         }
-    }
-
-    /// 获取当前游标和游标所指的token
-    pub(crate) fn current(&self) -> (usize, &Token) {
-        (self.cursor, &self.tokens[self.cursor])
-    }
-
-    /// 游标指向下一个
-    fn next(&mut self) -> &mut Self {
-        self.cursor += 1;
-        self
-    }
-
-    /// 获取idx指向的token
-    fn get_token(&self, mut idx: usize) -> &Token {
-        if idx >= self.tokens.len() {
-            // 正常情况下 是不会超出的
-            // 但是在预处理时可能会, 所以超出的一律已eof来作数
-            idx = self.tokens.len() - 1;
-        }
-        &self.tokens[idx]
     }
 
     /// 语法解析入口函数
@@ -2710,25 +2706,6 @@ impl<'a> Parser<'a> {
             let mut vsm = vs.as_ref().borrow_mut();
             vsm.set_typedef(typ);
         }
-    }
-
-    /// 跳过某个名为`s`的token,如果不是则报错. 功效类似assert
-    fn skip(&mut self, s: &str) {
-        let (_, token) = self.current();
-        if !token.equal(s) {
-            error_token!(token, "expect '{}'", s);
-        }
-        self.next();
-    }
-
-    /// 消费token,如果与`s`相等,则跳过并返回true,否则不跳过返回false
-    fn consume(&mut self, s: &str) -> bool {
-        let (_, token) = self.current();
-        if token.equal(s) {
-            self.next();
-            return true;
-        }
-        return false;
     }
 
     /// 判断是否终结符匹配到了结尾

@@ -2,7 +2,7 @@
 
 use crate::cmacro::{HideSet, Macro, MacroArg, MacroParam};
 use crate::parse::Parser;
-use crate::token::{File, Token};
+use crate::token::{File, Token, TokenVecOps};
 use crate::tokenize::{convert_keywords, tokenize};
 use crate::{dirname, error_token, tokenize_file, warn_token};
 
@@ -28,6 +28,23 @@ struct Preprocessor<'a> {
     cond_incls: Vec<CondIncl>,
     /// 宏变量栈
     macros: Vec<Macro>,
+}
+
+impl TokenVecOps for Preprocessor<'_> {
+    /// 获取所有token的接口
+    fn get_tokens(&self) -> &Vec<Token> {
+        self.tokens
+    }
+
+    /// 获取当前游标的接口
+    fn get_cursor(&self) -> usize {
+        self.cursor
+    }
+
+    /// 游标向后移动的接口
+    fn inc_cursor(&mut self, step: usize) {
+        self.cursor += step;
+    }
 }
 
 impl<'a> Preprocessor<'a> {
@@ -74,39 +91,9 @@ impl<'a> Preprocessor<'a> {
         self.result.to_vec()
     }
 
-    /// 获取当前游标和游标所指的token
-    fn current(&self) -> (usize, &Token) {
-        (self.cursor, &self.tokens[self.cursor])
-    }
-
-    /// 获取当前游标的token
-    fn current_token(&self) -> &Token {
-        &self.tokens[self.cursor]
-    }
-
     /// 获取当前游标的token
     fn current_token_mut(&mut self) -> &mut Token {
         &mut self.tokens[self.cursor]
-    }
-
-    /// 游标指向下一个
-    fn next(&mut self) -> &mut Self {
-        self.cursor += 1;
-        self
-    }
-
-    /// 跳过某个名为`s`的token,如果不是则报错. 功效类似assert
-    fn skip(&mut self, s: &str) {
-        self.require(s);
-        self.next();
-    }
-
-    /// 必须是名为`s`的token
-    fn require(&self, s: &str) {
-        let (_, token) = self.current();
-        if !token.equal(s) {
-            error_token!(token, "expect '{}'", s);
-        }
     }
 
     /// 处理
@@ -334,9 +321,10 @@ impl<'a> Preprocessor<'a> {
     /// 读取并计算常量表达式
     fn eval_const_expr(&mut self) -> i64 {
         let (_, start) = self.current();
-        let start = start.clone(); // clone走,否则触发借用error
-                                   // 解析#if后的常量表达式
-        let mut tokens = self.next().copy_line();
+        // clone走,否则触发借用error
+        let start = start.clone();
+        // 解析#if后的常量表达式
+        let mut tokens = self.next().read_const_expr();
         // 对于宏变量进行解析
         let mut processor = Preprocessor::from(self, &mut tokens);
         let tokens = processor.process_without_check();
@@ -352,6 +340,56 @@ impl<'a> Preprocessor<'a> {
             error_token!(pt, "extra token");
         }
         val
+    }
+
+    /// 读取常量表达式
+    fn read_const_expr(&mut self) -> Vec<Token> {
+        let tokens = self.copy_line();
+        let mut result = vec![];
+
+        let mut i = 0;
+        loop {
+            let token = &tokens[i];
+            if token.at_eof() {
+                break;
+            }
+            // "defined(foo)" 或 "defined foo"如果存在foo为1否则为0
+            if token.equal("defined") {
+                let start = token;
+                // 消耗掉(
+                i += 1;
+                let token = &tokens[i];
+                let has_param = token.equal("(");
+                if has_param {
+                    i += 1;
+                }
+                let token = &tokens[i];
+                if !token.is_ident() {
+                    error_token!(start, "macro name must be an identifier");
+                }
+                let macro_ = self.find_macro(token);
+                i += 1;
+                if has_param {
+                    if tokens[i].equal(")") {
+                        i += 1;
+                    } else {
+                        error_token!(start, "expect ')'");
+                    }
+                }
+                // 构造一个相应的数字终结符
+                let val = if macro_.is_some() { 1 } else { 0 };
+                let nt = new_num_token(val, start);
+                result.push(nt);
+                continue;
+            }
+            // 将剩余的终结符存入链表
+            result.push(token.clone());
+            i += 1;
+        }
+
+        result.push(Token::new_eof(0, 0));
+
+        result
     }
 
     /// 压入#if栈中
@@ -620,6 +658,7 @@ struct CondIncl {
     included: bool,
 }
 
+/// 向body中的每个token添加hideSet
 fn add_hide_set(body: Vec<Token>, hs: *mut HideSet) -> Vec<Token> {
     let mut rb = vec![];
     for token in body.iter() {
@@ -631,10 +670,10 @@ fn add_hide_set(body: Vec<Token>, hs: *mut HideSet) -> Vec<Token> {
 }
 
 /// 遍历查找实参
-fn find_arg(args: &Vec<MacroArg>, token: &Token) -> Option<MacroArg> {
+fn find_arg<'a>(args: &'a Vec<MacroArg>, token: &'a Token) -> Option<&'a MacroArg> {
     for arg in args.iter() {
         if token.equal(arg.name.as_str()) {
-            return Some(arg.clone());
+            return Some(arg);
         }
     }
     None
@@ -745,7 +784,9 @@ fn subst(processor: &Preprocessor, body: Vec<Token>, args: Vec<MacroArg>) -> Vec
             let mut processor = Preprocessor::from(processor, &mut arg_tokens);
             let pts = processor.process_without_check();
             for pt in pts.iter() {
-                tokens.push(Token::form(pt));
+                if !pt.at_eof() {
+                    tokens.push(Token::form(pt));
+                }
             }
             i += 1;
             continue;
@@ -783,6 +824,14 @@ pub fn stringize(hash: &Token, tokens: &Vec<Token>) -> Token {
 pub fn new_str_token(s: String, tmpl: &Token) -> Token {
     // 将字符串加上双引号
     let buf = format!("{:?}", s);
+    // 将字符串和相应的宏名称传入词法分析，去进行解析
+    let file = File::new_link(tmpl.get_file_name(), tmpl.get_file_no(), buf);
+    tokenize(file)[0].clone()
+}
+
+/// 构造数字终结符
+pub fn new_num_token(val: i64, tmpl: &Token) -> Token {
+    let buf = format!("{}", val);
     // 将字符串和相应的宏名称传入词法分析，去进行解析
     let file = File::new_link(tmpl.get_file_name(), tmpl.get_file_no(), buf);
     tokenize(file)[0].clone()
