@@ -165,6 +165,7 @@ impl TokenInner {
         token.offset = offset;
         token.line_no = line_no;
         token.ival = c as i64;
+        token.name = format!("{:?}", c); // name = '{c}'
         token.typ = Some(Type::new_int());
         token
     }

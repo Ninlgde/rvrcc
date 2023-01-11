@@ -602,6 +602,24 @@ impl<'a> Preprocessor<'a> {
     }
 }
 
+#[derive(Clone, PartialEq, Eq)]
+enum CondInclKind {
+    Then,
+    Elif,
+    Else,
+}
+
+/// #if可以嵌套，所以使用栈来保存嵌套的#if
+#[derive(Clone)]
+struct CondIncl {
+    /// 类型
+    ctx: CondInclKind,
+    /// 对应的终结符
+    token: Token,
+    /// 是否被包含
+    included: bool,
+}
+
 fn add_hide_set(body: Vec<Token>, hs: *mut HideSet) -> Vec<Token> {
     let mut rb = vec![];
     for token in body.iter() {
@@ -642,8 +660,85 @@ fn subst(processor: &Preprocessor, body: Vec<Token>, args: Vec<MacroArg>) -> Vec
             continue;
         }
 
+        // ##及右边，用于连接终结符
+        if token.equal("##") {
+            if tokens.len() == 0 {
+                error_token!(token, "'##' cannot appear at start of macro expansion");
+            }
+            if i == body.len() - 1 {
+                error_token!(token, "'##' cannot appear at end of macro expansion");
+            }
+            // 查找下一个终结符
+            // 如果是（##右边）宏实参
+            let hash = &body[i + 1];
+            let arg = find_arg(&args, hash);
+            if arg.is_some() {
+                let arg = arg.unwrap();
+                // 如果只有1,说明只有eof
+                if arg.tokens.len() > 1 {
+                    // 拼接当前终结符和（##右边）实参
+                    let cur = tokens.pop().unwrap();
+                    let cur = paste(&cur, arg.tokens.first().unwrap());
+                    tokens.push(cur);
+                    // 将（##右边）实参未参与拼接的剩余部分加入到链表当中
+                    for idx in 1..arg.tokens.len() {
+                        let at = &arg.tokens[idx];
+                        if !at.at_eof() {
+                            tokens.push(Token::form(at));
+                        }
+                    }
+                }
+                i += 2;
+                continue;
+            }
+            // 如果不是（##右边）宏实参
+            // 直接拼接
+            let next = &body[i + 1];
+            let cur = tokens.pop().unwrap();
+            let cur = paste(&cur, next);
+            tokens.push(cur);
+            i += 2;
+            continue;
+        }
+
         // 查找实参
         let arg = find_arg(&args, token);
+
+        // 左边及##，用于连接终结符
+        if arg.is_some() && (&body[i + 1]).equal("##") {
+            let arg = arg.unwrap();
+            // 读取##右边的终结符
+            let rhs = &body[i + 2];
+            // 实参（##左边）为空的情况(只有1个eof)
+            if arg.tokens.len() == 1 {
+                // 查找（##右边）实参
+                let arg2 = find_arg(&args, rhs);
+                if arg2.is_some() {
+                    // 如果是实参，那么逐个遍历实参对应的终结符
+                    for a2t in arg2.unwrap().tokens.iter() {
+                        if !a2t.at_eof() {
+                            tokens.push(Token::form(a2t));
+                        }
+                    }
+                } else {
+                    // 如果不是实参，那么直接复制进链表
+                    tokens.push(Token::form(rhs));
+                }
+                // 指向（##右边）实参的下一个
+                i += 3;
+                continue;
+            }
+            // 实参（##左边）不为空的情况
+            for at in arg.tokens.iter() {
+                if !at.at_eof() {
+                    tokens.push(Token::form(at));
+                }
+            }
+            i += 1;
+            continue;
+        }
+
+        // 处理宏终结符，宏实参在被替换之前已经被展开了
         if arg.is_some() {
             let arg = arg.unwrap();
             let mut arg_tokens = arg.tokens.to_vec();
@@ -693,20 +788,15 @@ pub fn new_str_token(s: String, tmpl: &Token) -> Token {
     tokenize(file)[0].clone()
 }
 
-#[derive(Clone, PartialEq, Eq)]
-enum CondInclKind {
-    Then,
-    Elif,
-    Else,
-}
-
-/// #if可以嵌套，所以使用栈来保存嵌套的#if
-#[derive(Clone)]
-struct CondIncl {
-    /// 类型
-    ctx: CondInclKind,
-    /// 对应的终结符
-    token: Token,
-    /// 是否被包含
-    included: bool,
+/// 拼接两个终结符构建一个新的终结符
+pub fn paste(lhs: &Token, rhs: &Token) -> Token {
+    // 合并两个终结符
+    let buf = format!("{}{}", lhs.get_name(), rhs.get_name());
+    // 词法解析生成的字符串，转换为相应的终结符
+    let file = File::new_link(lhs.get_file_name(), lhs.get_file_no(), buf.to_string());
+    let tokens = tokenize(file);
+    if tokens.len() > 2 {
+        error_token!(lhs, "pasting forms '{}', an invalid token", buf);
+    }
+    tokens[0].clone()
 }

@@ -43,7 +43,7 @@ pub fn tokenize(input: FileLink) -> Vec<Token> {
             pos += 2;
 
             loop {
-                let c = chars[pos] as char;
+                let c = read_char(&chars, pos);
                 pos += 1;
                 if c == '\n' {
                     line_no += 1;
@@ -68,7 +68,7 @@ pub fn tokenize(input: FileLink) -> Vec<Token> {
                     break;
                 }
                 // 统计多行测试里所有的回车
-                let c = chars[pos] as char;
+                let c = read_char(&chars, pos);
                 if c == '\n' {
                     line_no += 1;
                     at_bol = true;
@@ -79,7 +79,7 @@ pub fn tokenize(input: FileLink) -> Vec<Token> {
             continue;
         }
 
-        let c = chars[pos] as char;
+        let c = read_char(&chars, pos);
         // 统计代码里的回车
         if c == '\n' {
             pos += 1;
@@ -97,7 +97,7 @@ pub fn tokenize(input: FileLink) -> Vec<Token> {
         }
 
         // 解析数值
-        if c.is_digit(10) || (c == '.' && (chars[pos + 1] as char).is_digit(10)) {
+        if c.is_digit(10) || (c == '.' && read_char(&chars, pos + 1).is_digit(10)) {
             // 初始化，类似于C++的构造函数
             // 我们不使用Head来存储信息，仅用来表示链表入口，这样每次都是存储在Cur->Next
             // 否则下述操作将使第一个Token的地址不在Head中。
@@ -166,6 +166,15 @@ pub fn tokenize(input: FileLink) -> Vec<Token> {
     tokens
 }
 
+/// 从chars里读取一直字符
+/// 超过上限的返回\0
+pub fn read_char(chars: &Vec<u8>, pos: usize) -> char {
+    if pos >= chars.len() {
+        return '\0';
+    }
+    chars[pos] as char
+}
+
 // 将所有关键字的终结符，都标记为KEYWORD
 pub fn convert_keywords(tokens: &mut Vec<Token>) {
     for token in tokens.iter_mut() {
@@ -180,7 +189,8 @@ pub fn convert_keywords(tokens: &mut Vec<Token>) {
 fn starts_with(chars: &Vec<u8>, pos: usize, sub: &str) -> bool {
     let sub = sub.as_bytes();
     for i in 0..sub.len() {
-        if sub[i] != chars[pos + i] {
+        let char = read_char(chars, pos + i) as u8;
+        if sub[i] != char {
             return false;
         }
     }
@@ -194,7 +204,8 @@ fn starts_with_ignore_case(chars: &Vec<u8>, pos: usize, sub: &str) -> bool {
     let sub = binding.as_bytes();
     for i in 0..sub.len() {
         // 'a' - 'A' = 32
-        if sub[i] != chars[pos + i] && sub[i] - 32 != chars[pos + i] {
+        let char = read_char(chars, pos + i) as u8;
+        if sub[i] != char && sub[i] - 32 != char {
             return false;
         }
     }
@@ -205,7 +216,7 @@ fn starts_with_ignore_case(chars: &Vec<u8>, pos: usize, sub: &str) -> bool {
 fn read_punct(chars: &Vec<u8>, pos: &mut usize) {
     let ops = vec![
         "<<=", ">>=", "...", "==", "!=", "<=", ">=", "->", "+=", "-=", "*=", "/=", "++", "--",
-        "%=", "&=", "|=", "^=", "&&", "||", "<<", ">>",
+        "%=", "&=", "|=", "^=", "&&", "||", "<<", ">>", "##",
     ];
 
     for op in ops {
@@ -215,7 +226,7 @@ fn read_punct(chars: &Vec<u8>, pos: &mut usize) {
         }
     }
 
-    let c = chars[*pos] as char;
+    let c = read_char(chars, *pos);
     if c.is_ascii_punctuation() {
         *pos += 1;
     }
@@ -223,11 +234,11 @@ fn read_punct(chars: &Vec<u8>, pos: &mut usize) {
 
 /// 读取一个id
 fn read_ident(chars: &Vec<u8>, pos: &mut usize) {
-    let c = chars[*pos] as char;
+    let c = read_char(chars, *pos);
     if c.is_alphabetic() || c == '_' {
         loop {
             *pos += 1;
-            let c = chars[*pos] as char;
+            let c = read_char(chars, *pos);
             if !(c.is_alphabetic() || c == '_' || c.is_digit(10)) {
                 break;
             }
@@ -242,7 +253,7 @@ fn read_string_literal(chars: &Vec<u8>, pos: &mut usize) -> Vec<u8> {
     let mut new_chars = vec![];
     let mut i = old_pos + 1;
     while i < *pos {
-        let mut c = chars[i] as char;
+        let mut c = read_char(chars, i);
         if c == '\\' {
             i += 1; // skip \\
             c = read_escaped_char(chars, &mut i);
@@ -258,17 +269,17 @@ fn read_string_literal(chars: &Vec<u8>, pos: &mut usize) -> Vec<u8> {
 
 /// 读取转义字符
 fn read_escaped_char(chars: &Vec<u8>, pos: &mut usize) -> char {
-    let mut c = chars[*pos] as char;
+    let mut c = read_char(chars, *pos);
     if '0' <= c && c <= '7' {
         // 读取一个八进制数字，不能长于三位
         // \abc = (a*8+b)*8+c
         let mut r = c as u8 - '0' as u8;
         *pos += 1;
-        c = chars[*pos] as char;
+        c = read_char(chars, *pos);
         if '0' <= c && c <= '7' {
             r = (r << 3) + (c as u8 - '0' as u8);
             *pos += 1;
-            c = chars[*pos] as char;
+            c = read_char(chars, *pos);
             if '0' <= c && c <= '7' {
                 r = (r << 3) + (c as u8 - '0' as u8);
                 *pos += 1;
@@ -280,7 +291,7 @@ fn read_escaped_char(chars: &Vec<u8>, pos: &mut usize) -> char {
 
     if c == 'x' {
         *pos += 1;
-        c = chars[*pos] as char;
+        c = read_char(chars, *pos);
         if !c.is_digit(16) {
             error_at!(0, *pos, "invalid hex escape sequence");
             return '\0';
@@ -290,7 +301,7 @@ fn read_escaped_char(chars: &Vec<u8>, pos: &mut usize) -> char {
         while c.is_digit(16) {
             r = (r << 4) + from_hex(c);
             *pos += 1;
-            c = chars[*pos] as char;
+            c = read_char(chars, *pos);
         }
 
         return r as char;
@@ -315,7 +326,7 @@ fn read_escaped_char(chars: &Vec<u8>, pos: &mut usize) -> char {
 fn string_literal_end(chars: &Vec<u8>, pos: &mut usize) {
     *pos += 1; // 忽略"
     loop {
-        let c = chars[*pos] as char;
+        let c = read_char(chars, *pos);
         if c == '"' {
             break;
         }
@@ -350,7 +361,7 @@ fn from_hex(c: char) -> u8 {
 /// 读取字符字面量
 fn read_char_literal(chars: &Vec<u8>, pos: &mut usize) -> char {
     *pos += 1; // 忽略'
-    let mut c = chars[*pos] as char;
+    let mut c = read_char(chars, *pos);
 
     if c == '\0' {
         error_at!(0, *pos - 1, "unclosed char literal");
@@ -361,11 +372,11 @@ fn read_char_literal(chars: &Vec<u8>, pos: &mut usize) -> char {
         *pos += 1;
         r = read_escaped_char(chars, pos);
     } else {
-        r = chars[*pos] as char;
+        r = read_char(chars, *pos);
         *pos += 1;
     }
 
-    c = chars[*pos] as char;
+    c = read_char(chars, *pos);
     if c != '\'' {
         error_at!(0, *pos, "unclosed char literal");
     }
@@ -376,8 +387,8 @@ fn read_char_literal(chars: &Vec<u8>, pos: &mut usize) -> char {
 
 /// 读取数字的字面量
 fn read_int_literal(chars: &Vec<u8>, pos: &mut usize) -> (i64, TypeLink, u32) {
-    let c = chars[*pos] as char;
-    let cnn = chars[*pos + 2] as char; //0x() or 0b()
+    let c = read_char(chars, *pos);
+    let cnn = read_char(chars, *pos + 2); //0x() or 0b()
 
     // 读取二、八、十、十六进制
     // 默认为十进制
@@ -396,7 +407,7 @@ fn read_int_literal(chars: &Vec<u8>, pos: &mut usize) -> (i64, TypeLink, u32) {
         radix = 8;
     }
 
-    let c = chars[*pos] as char;
+    let c = read_char(chars, *pos);
     if c == '.' {
         // 可能是0x.111
         return (0, Type::new_float(), radix);
@@ -487,7 +498,7 @@ fn read_number(chars: &Vec<u8>, pos: &mut usize) -> (i64, f64, TypeLink) {
     let start_pos = *pos;
     // 尝试解析整型常量
     let (val, typ, raidx) = read_int_literal(chars, pos);
-    let c = chars[*pos] as char;
+    let c = read_char(chars, *pos);
     // 2进制 | 非16进制 不带.或者e或者f后缀 | 16进制 不带.或者p后缀, 则为整型
     if raidx == 2 || (raidx != 16 && !".eEfF".contains(c)) || (raidx == 16 && !".pP".contains(c)) {
         return (val, 0.0, typ);
@@ -526,7 +537,7 @@ fn read_number(chars: &Vec<u8>, pos: &mut usize) -> (i64, f64, TypeLink) {
 
     let mut typ = Type::new_double();
     if check_suffix {
-        let c = chars[*pos] as char;
+        let c = read_char(chars, *pos);
         if c == 'f' || c == 'F' {
             typ = Type::new_float();
             *pos += 1;
@@ -540,7 +551,7 @@ fn read_number(chars: &Vec<u8>, pos: &mut usize) -> (i64, f64, TypeLink) {
 
 /// 读取十进制小数部分
 fn read_fraction(chars: &Vec<u8>, pos: &mut usize) -> f64 {
-    if chars[*pos] as char != '.' {
+    if read_char(chars, *pos) != '.' {
         // 没有小数部分,直接返回0
         return 0.0;
     }
@@ -549,7 +560,7 @@ fn read_fraction(chars: &Vec<u8>, pos: &mut usize) -> f64 {
     let mut result = 0.0;
     let mut base = 10.0;
     while *pos < chars.len() {
-        if let Some(i) = (chars[*pos] as char).to_digit(10) {
+        if let Some(i) = (read_char(chars, *pos)).to_digit(10) {
             result += i as f64 / base;
             *pos += 1;
             base *= 10.0;
@@ -562,20 +573,20 @@ fn read_fraction(chars: &Vec<u8>, pos: &mut usize) -> f64 {
 }
 
 fn read_exponent(chars: &Vec<u8>, pos: &mut usize) -> i32 {
-    let c = chars[*pos] as char;
+    let c = read_char(chars, *pos);
     if c != 'e' && c != 'E' {
         return 0;
     }
     *pos += 1;
 
     let mut neg = false;
-    let c = chars[*pos] as char;
+    let c = read_char(chars, *pos);
     if c == '-' || c == '+' {
         neg = c == '-';
         *pos += 1;
     }
 
-    if !(chars[*pos] as char).is_digit(10) {
+    if !(read_char(chars, *pos)).is_digit(10) {
         error_at!(0, *pos, "malformed floating-point literal");
     }
 
@@ -594,7 +605,7 @@ fn read_hex_fraction(chars: &Vec<u8>, pos: &mut usize) -> f64 {
     let mut result = 0.0;
     let mut base = 0;
     while *pos < chars.len() {
-        if let Some(i) = (chars[*pos] as char).to_digit(16) {
+        if let Some(i) = (read_char(chars, *pos)).to_digit(16) {
             if i & 0x8 != 0 {
                 result += f64::powi(2.0, base - 1);
             }
@@ -620,20 +631,20 @@ fn read_hex_fraction(chars: &Vec<u8>, pos: &mut usize) -> f64 {
 
 /// 读取十六进制pow x
 fn read_hex_exponent(chars: &Vec<u8>, pos: &mut usize) -> i32 {
-    let c = chars[*pos] as char;
+    let c = read_char(chars, *pos);
     if c != 'p' && c != 'P' {
         error_at!(0, *pos, "malformed floating-point literal");
     }
     *pos += 1;
 
     let mut neg = false;
-    let c = chars[*pos] as char;
+    let c = read_char(chars, *pos);
     if c == '-' || c == '+' {
         neg = c == '-';
         *pos += 1;
     }
 
-    if !(chars[*pos] as char).is_digit(10) {
+    if !(read_char(chars, *pos)).is_digit(10) {
         error_at!(0, *pos, "malformed floating-point literal");
     }
 
@@ -652,7 +663,7 @@ fn read_hex_exponent(chars: &Vec<u8>, pos: &mut usize) -> i32 {
 fn strtol(chars: &Vec<u8>, pos: &mut usize, base: u32) -> u64 {
     let mut result: u64 = 0;
     while *pos < chars.len() {
-        if let Some(i) = (chars[*pos] as char).to_digit(base) {
+        if let Some(i) = (read_char(chars, *pos)).to_digit(base) {
             result = result * base as u64 + i as u64;
             *pos += 1;
         } else {

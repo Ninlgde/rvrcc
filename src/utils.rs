@@ -158,7 +158,6 @@ pub fn vec_i8_into_u8(v: Vec<i8>) -> Vec<u8> {
 pub fn print_tokens(mut write_file: Box<dyn Write>, tokens: Vec<Token>) {
     // 记录行数
     let mut line = 1;
-    // let file = write_file.as_mut();
     // 遍历读取终结符
     for token in tokens {
         if token.at_eof() {
