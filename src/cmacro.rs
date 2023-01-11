@@ -18,6 +18,14 @@ pub struct MacroArg {
     pub(crate) tokens: Vec<Token>,
 }
 
+impl MacroArg {
+    /// 替换tokens
+    #[allow(dead_code)]
+    pub fn replace(&mut self, tokens: Vec<Token>) {
+        self.tokens = tokens;
+    }
+}
+
 /// 定义的宏变量
 struct MacroInner {
     /// 名称

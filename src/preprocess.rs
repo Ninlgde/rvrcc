@@ -491,6 +491,7 @@ impl<'a> Preprocessor<'a> {
     /// 如果是宏变量并展开成功，返回真
     fn expand_macro(&mut self) -> bool {
         let (pos, token) = self.current();
+        let tt = token.clone();
         // 判断是否处于隐藏集之中
         if token.contain_hide_set() {
             return false;
@@ -510,7 +511,9 @@ impl<'a> Preprocessor<'a> {
             // 处理此宏变量之后，传递隐藏集给之后的终结符
             let hs = token.get_hide_set();
             let body = macro_.get_body();
-            let rb = add_hide_set(body, hs);
+            let mut rb = add_hide_set(body, hs);
+            // 传递 是否为行首 和 前面是否有空格 的信息
+            rb[0].set_bol_space(token.at_bol(), token.has_space());
             self.next().append_tokens(rb);
             return true;
         }
@@ -536,9 +539,11 @@ impl<'a> Preprocessor<'a> {
         // 替换宏函数内的形参为实参
         let body = subst(self, macro_.get_body(), args);
         // 为宏函数内部设置隐藏集
-        let body = add_hide_set(body, hs);
+        let mut rb = add_hide_set(body, hs);
+        // 传递 是否为行首 和 前面是否有空格 的信息
+        rb[0].set_bol_space(tt.at_bol(), tt.has_space());
         // 将设置好的宏函数内部连接到终结符链表中
-        self.next().append_tokens(body);
+        self.next().append_tokens(rb);
         true
     }
 
@@ -724,8 +729,10 @@ fn subst(processor: &Preprocessor, body: Vec<Token>, args: Vec<MacroArg>) -> Vec
                 if arg.tokens.len() > 1 {
                     // 拼接当前终结符和（##右边）实参
                     let cur = tokens.pop().unwrap();
-                    let cur = paste(&cur, arg.tokens.first().unwrap());
-                    tokens.push(cur);
+                    let mut ncur = paste(&cur, arg.tokens.first().unwrap());
+                    // 传递 是否为行首 和 前面是否有空格 的信息
+                    ncur.set_bol_space(cur.at_bol(), cur.has_space());
+                    tokens.push(ncur);
                     // 将（##右边）实参未参与拼接的剩余部分加入到链表当中
                     for idx in 1..arg.tokens.len() {
                         let at = &arg.tokens[idx];
@@ -741,8 +748,10 @@ fn subst(processor: &Preprocessor, body: Vec<Token>, args: Vec<MacroArg>) -> Vec
             // 直接拼接
             let next = &body[i + 1];
             let cur = tokens.pop().unwrap();
-            let cur = paste(&cur, next);
-            tokens.push(cur);
+            let mut ncur = paste(&cur, next);
+            // 传递 是否为行首 和 前面是否有空格 的信息
+            ncur.set_bol_space(cur.at_bol(), cur.has_space());
+            tokens.push(ncur);
             i += 2;
             continue;
         }
@@ -789,7 +798,9 @@ fn subst(processor: &Preprocessor, body: Vec<Token>, args: Vec<MacroArg>) -> Vec
             let arg = arg.unwrap();
             let mut arg_tokens = arg.tokens.to_vec();
             let mut processor = Preprocessor::from(processor, &mut arg_tokens);
-            let pts = processor.process_without_check();
+            let mut pts = processor.process_without_check();
+            // 传递 是否为行首 和 前面是否有空格 的信息
+            pts[0].set_bol_space(token.at_bol(), token.has_space());
             for pt in pts.iter() {
                 if !pt.at_eof() {
                     tokens.push(Token::form(pt));

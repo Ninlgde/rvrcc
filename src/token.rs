@@ -474,6 +474,13 @@ impl Token {
         let inner = self.inner.borrow();
         inner.contain_hide_set()
     }
+
+    /// 设置 是否为行首 和 前面是否有空格
+    pub fn set_bol_space(&mut self, bol: bool, space: bool) {
+        let mut inner = self.inner.borrow_mut();
+        inner.at_bol = bol;
+        inner.has_space = space;
+    }
 }
 
 pub type FileLink = Rc<RefCell<File>>;
