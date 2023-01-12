@@ -24,6 +24,8 @@ pub struct Args {
     pub opt_c: bool,
     /// -E选项
     pub opt_e_cap: bool,
+    /// 引入路径区
+    pub include_path: Vec<String>,
 }
 
 impl Args {
@@ -39,14 +41,22 @@ impl Args {
             opt_s_cap: false,
             opt_c: false,
             opt_e_cap: false,
+            include_path: vec![],
         }
     }
 
+    /// 判断需要一个参数的选项，是否具有一个参数
     fn take_arg(arg: &str) -> bool {
-        return arg.eq("-o");
+        let args = vec!["-o", "-I"];
+        for a in args {
+            if arg.eq(a) {
+                return true;
+            }
+        }
+        return false;
     }
 
-    fn parse_io(args: Vec<String>) -> Self {
+    fn parse(args: Vec<String>) -> Self {
         if args.len() < 2 {
             print_usage(1);
         }
@@ -113,6 +123,14 @@ impl Args {
                 continue;
             }
 
+            // 解析-Ixxxx
+            if arg.starts_with("-I") {
+                let incl = &arg[2..];
+                result.include_path.push(incl.to_string());
+                i += 1;
+                continue;
+            }
+
             // 解析-cc1-input
             if arg.eq("-cc1-input") {
                 result.base = args[i + 1].to_string();
@@ -127,6 +145,7 @@ impl Args {
                 continue;
             }
 
+            // 解析-oxxxx
             if arg.starts_with("-o") {
                 output = &arg[2..];
                 i += 1;
@@ -154,7 +173,7 @@ impl Args {
 
 /// 解析命令行参数
 pub fn parse_args(args: Vec<String>) -> Args {
-    let args = Args::parse_io(args);
+    let args = Args::parse(args);
     args
 }
 

@@ -7,9 +7,9 @@ use crate::tokenize::{convert_keywords, tokenize};
 use crate::{dirname, error_token, file_exists, tokenize_file, warn_token};
 
 /// 预处理器入口函数
-pub fn preprocess(tokens: &mut Vec<Token>) -> Vec<Token> {
+pub fn preprocess(tokens: &mut Vec<Token>, include_path: Vec<String>) -> Vec<Token> {
     // 处理宏和指示
-    let mut processor = Preprocessor::new(tokens);
+    let mut processor = Preprocessor::new(tokens, include_path);
     let mut tokens = processor.process();
     // 将所有关键字的终结符，都标记为KEYWORD
     convert_keywords(&mut tokens);
@@ -28,6 +28,8 @@ struct Preprocessor<'a> {
     cond_incls: Vec<CondIncl>,
     /// 宏变量栈
     macros: Vec<Macro>,
+    /// 引入路径区
+    include_path: Vec<String>,
 }
 
 impl TokenVecOps for Preprocessor<'_> {
@@ -49,13 +51,14 @@ impl TokenVecOps for Preprocessor<'_> {
 
 impl<'a> Preprocessor<'a> {
     /// 构造预处理器
-    fn new(tokens: &'a mut Vec<Token>) -> Self {
+    fn new(tokens: &'a mut Vec<Token>, include_path: Vec<String>) -> Self {
         Self {
             tokens,
             cursor: 0,
             result: vec![],
             cond_incls: vec![],
             macros: vec![],
+            include_path,
         }
     }
 
@@ -67,6 +70,7 @@ impl<'a> Preprocessor<'a> {
             result: vec![],
             cond_incls: processor.cond_incls.to_vec(),
             macros: processor.macros.to_vec(),
+            include_path: processor.include_path.to_vec(),
         }
     }
 
@@ -121,7 +125,7 @@ impl<'a> Preprocessor<'a> {
                 let mut is_dqueto = false;
                 let filename = read_include_filename(self, tokens, &mut is_dqueto);
                 // 不以"/"开头的视为相对路径
-                if !filename.starts_with("/") {
+                if !filename.starts_with("/") && is_dqueto {
                     // 以当前文件所在目录为起点
                     // 路径为：终结符文件名所在的文件夹路径/当前终结符名
                     let dir = dirname(start.get_file_name());
@@ -133,7 +137,8 @@ impl<'a> Preprocessor<'a> {
                 }
 
                 // 直接引入文件
-                self.include_file(filename.to_string(), &start);
+                let path = self.search_include_paths(filename.to_string());
+                self.include_file(path, &start);
                 continue;
             }
 
@@ -275,6 +280,23 @@ impl<'a> Preprocessor<'a> {
             error_token!(file_token, "{}: cannot open file", &path);
         }
         self.append_tokens(include_tokens);
+    }
+
+    // 搜索引入路径区
+    fn search_include_paths(&self, filename: String) -> String {
+        if filename.starts_with("/") {
+            return filename;
+        }
+
+        // 从引入路径区查找文件
+        for incl in self.include_path.iter() {
+            let path = format!("{}/{}", incl, filename);
+            if file_exists(&path) {
+                return path;
+            }
+        }
+        // 啥也没找到,直接返回吧
+        filename
     }
 
     /// 检查结束

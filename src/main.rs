@@ -158,7 +158,7 @@ fn cc1(args: Args) {
     }
 
     // 预处理
-    let tokens = preprocess(&mut tokens);
+    let tokens = preprocess(&mut tokens, args.include_path);
 
     if args.opt_e_cap {
         // 打开输出文件

@@ -29,14 +29,14 @@ rvrcc:
 
 # 只使用rvcc进行宏的测试
 test/macro.exe: rvrcc test/macro.c
-	./target/release/rvrcc -c -o test/macro.o test/macro.c
+	./target/release/rvrcc -Itest -c -o test/macro.o test/macro.c
 	$(CC) -static -o $@ test/macro.o -xc test/common
 	$(RUN) ./test/macro.exe
 #	$(RISCV)/bin/riscv64-unknown-linux-gnu-gcc -o $@ test/macro.o -xc test/common
 
 # 测试标签，运行测试
 test/%.exe: rvrcc test/%.c
-	./target/release/rvrcc -c -o test/$*.o test/$*.c
+	./target/release/rvrcc -Itest -c -o test/$*.o test/$*.c
 	$(CC) -static -o $@ test/$*.o -xc test/common
 
 test: $(TESTS)
@@ -68,14 +68,14 @@ stage2/%.o: rvrcc self.py stage2/%.c
 # 只使用stage2的rvcc进行宏的测试
 stage2/test/macro.exe: stage2 test/macro.c
 	mkdir -p stage2/test
-	$(RUN) ./stage2/rvcc -c test/macro.c -cc1 -cc1-input test/macro.c -cc1-output stage2/test/macro.s
+	$(RUN) ./stage2/rvcc -Itest -c test/macro.c -cc1 -cc1-input test/macro.c -cc1-output stage2/test/macro.s
 	$(CC) -static -o $@ stage2/test/macro.s -xc test/common
 	$(RUN) ./stage2/test/macro.exe
 
 # 利用stage2的rvcc去进行测试
 stage2/test/%.exe: stage2 test/%.c
 	$(CC) -o stage2/test/$*.c -E -P -C test/$*.c
-	$(RUN) ./stage2/rvcc -c stage2/test/$*.c -cc1 -cc1-input stage2/test/$*.c -cc1-output stage2/test/$*.s
+	$(RUN) ./stage2/rvcc -Itest -c stage2/test/$*.c -cc1 -cc1-input stage2/test/$*.c -cc1-output stage2/test/$*.s
 	$(CC) -static -o $@ stage2/test/$*.s -xc test/common
 
 test-stage2: $(TESTS:test/%=stage2/test/%)
