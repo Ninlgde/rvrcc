@@ -426,6 +426,13 @@ impl Token {
         (inner.chars.to_vec(), inner.typ.as_ref().unwrap().clone())
     }
 
+    /// 设置字符串
+    pub fn set_string(&mut self, chars: Vec<u8>, typ: TypeLink) {
+        let mut inner = self.inner.borrow_mut();
+        inner.chars = chars;
+        inner.typ = Some(typ);
+    }
+
     /// 获取字符串字面量
     pub fn get_string_literal(&self) -> String {
         let inner = self.inner.borrow();

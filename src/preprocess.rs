@@ -4,7 +4,9 @@ use crate::cmacro::{init_macros, HideSet, Macro, MacroArg, MacroParam};
 use crate::parse::Parser;
 use crate::token::{File, Token, TokenVecOps};
 use crate::tokenize::{convert_keywords, tokenize};
-use crate::{dirname, error_token, file_exists, tokenize_file, warn_token};
+use crate::{
+    dirname, error_token, file_exists, join_adjacent_string_literals, tokenize_file, warn_token,
+};
 
 /// 预处理器入口函数
 pub fn preprocess(tokens: &mut Vec<Token>, include_path: Vec<String>) -> Vec<Token> {
@@ -13,6 +15,8 @@ pub fn preprocess(tokens: &mut Vec<Token>, include_path: Vec<String>) -> Vec<Tok
     let mut tokens = processor.process();
     // 将所有关键字的终结符，都标记为KEYWORD
     convert_keywords(&mut tokens);
+
+    let tokens = join_adjacent_string_literals(tokens);
     tokens
 }
 

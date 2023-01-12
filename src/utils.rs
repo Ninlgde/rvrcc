@@ -1,3 +1,4 @@
+use crate::ctype::Type;
 use crate::token::Token;
 use std::fs::File;
 use std::io::{stdout, Read, Write};
@@ -184,7 +185,7 @@ pub fn print_tokens(mut write_file: Box<dyn Write>, tokens: Vec<Token>) {
     write!(write_file, "\n").unwrap();
 }
 
-// 移除续行，即反斜杠+换行符的形式
+/// 移除续行，即反斜杠+换行符的形式
 pub fn remove_backslash_newline(input: String) -> String {
     let mut chars = input.into_bytes();
     // 旧字符串的索引I（从0开始）
@@ -236,4 +237,39 @@ pub fn remove_backslash_newline(input: String) -> String {
 
     // 截取[0..j) 返回字符串
     String::from_utf8_lossy(&chars[0..j]).to_string()
+}
+
+/// 拼接相邻的字符串
+pub fn join_adjacent_string_literals(mut tokens: Vec<Token>) -> Vec<Token> {
+    // 旧token的索引I（从0开始）
+    // 新token的索引J（从0开始）
+    // 因为J始终<=I，所以二者共用空间，不会有问题
+    let mut i = 0;
+    let mut j = 0;
+
+    while i < tokens.len() {
+        let cur = &tokens[i];
+        if !cur.is_string() || !tokens[i + 1].is_string() {
+            tokens[j] = cur.clone();
+            i += 1;
+            j += 1;
+            continue;
+        }
+
+        // 拼接i 和i+1
+        let (t1, _) = cur.get_string();
+        let (mut t2, _) = tokens[i + 1].get_string();
+        // 要去掉i末尾的\0
+        let mut t = t1[0..t1.len() - 1].to_vec();
+        t.append(&mut t2);
+        let len = t.len() as isize;
+        let mut nt = Token::form(cur);
+        nt.set_string(t, Type::array_of(Type::new_char(), len));
+
+        // 把拼好的放在i+1的位置上,并且i++ 继续往后找
+        tokens[i + 1] = nt;
+        i += 1;
+    }
+
+    tokens[0..j].to_vec()
 }
