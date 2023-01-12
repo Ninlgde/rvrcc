@@ -67,18 +67,18 @@ pub fn replace_extn(path: &String, extn: &str) -> String {
 }
 
 /// 查找文件
-pub fn find_file(pattern: String) -> String {
-    let files = glob::glob(pattern.as_str()).expect("Failed to read glob pattern");
+pub fn find_file(pattern: &str) -> String {
+    let files = glob::glob(pattern).expect("Failed to read glob pattern");
     // 选择最后一条
-    let last = files.last().unwrap();
-    match last {
-        Ok(path) => {
-            return path.to_str().unwrap().to_string();
-        }
-        Err(_) => {
-            panic!("Failed to read glob pattern")
-        }
+    let last = files.last();
+    if last.is_some() {
+        let last = last.unwrap();
+        return match last {
+            Ok(path) => path.to_str().unwrap().to_string(),
+            Err(_) => "".to_string(),
+        };
     }
+    return "".to_string();
 }
 
 /// 获取绝对目录名

@@ -24,13 +24,14 @@ fn main() {
     // 获取命令行参数
     let arg_strs: Vec<String> = env::args().collect();
     // 解析传入程序的参数
-    let args = parse_args(arg_strs.to_vec());
+    let mut args = parse_args(arg_strs.to_vec());
 
     let mut cleaner = TempFileCleaner::new();
 
     // 如果指定了-cc1选项
     // 直接编译C文件到汇编文件
     if args.opt_cc1 {
+        add_default_include_paths(&mut args.include_path, arg_strs[0].to_string());
         cc1(args);
         exit(0);
     }
@@ -303,7 +304,14 @@ fn run_linker(inputs: Vec<String>, output: String, print_debug: bool) {
     run_subprocess(arr, print_debug);
 }
 
+/// 查找库路径
 fn find_lib_path() -> String {
+    if file_exists(&"/usr/lib/riscv64-linux-gnu/crti.o".to_string()) {
+        return "/usr/lib/riscv64-linux-gnu".to_string();
+    }
+    if file_exists(&"/usr/lib64/crti.o".to_string()) {
+        return "/usr/lib64".to_string();
+    }
     let lib_path = format!("{}/sysroot/usr/lib/crti.o", RISCV_HOME);
     if file_exists(&lib_path) {
         return format!("{}/sysroot/usr/lib/", RISCV_HOME);
@@ -311,11 +319,34 @@ fn find_lib_path() -> String {
     panic!("library path is not found")
 }
 
+/// 查找gcc库路径
 fn find_gcc_lib_path() -> String {
-    let lib_path_pattern = format!(
+    let mut paths = vec![];
+    paths.push("/usr/lib/gcc/riscv64-linux-gnu/*/crtbegin.o");
+    paths.push("/usr/lib/gcc/riscv64-pc-linux-gnu/*/crtbegin.o");
+    paths.push("/usr/lib/gcc/riscv64-redhat-linux/*/crtbegin.o");
+    let rslbp = format!(
         "{}/lib/gcc/riscv64-unknown-linux-gnu/*/crtbegin.o",
         RISCV_HOME
     );
-    let lib_path = find_file(lib_path_pattern);
-    dirname(lib_path)
+    paths.push(rslbp.as_str());
+    for path in paths {
+        let lib_path = find_file(path);
+        if lib_path.len() > 0 {
+            return dirname(lib_path);
+        }
+    }
+
+    panic!("gcc library path is not found")
+}
+
+/// 增加默认引入路径
+fn add_default_include_paths(include_path: &mut Vec<String>, arg: String) {
+    // rvcc特定的引入文件被安装到了argv[0]的./include位置
+    include_path.push(format!("{}/include", dirname(arg)));
+
+    // 支持标准的引入路径
+    include_path.push("/usr/local/include".to_string());
+    include_path.push("/usr/include/riscv64-linux-gnu".to_string());
+    include_path.push("/usr/include".to_string());
 }
