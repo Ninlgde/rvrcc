@@ -1,4 +1,5 @@
-use crate::token::Token;
+use crate::token::{File, Token};
+use crate::tokenize::tokenize;
 use std::cell::RefCell;
 use std::ptr;
 use std::rc::Rc;
@@ -231,4 +232,63 @@ impl HideSet {
         }
         eprintln!();
     }
+}
+
+// 定义预定义的宏
+pub fn define_macro(name: &str, buf: &str) -> Macro {
+    let body = tokenize(File::new_link("<built-in>".to_string(), 1, buf.to_string()));
+    Macro::new(name, body, vec![], false, true)
+}
+
+// 初始化预定义的宏
+pub fn init_macros() -> Vec<Macro> {
+    let mut macros = vec![];
+    macros.push(define_macro("_LP64", "1"));
+    macros.push(define_macro("__C99_MACRO_WITH_VA_ARGS", "1"));
+    macros.push(define_macro("__ELF__", "1"));
+    macros.push(define_macro("__LP64__", "1"));
+    macros.push(define_macro("__SIZEOF_DOUBLE__", "8"));
+    macros.push(define_macro("__SIZEOF_FLOAT__", "4"));
+    macros.push(define_macro("__SIZEOF_INT__", "4"));
+    macros.push(define_macro("__SIZEOF_LONG_DOUBLE__", "8"));
+    macros.push(define_macro("__SIZEOF_LONG_LONG__", "8"));
+    macros.push(define_macro("__SIZEOF_LONG__", "8"));
+    macros.push(define_macro("__SIZEOF_POINTER__", "8"));
+    macros.push(define_macro("__SIZEOF_PTRDIFF_T__", "8"));
+    macros.push(define_macro("__SIZEOF_SHORT__", "2"));
+    macros.push(define_macro("__SIZEOF_SIZE_T__", "8"));
+    macros.push(define_macro("__SIZE_TYPE__", "unsigned long"));
+    macros.push(define_macro("__STDC_HOSTED__", "1"));
+    macros.push(define_macro("__STDC_NO_ATOMICS__", "1"));
+    macros.push(define_macro("__STDC_NO_COMPLEX__", "1"));
+    macros.push(define_macro("__STDC_NO_THREADS__", "1"));
+    macros.push(define_macro("__STDC_NO_VLA__", "1"));
+    macros.push(define_macro("__STDC_VERSION__", "201112L"));
+    macros.push(define_macro("__STDC__", "1"));
+    macros.push(define_macro("__USER_LABEL_PREFIX__", ""));
+    macros.push(define_macro("__alignof__", "_Alignof"));
+    macros.push(define_macro("__rvcc__", "1"));
+    macros.push(define_macro("__const__", "const"));
+    macros.push(define_macro("__gnu_linux__", "1"));
+    macros.push(define_macro("__inline__", "inline"));
+    macros.push(define_macro("__linux", "1"));
+    macros.push(define_macro("__linux__", "1"));
+    macros.push(define_macro("__signed__", "signed"));
+    macros.push(define_macro("__typeof__", "typeof"));
+    macros.push(define_macro("__unix", "1"));
+    macros.push(define_macro("__unix__", "1"));
+    macros.push(define_macro("__volatile__", "volatile"));
+    macros.push(define_macro("linux", "1"));
+    macros.push(define_macro("unix", "1"));
+    macros.push(define_macro("__riscv_mul", "1"));
+    macros.push(define_macro("__riscv_muldiv", "1"));
+    macros.push(define_macro("__riscv_fdiv", "1"));
+    macros.push(define_macro("__riscv_xlen", "64"));
+    macros.push(define_macro("__riscv", "1"));
+    macros.push(define_macro("__riscv64", "1"));
+    macros.push(define_macro("__riscv_div", "1"));
+    macros.push(define_macro("__riscv_float_abi_double", "1"));
+    macros.push(define_macro("__riscv_flen", "64"));
+
+    macros
 }
