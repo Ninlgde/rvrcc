@@ -86,19 +86,71 @@ impl<'a> Generator<'a> {
             let f = &mut *func.borrow_mut();
             match f {
                 Obj::Func {
-                    locals, stack_size, ..
+                    locals,
+                    stack_size,
+                    params,
+                    ..
                 } => {
+                    // 反向偏移量
+                    let mut re_offset = 16;
+
+                    // 被调用函数将自己的ra、fp也压入栈了，
+                    // 所以fp+16才是上一级函数的sp顶
+                    // /             栈保存的N个变量            / N*8
+                    // /---------------本级函数----------------/ sp
+                    // /                 ra                  / sp-8
+                    // /                fp（上一级）           / fp = sp-16
+
+                    // 寄存器传递
+                    let mut gp = 0;
+                    let mut fp = 0;
+                    // 寄存器传递的参数
+                    for param in params.iter().rev() {
+                        let mut var = param.borrow_mut();
+                        let typ = var.get_type().clone();
+                        let size = typ.borrow().size;
+                        if typ.borrow().is_float() {
+                            if fp < FP_MAX {
+                                writeln!(" #  FP{}传递浮点变量{}", fp, var.get_name());
+                                fp += 1;
+                                continue;
+                            } else if gp < GP_MAX {
+                                writeln!(" #  GP{}传递浮点变量{}", gp, var.get_name());
+                                gp += 1;
+                                continue;
+                            }
+                        } else {
+                            if gp < GP_MAX {
+                                writeln!(" #  GP{}传递整型变量{}", gp, var.get_name());
+                                gp += 1;
+                                continue;
+                            }
+                        }
+                        // 栈传递
+                        // 对齐变量
+                        re_offset = align_to(re_offset, 8);
+                        // 为栈传递变量赋一个偏移量，或者说是反向栈地址
+                        var.set_offset(re_offset);
+                        // 栈传递变量计算反向偏移量
+                        re_offset += size;
+                        writeln!(" #  栈传递变量{}偏移量{}", var.get_name(), var.get_offset());
+                    }
+
                     let mut offset = 0;
                     for var in locals.iter().rev() {
                         {
                             let cv = var.clone();
                             let v = cv.borrow();
+                            if v.get_offset() != 0 {
+                                continue;
+                            }
                             let t = v.get_type().borrow();
                             offset += t.size as isize;
                             offset = align_to(offset, v.get_align());
                         }
                         let mut v = var.borrow_mut();
                         v.set_offset(-offset);
+                        writeln!(" #  寄存器传递变量{}偏移量{}", v.get_name(), v.get_offset());
                     }
 
                     *stack_size = align_to(offset, 16);
@@ -246,6 +298,9 @@ impl<'a> Generator<'a> {
                     let mut fp = 0;
                     for p in params.iter().rev() {
                         let p = p.borrow();
+                        if p.get_offset() > 0 {
+                            continue;
+                        }
                         let is_float = p.get_type().borrow().is_float();
                         let size = p.get_type().borrow().size;
                         if is_float {
