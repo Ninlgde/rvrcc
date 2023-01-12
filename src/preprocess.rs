@@ -526,7 +526,7 @@ impl<'a> Preprocessor<'a> {
     /// 如果是宏变量并展开成功，返回真
     fn expand_macro(&mut self) -> bool {
         let (pos, token) = self.current();
-        let tt = token.clone();
+        let macro_token = self.current_token().clone();
         // 判断是否处于隐藏集之中
         if token.contain_hide_set() {
             return false;
@@ -536,6 +536,15 @@ impl<'a> Preprocessor<'a> {
             return false;
         }
         let macro_ = macro_.unwrap();
+        // 如果宏设置了相应的处理函数，例如__LINE__
+        if macro_.get_handler().is_some() {
+            // 就使用相应的处理函数解析当前的宏
+            let func = macro_.get_handler().unwrap();
+            let nts = func(vec![token.clone()]);
+            self.next().append_tokens(nts);
+            return true;
+        }
+
         let macro_name = macro_.get_name();
         // 为宏变量时
         if macro_.is_obj_like() {
@@ -547,6 +556,9 @@ impl<'a> Preprocessor<'a> {
             let hs = token.get_hide_set();
             let body = macro_.get_body();
             let mut rb = add_hide_set(body, hs);
+            for b in rb.iter_mut() {
+                b.set_origin(macro_token.clone());
+            }
             // 传递 是否为行首 和 前面是否有空格 的信息
             rb[0].set_bol_space(token.at_bol(), token.has_space());
             self.next().append_tokens(rb);
@@ -561,7 +573,6 @@ impl<'a> Preprocessor<'a> {
 
         // 处理宏函数，并连接到Tok之后
         // 读取宏函数实参，这里是宏函数的隐藏集
-        let macro_token = self.current_token().clone();
         let args = self.read_macro_args(&macro_.get_params());
         // 这里返回的是右括号，这里是宏参数的隐藏集
         let r_paren = self.current_token().clone();
@@ -575,8 +586,11 @@ impl<'a> Preprocessor<'a> {
         let body = subst(self, macro_.get_body(), args);
         // 为宏函数内部设置隐藏集
         let mut rb = add_hide_set(body, hs);
+        for b in rb.iter_mut() {
+            b.set_origin(macro_token.clone());
+        }
         // 传递 是否为行首 和 前面是否有空格 的信息
-        rb[0].set_bol_space(tt.at_bol(), tt.has_space());
+        rb[0].set_bol_space(macro_token.at_bol(), macro_token.has_space());
         // 将设置好的宏函数内部连接到终结符链表中
         self.next().append_tokens(rb);
         true

@@ -48,6 +48,8 @@ pub struct TokenInner {
     chars: Vec<u8>,
     /// 数字
     hide_set: *mut HideSet,
+    /// 宏展开前的原始终结符
+    origin: Option<Token>,
 }
 
 impl TokenInner {
@@ -55,6 +57,11 @@ impl TokenInner {
     pub fn form(other: &Rc<RefCell<TokenInner>>) -> Self {
         let typ = if other.borrow().typ.is_some() {
             Some(other.borrow().typ.as_ref().unwrap().clone())
+        } else {
+            None
+        };
+        let origin = if other.borrow().origin.is_some() {
+            Some(other.borrow().origin.as_ref().unwrap().clone())
         } else {
             None
         };
@@ -71,6 +78,7 @@ impl TokenInner {
             typ,
             chars: other.borrow().chars.clone(),
             hide_set: other.borrow().hide_set,
+            origin,
         }
     }
 
@@ -89,6 +97,7 @@ impl TokenInner {
             typ: None,
             chars: vec![],
             hide_set: HideSet::head(),
+            origin: None,
         }
     }
 
@@ -480,6 +489,18 @@ impl Token {
         let mut inner = self.inner.borrow_mut();
         inner.at_bol = bol;
         inner.has_space = space;
+    }
+
+    /// 获取宏展开前的原始终结符
+    pub fn get_origin(&self) -> Option<Token> {
+        let inner = self.inner.borrow();
+        inner.origin.clone()
+    }
+
+    /// 设置宏展开前的原始终结符
+    pub fn set_origin(&mut self, origin: Token) {
+        let mut inner = self.inner.borrow_mut();
+        inner.origin = Some(origin);
     }
 }
 

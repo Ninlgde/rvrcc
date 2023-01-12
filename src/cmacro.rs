@@ -1,3 +1,4 @@
+use crate::preprocess::{new_num_token, new_str_token};
 use crate::token::{File, Token};
 use crate::tokenize::tokenize;
 use std::cell::RefCell;
@@ -27,6 +28,9 @@ impl MacroArg {
     }
 }
 
+/// 宏处理函数
+type MacroHandlerFn = fn(Vec<Token>) -> Vec<Token>;
+
 /// 定义的宏变量
 struct MacroInner {
     /// 名称
@@ -39,6 +43,8 @@ struct MacroInner {
     deleted: bool,
     /// 宏变量为真，或者宏函数为假
     is_obj_like: bool,
+    /// 宏处理函数
+    handler: Option<MacroHandlerFn>,
 }
 
 impl MacroInner {
@@ -56,6 +62,7 @@ impl MacroInner {
             params,
             deleted,
             is_obj_like,
+            handler: None,
         }
     }
 }
@@ -128,6 +135,18 @@ impl Macro {
     pub fn is_obj_like(&self) -> bool {
         let inner = self.inner.borrow();
         inner.is_obj_like
+    }
+
+    /// 获取宏处理函数
+    pub fn get_handler(&self) -> Option<MacroHandlerFn> {
+        let inner = self.inner.borrow();
+        inner.handler
+    }
+
+    /// 设置宏处理函数
+    pub fn set_handler(&mut self, handler: MacroHandlerFn) {
+        let mut inner = self.inner.borrow_mut();
+        inner.handler = Some(handler);
     }
 }
 
@@ -240,6 +259,13 @@ pub fn define_macro(name: &str, buf: &str) -> Macro {
     Macro::new(name, body, vec![], false, true)
 }
 
+// 增加内建的宏和相应的宏处理函数
+pub fn add_builtin(name: &str, handler: MacroHandlerFn) -> Macro {
+    let mut macro_ = Macro::new(name, vec![], vec![], false, true);
+    macro_.set_handler(handler);
+    macro_
+}
+
 // 初始化预定义的宏
 pub fn init_macros() -> Vec<Macro> {
     let mut macros = vec![];
@@ -267,6 +293,7 @@ pub fn init_macros() -> Vec<Macro> {
     macros.push(define_macro("__STDC__", "1"));
     macros.push(define_macro("__USER_LABEL_PREFIX__", ""));
     macros.push(define_macro("__alignof__", "_Alignof"));
+    macros.push(define_macro("__rvrcc__", "1"));
     macros.push(define_macro("__rvcc__", "1"));
     macros.push(define_macro("__const__", "const"));
     macros.push(define_macro("__gnu_linux__", "1"));
@@ -290,5 +317,32 @@ pub fn init_macros() -> Vec<Macro> {
     macros.push(define_macro("__riscv_float_abi_double", "1"));
     macros.push(define_macro("__riscv_flen", "64"));
 
+    macros.push(add_builtin("__FILE__", file_macro));
+    macros.push(add_builtin("__LINE__", line_macro));
+
     macros
+}
+
+/// 文件标号函数
+fn file_macro(input: Vec<Token>) -> Vec<Token> {
+    // 如果存在原始的宏，则遍历后使用原始的宏
+    let mut head = input.first().unwrap().clone();
+    while head.get_origin().is_some() {
+        head = head.get_origin().unwrap().clone();
+    }
+    // 根据原始宏的文件名构建字符串终结符
+    let nt = new_str_token(head.get_file_name(), &head);
+    vec![nt, Token::new_eof(0, 0)]
+}
+
+/// 行标号函数
+fn line_macro(input: Vec<Token>) -> Vec<Token> {
+    // 如果存在原始的宏，则遍历后使用原始的宏
+    let mut head = input.first().unwrap().clone();
+    while head.get_origin().is_some() {
+        head = head.get_origin().unwrap().clone();
+    }
+    // 根据原始的宏的行号构建数值终结符
+    let nt = new_num_token(head.get_line_no() as i64, &head);
+    vec![nt, Token::new_eof(0, 0)]
 }

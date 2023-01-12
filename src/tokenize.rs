@@ -49,11 +49,11 @@ pub fn tokenize(input: FileLink) -> Vec<Token> {
                 let c = read_char(&chars, pos);
                 pos += 1;
                 if c == '\n' {
-                    line_no += 1;
                     at_bol = true;
                     break;
                 }
             }
+            line_no += 1;
             has_space = true;
             continue;
         }
