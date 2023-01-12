@@ -27,17 +27,16 @@ $(OBJS): ../rvcc/rvcc.h
 rvrcc:
 	@cargo build --release
 
-# 只使用rvcc进行宏的测试
-test/macro.exe: rvrcc test/macro.c
-	./target/release/rvrcc -Itest -c -o test/macro.o test/macro.c
-	$(CC) -static -o $@ test/macro.o -xc test/common
-	$(RUN) ./test/macro.exe
-#	$(RISCV)/bin/riscv64-unknown-linux-gnu-gcc -o $@ test/macro.o -xc test/common
-
 # 测试标签，运行测试
 test/%.exe: rvrcc test/%.c
 	./target/release/rvrcc -Itest -c -o test/$*.o test/$*.c
 	$(CC) -static -o $@ test/$*.o -xc test/common
+
+test/%: test/%.exe
+	echo "\033[34m"test/$*.exe"\033[0m"; $(RUN) test/$*.exe
+
+test/driver: rvrcc
+	test/driver.sh ./target/release/rvrcc
 
 test: $(TESTS)
 	for i in $^; do echo "\033[34m"$$i"\033[0m"; $(RUN) ./$$i || exit 1; echo; done
