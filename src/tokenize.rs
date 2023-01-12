@@ -129,7 +129,7 @@ pub fn tokenize(input: FileLink) -> Vec<Token> {
 
         // 解析字符字面量
         if c == '\'' {
-            let c = read_char_literal(&chars, &mut pos);
+            let c = read_char_literal(&chars, &mut pos, old_pos);
             let token = Token::new_char_literal(has_space, at_bol, old_pos, line_no, c);
             tokens.push(token);
             at_bol = false;
@@ -137,6 +137,17 @@ pub fn tokenize(input: FileLink) -> Vec<Token> {
             continue;
         }
 
+        // 宽字符字面量，占两个字节
+        if starts_with(&chars, pos, "L'") {
+            let c = read_char_literal(&chars, &mut pos, old_pos + 1);
+            let token = Token::new_char_literal(has_space, at_bol, old_pos, line_no, c);
+            tokens.push(token);
+            at_bol = false;
+            has_space = false;
+            continue;
+        }
+
+        // 解析标识符
         read_ident(&chars, &mut pos);
         if old_pos != pos {
             let name = slice_to_string(&chars, old_pos, pos);
@@ -362,8 +373,8 @@ fn from_hex(c: char) -> u8 {
 }
 
 /// 读取字符字面量
-fn read_char_literal(chars: &Vec<u8>, pos: &mut usize) -> char {
-    *pos += 1; // 忽略'
+fn read_char_literal(chars: &Vec<u8>, pos: &mut usize, quote: usize) -> char {
+    *pos = quote + 1; // 忽略'
     let mut c = read_char(chars, *pos);
 
     if c == '\0' {
