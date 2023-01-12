@@ -669,7 +669,7 @@ impl<'a> Preprocessor<'a> {
             if level == 0 && !read_rest && token.equal(",") {
                 break;
             }
-            if token.at_bol() {
+            if token.at_eof() {
                 error_token!(token, "premature end of input");
             }
             if token.equal("(") {

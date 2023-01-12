@@ -10,6 +10,9 @@ use std::io::Write;
 /// 输出文件
 static mut OUTPUT: Option<Box<dyn Write>> = None;
 
+const GP_MAX: usize = 8;
+const FP_MAX: usize = 8;
+
 /// 汇编代码生成到文件
 pub fn codegen(program: &mut Vec<ObjLink>, write_file: Box<dyn Write>) {
     unsafe {
@@ -246,7 +249,7 @@ impl<'a> Generator<'a> {
                         let is_float = p.get_type().borrow().is_float();
                         let size = p.get_type().borrow().size;
                         if is_float {
-                            if fp < 8 {
+                            if fp < FP_MAX {
                                 writeln!("  # 将浮点形参{}的寄存器fa{}的值压栈", p.get_name(), fp);
                                 self.store_float(fp, p.get_offset(), size);
                                 fp += 1;
@@ -267,7 +270,7 @@ impl<'a> Generator<'a> {
                         // 可变参数存入__va_area__，注意最多为7个
                         let va_area = va_area.as_ref().unwrap().borrow();
                         let mut offset = va_area.get_offset();
-                        while gp < 8 {
+                        while gp < GP_MAX {
                             writeln!(
                                 "  # 可变参数，相对{}的偏移量为{}",
                                 va_area.get_name(),
@@ -675,7 +678,9 @@ impl<'a> Generator<'a> {
             }
             NodeKind::FuncCall => {
                 // 计算所有参数的值，正向压栈
-                self.push_args(&node.args);
+                // 此处获取到栈传递参数的数量
+                let mut args = node.args.to_vec();
+                let stack = self.push_args(&mut args);
                 self.gen_expr(node.lhs.as_ref().unwrap());
                 // 将a0的值存入t0
                 writeln!("  mv t0, a0");
@@ -691,7 +696,7 @@ impl<'a> Generator<'a> {
                     // 如果是可变参数函数
                     // 匹配到空参数（最后一个）的时候，将剩余的整型寄存器弹栈
                     if func_type.borrow().is_variadic && pi >= params.len() {
-                        if gp < 8 {
+                        if gp < GP_MAX {
                             writeln!("  # a{}传递可变实参", gp);
                             self.pop(gp);
                             gp += 1;
@@ -700,17 +705,17 @@ impl<'a> Generator<'a> {
                     }
                     pi += 1;
                     if arg.typ.as_ref().unwrap().borrow().is_float() {
-                        if fp < 8 {
+                        if fp < FP_MAX {
                             writeln!("  # fa{}传递浮点参数", fp);
                             self.pop_float(fp);
                             fp += 1;
-                        } else if gp < 8 {
+                        } else if gp < GP_MAX {
                             writeln!("  # a{}传递浮点参数", gp);
                             self.pop(gp);
                             gp += 1;
                         }
                     } else {
-                        if gp < 8 {
+                        if gp < GP_MAX {
                             writeln!("  # a{}传递整型参数", gp);
                             self.pop(gp);
                             gp += 1;
@@ -718,17 +723,16 @@ impl<'a> Generator<'a> {
                     }
                 }
 
-                // 调用函数
-                if self.depth % 2 == 0 {
-                    // 偶数深度，sp已经对齐16字节
-                    writeln!("  # 调用函数");
-                    writeln!("  jalr t0");
-                } else {
-                    // 对齐sp到16字节的边界
-                    writeln!("  # 对齐sp到16字节的边界，并调用函数");
-                    writeln!("  addi sp, sp, -8");
-                    writeln!("  jalr t0");
-                    writeln!("  addi sp, sp, 8");
+                // 偶数深度，sp已经对齐16字节
+                writeln!("  # 调用函数");
+                writeln!("  jalr t0");
+
+                // 回收为栈传递的变量开辟的栈空间
+                if stack > 0 {
+                    // 栈的深度减去栈传递参数的个数
+                    self.depth -= stack;
+                    writeln!("  # 回收栈传递参数的{}个字节", stack * 8);
+                    writeln!("  addi sp, sp, {}", stack * 8);
                 }
 
                 // 清除寄存器中高位无关的数据
@@ -1017,12 +1021,18 @@ impl<'a> Generator<'a> {
         }
     }
 
-    fn push_args(&mut self, args: &Vec<NodeLink>) {
+    /// 将函数实参计算后压入栈中
+    fn push_args0(&mut self, args: &Vec<NodeLink>, first_pass: bool) {
         if args.len() == 0 {
             return;
         }
 
         for arg in args.iter().rev() {
+            // 第一遍对栈传递的变量进行压栈
+            // 第二遍对寄存器传递的变量进行压栈
+            if (first_pass && !arg.pass_by_stack) || (!first_pass && arg.pass_by_stack) {
+                continue;
+            }
             let is_float = arg.typ.as_ref().unwrap().borrow().is_float();
             if is_float {
                 writeln!("\n  # ↓对浮点表达式进行计算，然后压栈↓");
@@ -1039,6 +1049,58 @@ impl<'a> Generator<'a> {
             }
             writeln!("  # ↑结束压栈↑");
         }
+    }
+
+    /// 处理参数后进行压栈
+    fn push_args(&mut self, args: &mut Vec<NodeLink>) -> usize {
+        let mut stack = 0;
+        let mut fp = 0;
+        let mut gp = 0;
+
+        // 遍历所有参数，优先使用寄存器传递，然后是栈传递
+        for arg in args.iter_mut() {
+            let is_float = arg.typ.as_ref().unwrap().borrow().is_float();
+            if is_float {
+                // 浮点优先使用FP，而后是GP，最后是栈传递
+                if fp < FP_MAX {
+                    writeln!("  # 浮点{}值通过fa{}传递", arg.fval, fp);
+                    fp += 1;
+                } else if gp < GP_MAX {
+                    writeln!("  # 浮点{}值通过a{}传递", arg.fval, gp);
+                    gp += 1;
+                } else {
+                    writeln!("  # 浮点{}值通过栈传递", arg.fval);
+                    arg.pass_by_stack = true;
+                    stack += 1;
+                }
+            } else {
+                // 整型优先使用GP，最后是栈传递
+                if gp < GP_MAX {
+                    writeln!("  # 整型{}值通过a{}传递", arg.val, gp);
+                    gp += 1;
+                } else {
+                    writeln!("  # 整型{}值通过栈传递", arg.val);
+                    arg.pass_by_stack = true;
+                    stack += 1;
+                }
+            }
+        }
+
+        // 对齐栈边界
+        if (self.depth + stack) % 2 == 1 {
+            writeln!("  # 对齐栈边界到16字节");
+            writeln!("  addi sp, sp, -8");
+            self.depth += 1;
+            stack += 1;
+        }
+
+        // 进行压栈
+        // 第一遍对栈传递的变量进行压栈
+        self.push_args0(args, true);
+        // 第二遍对寄存器传递的变量进行压栈
+        self.push_args0(args, false);
+        // 返回栈传递参数的个数
+        stack
     }
 
     /// 压栈，将结果临时压入栈中备用
