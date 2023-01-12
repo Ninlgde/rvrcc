@@ -506,20 +506,15 @@ impl<'a> Preprocessor<'a> {
     }
 
     /// 新增宏变量，压入宏变量栈中
-    fn add_macro(
-        &mut self,
-        name: &str,
-        is_obj_like: bool,
-        body: Vec<Token>,
-        params: Vec<MacroParam>,
-    ) {
-        let macro_ = Macro::new(name, body, params, false, is_obj_like);
-        self.macros.push(macro_);
+    fn add_macro(&mut self, name: &str, is_obj_like: bool, body: Vec<Token>) -> Macro {
+        let macro_ = Macro::new(name, body, false, is_obj_like);
+        self.macros.push(macro_.clone());
+        macro_
     }
 
     /// 压入一个被标记删除的宏变量
     fn add_delete_macro(&mut self, name: &str) {
-        let macro_ = Macro::new(name, vec![], vec![], true, true);
+        let macro_ = Macro::new(name, vec![], true, true);
         self.macros.push(macro_);
     }
 
@@ -573,7 +568,7 @@ impl<'a> Preprocessor<'a> {
 
         // 处理宏函数，并连接到Tok之后
         // 读取宏函数实参，这里是宏函数的隐藏集
-        let args = self.read_macro_args(&macro_.get_params());
+        let args = self.read_macro_args(&macro_.get_params(), macro_.get_variadic());
         // 这里返回的是右括号，这里是宏参数的隐藏集
         let r_paren = self.current_token().clone();
         // 宏函数间可能具有不同的隐藏集，新的终结符就不知道应该使用哪个隐藏集。
@@ -609,19 +604,22 @@ impl<'a> Preprocessor<'a> {
         // 判断是宏变量还是宏函数，括号前没有空格则为宏函数
         if !token.has_space() && token.equal("(") {
             // 构造形参
-            let params = self.next().read_macro_params();
+            let mut is_variadic = false;
+            let params = self.next().read_macro_params(&mut is_variadic);
             let body = self.copy_line();
             // 增加宏函数
-            self.add_macro(&name, false, body, params);
+            let mut macro_ = self.add_macro(&name, false, body);
+            macro_.set_params(params);
+            macro_.set_variadic(is_variadic);
         } else {
             // 增加宏变量
             let body = self.copy_line();
-            self.add_macro(&name, true, body, vec![]);
+            self.add_macro(&name, true, body);
         };
     }
 
     /// 读取宏形参
-    fn read_macro_params(&mut self) -> Vec<MacroParam> {
+    fn read_macro_params(&mut self, is_variadic: &mut bool) -> Vec<MacroParam> {
         let mut params = vec![];
 
         while !self.current_token().equal(")") {
@@ -629,6 +627,13 @@ impl<'a> Preprocessor<'a> {
                 self.skip(",");
             }
             let token = self.current_token();
+            // 处理可变参数
+            if token.equal("...") {
+                *is_variadic = true;
+                // "..."应为最后一个参数
+                self.next().skip(")");
+                return params;
+            }
             // 如果不是标识符报错
             if !token.is_ident() {
                 error_token!(token, "expected an identifier");
@@ -645,14 +650,19 @@ impl<'a> Preprocessor<'a> {
     }
 
     /// 读取单个宏实参
-    fn read_macro_arg_one(&mut self) -> MacroArg {
+    fn read_macro_arg_one(&mut self, read_rest: bool) -> MacroArg {
         let mut tokens = vec![];
 
         let mut level = 0;
         // 读取实参对应的终结符
         loop {
             let token = self.current_token();
-            if level == 0 && (token.equal(",") || token.equal(")")) {
+            // 终止条件
+            if level == 0 && token.equal(")") {
+                break;
+            }
+            // 在这里ReadRest为真时，则可以读取多个终结符
+            if level == 0 && !read_rest && token.equal(",") {
                 break;
             }
             if token.at_bol() {
@@ -677,7 +687,7 @@ impl<'a> Preprocessor<'a> {
     }
 
     /// 读取宏实参
-    fn read_macro_args(&mut self, params: &Vec<MacroParam>) -> Vec<MacroArg> {
+    fn read_macro_args(&mut self, params: &Vec<MacroParam>, is_variadic: bool) -> Vec<MacroArg> {
         let start = self.current_token().clone();
         self.next().next();
 
@@ -688,13 +698,33 @@ impl<'a> Preprocessor<'a> {
                 self.skip(",");
             }
             // 读取单个实参
-            let mut arg = self.read_macro_arg_one();
+            let mut arg = self.read_macro_arg_one(false);
             // 设置为对应的形参名称
             arg.name = param.name.to_string();
             args.push(arg);
         }
 
-        if args.len() < params.len() {
+        // 剩余未匹配的实参，如果为可变参数
+        if is_variadic {
+            let token = self.current_token();
+            let mut arg;
+            // 剩余实参为空
+            if token.equal(")") {
+                arg = MacroArg {
+                    name: "".to_string(),
+                    tokens: vec![Token::new_eof(0, 0)],
+                };
+            } else {
+                // 处理对应可变参数的实参
+                // 跳过","
+                if args.len() > 0 {
+                    self.skip(",");
+                }
+                arg = self.read_macro_arg_one(true);
+            }
+            arg.name = "__VA_ARGS__".to_string();
+            args.push(arg);
+        } else if args.len() < params.len() {
             error_token!(&start, "too many arguments");
         }
         self.require(")");

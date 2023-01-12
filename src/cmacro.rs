@@ -45,24 +45,21 @@ struct MacroInner {
     is_obj_like: bool,
     /// 宏处理函数
     handler: Option<MacroHandlerFn>,
+    /// 是否为可变参数的
+    is_variadic: bool,
 }
 
 impl MacroInner {
     /// 构造inner
-    pub fn new(
-        name: &str,
-        body: Vec<Token>,
-        params: Vec<MacroParam>,
-        deleted: bool,
-        is_obj_like: bool,
-    ) -> Self {
+    pub fn new(name: &str, body: Vec<Token>, deleted: bool, is_obj_like: bool) -> Self {
         MacroInner {
             name: name.to_string(),
             body,
-            params,
+            params: vec![],
             deleted,
             is_obj_like,
             handler: None,
+            is_variadic: false,
         }
     }
 }
@@ -83,18 +80,11 @@ impl Clone for Macro {
 
 impl Macro {
     /// 创建宏
-    pub fn new(
-        name: &str,
-        body: Vec<Token>,
-        params: Vec<MacroParam>,
-        deleted: bool,
-        is_obj_like: bool,
-    ) -> Self {
+    pub fn new(name: &str, body: Vec<Token>, deleted: bool, is_obj_like: bool) -> Self {
         Self {
             inner: Rc::new(RefCell::new(MacroInner::new(
                 name,
                 body,
-                params,
                 deleted,
                 is_obj_like,
             ))),
@@ -125,6 +115,12 @@ impl Macro {
         inner.params.to_vec()
     }
 
+    /// 设置宏函数参数
+    pub fn set_params(&mut self, params: Vec<MacroParam>) {
+        let mut inner = self.inner.borrow_mut();
+        inner.params = params
+    }
+
     /// 是否被标记删除
     pub fn deleted(&self) -> bool {
         let inner = self.inner.borrow();
@@ -147,6 +143,18 @@ impl Macro {
     pub fn set_handler(&mut self, handler: MacroHandlerFn) {
         let mut inner = self.inner.borrow_mut();
         inner.handler = Some(handler);
+    }
+
+    /// 宏是否为可变参数
+    pub fn get_variadic(&self) -> bool {
+        let inner = self.inner.borrow();
+        inner.is_variadic
+    }
+
+    /// 设置宏为可变
+    pub fn set_variadic(&mut self, variadic: bool) {
+        let mut inner = self.inner.borrow_mut();
+        inner.is_variadic = variadic;
     }
 }
 
@@ -256,12 +264,12 @@ impl HideSet {
 // 定义预定义的宏
 pub fn define_macro(name: &str, buf: &str) -> Macro {
     let body = tokenize(File::new_link("<built-in>".to_string(), 1, buf.to_string()));
-    Macro::new(name, body, vec![], false, true)
+    Macro::new(name, body, false, true)
 }
 
 // 增加内建的宏和相应的宏处理函数
 pub fn add_builtin(name: &str, handler: MacroHandlerFn) -> Macro {
-    let mut macro_ = Macro::new(name, vec![], vec![], false, true);
+    let mut macro_ = Macro::new(name, vec![], false, true);
     macro_.set_handler(handler);
     macro_
 }
