@@ -483,6 +483,14 @@ impl Token {
     }
 }
 
+impl PartialEq<Self> for Token {
+    /// 判断两个token的内部指针是否相等
+    fn eq(&self, other: &Self) -> bool {
+        Rc::ptr_eq(&self.inner, &other.inner)
+    }
+}
+
+/// file 指针
 pub type FileLink = Rc<RefCell<File>>;
 
 /// 源文件

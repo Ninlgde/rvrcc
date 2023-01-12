@@ -31,6 +31,7 @@ pub use parse::parse;
 pub use preprocess::preprocess;
 pub use tokenize::tokenize_file;
 pub use utils::dirname;
+pub use utils::file_exists;
 pub use utils::find_file;
 pub use utils::open_file_for_write;
 pub use utils::print_tokens;

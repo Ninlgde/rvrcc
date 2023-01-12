@@ -11,11 +11,10 @@
 //! ld链接为可执行文件
 
 use rvrcc::{
-    codegen, dirname, find_file, open_file_for_write, parse, parse_args, preprocess, print_tokens,
-    replace_extn, tokenize_file, Args, TempFile, TempFileCleaner,
+    codegen, dirname, file_exists, find_file, open_file_for_write, parse, parse_args, preprocess,
+    print_tokens, replace_extn, tokenize_file, Args, TempFile, TempFileCleaner,
 };
 use std::env;
-use std::path::Path;
 use std::process::{exit, Command};
 
 const RISCV_HOME: &str = "/Users/malikma/Desktop/source/opt/riscv_linux";
@@ -306,7 +305,7 @@ fn run_linker(inputs: Vec<String>, output: String, print_debug: bool) {
 
 fn find_lib_path() -> String {
     let lib_path = format!("{}/sysroot/usr/lib/crti.o", RISCV_HOME);
-    if file_exists(lib_path) {
+    if file_exists(&lib_path) {
         return format!("{}/sysroot/usr/lib/", RISCV_HOME);
     }
     panic!("library path is not found")
@@ -319,8 +318,4 @@ fn find_gcc_lib_path() -> String {
     );
     let lib_path = find_file(lib_path_pattern);
     dirname(lib_path)
-}
-
-fn file_exists(file: String) -> bool {
-    Path::new(&file).exists()
 }

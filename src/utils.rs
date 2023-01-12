@@ -117,6 +117,11 @@ pub fn dirname(path: String) -> String {
     };
 }
 
+/// 文件是否存在
+pub fn file_exists(file: &String) -> bool {
+    Path::new(file).exists()
+}
+
 /// vec[u8] to vec[i8]
 pub fn vec_u8_into_i8(v: Vec<u8>) -> Vec<i8> {
     // ideally we'd use Vec::into_raw_parts, but it's unstable,

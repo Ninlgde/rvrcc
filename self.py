@@ -86,6 +86,7 @@ int execvp(char *file, char **argv);
 void _exit(int code);
 int wait(int *wstatus);
 int atexit(void (*)(void));
+int stat(char *pathname, struct stat *statbuf);
 """)
 
 # 对文件内容进行替换

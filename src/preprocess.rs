@@ -4,7 +4,7 @@ use crate::cmacro::{HideSet, Macro, MacroArg, MacroParam};
 use crate::parse::Parser;
 use crate::token::{File, Token, TokenVecOps};
 use crate::tokenize::{convert_keywords, tokenize};
-use crate::{dirname, error_token, tokenize_file, warn_token};
+use crate::{dirname, error_token, file_exists, tokenize_file, warn_token};
 
 /// 预处理器入口函数
 pub fn preprocess(tokens: &mut Vec<Token>) -> Vec<Token> {
@@ -115,27 +115,25 @@ impl<'a> Preprocessor<'a> {
             let token = self.next().current_token();
 
             if token.equal("include") {
-                let token = self.next().current_token();
-
-                if !token.is_string() {
-                    error_token!(token, "expected a filename");
+                // 讲这行整体copy出来
+                let tokens = self.next().copy_line();
+                // 是否有双引号
+                let mut is_dqueto = false;
+                let filename = read_include_filename(self, tokens, &mut is_dqueto);
+                // 不以"/"开头的视为相对路径
+                if !filename.starts_with("/") {
+                    // 以当前文件所在目录为起点
+                    // 路径为：终结符文件名所在的文件夹路径/当前终结符名
+                    let dir = dirname(start.get_file_name());
+                    let path = format!("{}/{}", dir, filename);
+                    if file_exists(&path) {
+                        self.include_file(path.to_string(), &start);
+                        continue;
+                    }
                 }
 
-                let filename = token.get_string_literal();
-                let path = if filename.starts_with("/") {
-                    filename.to_string()
-                } else {
-                    let dir = dirname(token.get_file_name());
-                    format!("{}/{}", dir, filename)
-                };
-                let include_tokens = tokenize_file(path);
-                if include_tokens.len() == 0 {
-                    error_token!(token, "include got error");
-                }
-                // 处理多余的终结符
-                self.next().skip_line();
-                // 将Tok2接续到Tok->Next的位置
-                self.append_tokens(include_tokens);
+                // 直接引入文件
+                self.include_file(filename.to_string(), &start);
                 continue;
             }
 
@@ -267,6 +265,16 @@ impl<'a> Preprocessor<'a> {
 
             error_token!(token, "invalid preprocessor directive");
         }
+    }
+
+    /// 引入文件
+    fn include_file(&mut self, path: String, file_token: &Token) {
+        // 词法分析文件
+        let include_tokens = tokenize_file(path.to_string());
+        if include_tokens.len() <= 1 {
+            error_token!(file_token, "{}: cannot open file", &path);
+        }
+        self.append_tokens(include_tokens);
     }
 
     /// 检查结束
@@ -627,6 +635,7 @@ impl<'a> Preprocessor<'a> {
         }
     }
 
+    /// 读取宏实参
     fn read_macro_args(&mut self, params: &Vec<MacroParam>) -> Vec<MacroArg> {
         let start = self.current_token().clone();
         self.next().next();
@@ -866,4 +875,58 @@ pub fn paste(lhs: &Token, rhs: &Token) -> Token {
         error_token!(lhs, "pasting forms '{}', an invalid token", buf);
     }
     tokens[0].clone()
+}
+
+/// 读取#include参数
+fn read_include_filename(
+    processor: &Preprocessor,
+    mut tokens: Vec<Token>,
+    is_dquote: &mut bool,
+) -> String {
+    let token = &tokens[0];
+    // 匹配样式1: #include "foo.h"
+    if token.is_string() {
+        // #include 的双引号文件名是一种特殊的终结符
+        // 不能转义其中的任何转义字符。
+        // 例如，“C:\foo”中的“\f”不是换页符，而是\和f。
+        // 所以此处不使用token->str。
+        *is_dquote = true;
+        return token.get_string_literal();
+    }
+
+    // 匹配样式2: #include <foo.h>
+    if token.equal("<") {
+        // 从"<"和">"间构建文件名.
+        let mut ots = vec![];
+        // 查找">",并把<>中间的token都加入到tokens中
+        let mut i = 1;
+        loop {
+            let t = &tokens[i];
+            if t.equal(">") {
+                break;
+            }
+            if t.at_eof() || t.at_eof() {
+                error_token!(t, "expected '>'");
+            }
+            ots.push(t.clone());
+            i += 1;
+        }
+
+        // 没有引号
+        *is_dquote = false;
+        // "<"到">"前拼接为字符串
+        return join_tokens(&ots);
+    }
+
+    // 匹配样式3: #include FOO
+    if token.is_ident() {
+        // FOO 必须宏展开为单个字符串标记或 "<" ... ">" 序列
+        let mut p = Preprocessor::from(processor, &mut tokens);
+        let tokens = p.process_without_check();
+        // 然后读取引入的文件名
+        return read_include_filename(processor, tokens, is_dquote);
+    }
+
+    error_token!(token, "expected a filename");
+    "".to_string()
 }
