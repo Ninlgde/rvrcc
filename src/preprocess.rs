@@ -264,6 +264,11 @@ impl<'a> Preprocessor<'a> {
                 continue;
             }
 
+            // 匹配#error
+            if token.equal("error") {
+                error_token!(token, "error");
+            }
+
             if token.at_bol() {
                 continue;
             }
