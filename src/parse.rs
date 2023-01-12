@@ -282,16 +282,19 @@ impl<'a> Parser<'a> {
             self.skip("{");
 
             // __func__被定义为包含当前函数名称的局部变量
-            let vs = self.push_scope("__func__".to_string());
-            {
-                let mut vsm = vs.as_ref().borrow_mut();
-                let mut name = name.to_string().into_bytes();
-                name.push('\0' as u8);
-                let nl = name.len() as isize;
-                vsm.set_var(self.new_string_literal(
-                    vec_u8_into_i8(name),
-                    Type::array_of(Type::new_char(), nl),
-                ));
+            let func_marcos = vec!["__func__", "__FUNCTION__"];
+            for func_marco in func_marcos {
+                let vs = self.push_scope(func_marco.to_string());
+                {
+                    let mut vsm = vs.as_ref().borrow_mut();
+                    let mut name = name.to_string().into_bytes();
+                    name.push('\0' as u8);
+                    let nl = name.len() as isize;
+                    vsm.set_var(self.new_string_literal(
+                        vec_u8_into_i8(name),
+                        Type::array_of(Type::new_char(), nl),
+                    ));
+                }
             }
 
             // compound_stmt
