@@ -58,10 +58,8 @@ stage2/rvcc: $(OBJS:%=stage2/%)
 	$(CC) $(CFLAGS) -static -o $@ $^
 
 # 利用stage1的rvcc去将rvcc的源代码编译为stage2的可重定位文件
-stage2/%.o: rvrcc self.py stage2/%.c
+stage2/%.o: rvrcc stage2/%.c
 	mkdir -p stage2/test
-	./self.py stage2/rvcc.h stage2/$*.c > stage2/$*.c2
-	mv stage2/$*.c2 stage2/$*.c
 	./target/release/rvrcc -c -o stage2/$*.o stage2/$*.c -###
 
 # 利用stage2的rvcc去进行测试
