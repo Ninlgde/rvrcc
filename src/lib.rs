@@ -43,3 +43,8 @@ pub static mut INPUT: Option<FileLink> = None;
 
 /// 输入文件列表
 pub static mut INPUTS: Vec<FileLink> = vec![];
+
+/// gp上限
+pub const GP_MAX: usize = 8;
+/// fp上限
+pub const FP_MAX: usize = 8;

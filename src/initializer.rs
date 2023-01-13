@@ -52,7 +52,7 @@ impl<'a> Initializer<'a> {
         }
 
         // 处理结构体和联合体
-        if t.kind == TypeKind::Struct || t.kind == TypeKind::Union {
+        if t.is_struct_union() {
             // 遍历子项进行赋值
             let mut i = 0;
             for member in t.members.iter() {

@@ -1,17 +1,14 @@
 //! 汇编生成器
 
-use crate::ctype::{TypeKind, TypeLink};
+use crate::ctype::{cal_flo_st_mems_ty, TypeKind, TypeLink};
 use crate::node::{NodeKind, NodeLink};
 use crate::obj::{Obj, ObjLink};
-use crate::{align_to, error_token, write_file, INPUTS};
+use crate::{align_to, error_token, write_file, FP_MAX, GP_MAX, INPUTS};
 use std::fmt;
 use std::io::Write;
 
 /// 输出文件
 static mut OUTPUT: Option<Box<dyn Write>> = None;
-
-const GP_MAX: usize = 8;
-const FP_MAX: usize = 8;
 
 /// 汇编代码生成到文件
 pub fn codegen(program: &mut Vec<ObjLink>, write_file: Box<dyn Write>) {
@@ -56,6 +53,8 @@ struct Generator<'a> {
     depth: usize,
     /// 代码段计数
     counter: u32,
+    /// 大结构体的深度
+    bsdepth: usize,
 }
 
 impl<'a> Generator<'a> {
@@ -65,6 +64,7 @@ impl<'a> Generator<'a> {
             current_function_name: "".to_string(),
             depth: 0,
             counter: 0,
+            bsdepth: 0,
         }
     }
 
@@ -759,21 +759,84 @@ impl<'a> Generator<'a> {
                         continue;
                     }
                     pi += 1;
-                    if arg.typ.as_ref().unwrap().borrow().is_float() {
-                        if fp < FP_MAX {
-                            writeln!("  # fa{}传递浮点参数", fp);
-                            self.pop_float(fp);
-                            fp += 1;
-                        } else if gp < GP_MAX {
-                            writeln!("  # a{}传递浮点参数", gp);
-                            self.pop(gp);
-                            gp += 1;
+                    let typ = arg.typ.as_ref().unwrap();
+                    let typ = typ.borrow();
+                    match typ.kind {
+                        TypeKind::Struct | TypeKind::Union => {
+                            // 判断结构体的类型
+                            // 结构体的大小
+                            let ts = typ.size;
+                            let fs_reg1ty = typ.fs_reg1ty.as_ref().unwrap();
+                            let fs_reg2ty = typ.fs_reg2ty.as_ref().unwrap();
+
+                            eprintln!(
+                                "function call oo depth = {}, step = {}, {}, {}",
+                                self.depth,
+                                -1,
+                                fs_reg1ty.borrow().is_float(),
+                                fs_reg2ty.borrow().is_float()
+                            );
+                            // 处理一或两个浮点成员变量的结构体
+                            if fs_reg1ty.borrow().is_float() || fs_reg2ty.borrow().is_float() {
+                                let regs = vec![fs_reg1ty.clone(), fs_reg2ty.clone()];
+                                for (i, reg) in regs.iter().enumerate() {
+                                    let reg = reg.borrow();
+                                    if reg.kind == TypeKind::Float {
+                                        writeln!("  # {}字节float结构体{}通过fa{}传递", ts, i, fp);
+                                        writeln!("  # 弹栈，将栈顶的值存入fa{}", fp);
+                                        writeln!("  flw fa{}, 0(sp)", fp);
+                                        writeln!("  addi sp, sp, 8");
+                                        fp += 1;
+                                        self.depth -= 1;
+                                        eprintln!(
+                                            "function call depth = {}, step = {}, {}, {}",
+                                            self.depth,
+                                            -1,
+                                            fs_reg1ty.borrow().is_float(),
+                                            fs_reg2ty.borrow().is_float()
+                                        );
+                                    }
+                                    if reg.kind == TypeKind::Double {
+                                        writeln!("  # {}字节double结构体{}通过fa{}传递", ts, i, fp);
+                                        self.pop_float(fp);
+                                        fp += 1;
+                                    }
+                                    if reg.is_int() {
+                                        writeln!("  # {}字节浮点结构体{}通过a{}传递", ts, i, gp);
+                                        self.pop(gp);
+                                        gp += 1;
+                                    }
+                                }
+                            } else {
+                                // 其他整型结构体或多字节结构体
+                                // 9~16字节整型结构体用两个寄存器，其他字节结构体用一个结构体
+                                let reg = if 8 < ts && ts <= 16 { 2 } else { 1 };
+                                for i in 1..reg + 1 {
+                                    if gp < GP_MAX {
+                                        writeln!("  # {}字节的整型结构体{}通过a{}传递", ts, i, gp);
+                                        self.pop(gp);
+                                        gp += 1;
+                                    }
+                                }
+                            }
                         }
-                    } else {
-                        if gp < GP_MAX {
-                            writeln!("  # a{}传递整型参数", gp);
-                            self.pop(gp);
-                            gp += 1;
+                        TypeKind::Float | TypeKind::Double => {
+                            if fp < FP_MAX {
+                                writeln!("  # fa{}传递浮点参数", fp);
+                                self.pop_float(fp);
+                                fp += 1;
+                            } else if gp < GP_MAX {
+                                writeln!("  # a{}传递浮点参数", gp);
+                                self.pop(gp);
+                                gp += 1;
+                            }
+                        }
+                        _ => {
+                            if gp < GP_MAX {
+                                writeln!("  # a{}传递整型参数", gp);
+                                self.pop(gp);
+                                gp += 1;
+                            }
                         }
                     }
                 }
@@ -784,10 +847,13 @@ impl<'a> Generator<'a> {
 
                 // 回收为栈传递的变量开辟的栈空间
                 if stack > 0 {
-                    // 栈的深度减去栈传递参数的个数
+                    // 栈的深度减去栈传递参数的字节数
                     self.depth -= stack;
+                    eprintln!("stack call depth = {}, step = -{}", self.depth, stack);
                     writeln!("  # 回收栈传递参数的{}个字节", stack * 8);
                     writeln!("  addi sp, sp, {}", stack * 8);
+                    // 清除记录的大结构体的数量
+                    self.bsdepth = 0;
                 }
 
                 // 清除寄存器中高位无关的数据
@@ -1088,19 +1154,19 @@ impl<'a> Generator<'a> {
             if (first_pass && !arg.pass_by_stack) || (!first_pass && arg.pass_by_stack) {
                 continue;
             }
-            let is_float = arg.typ.as_ref().unwrap().borrow().is_float();
-            if is_float {
-                writeln!("\n  # ↓对浮点表达式进行计算，然后压栈↓");
-                // 计算出表达式
-                self.gen_expr(arg);
-                // 根据表达式结果的类型进行压栈
-                self.push_float();
-            } else {
-                writeln!("\n  # ↓对整型表达式进行计算，然后压栈↓");
-                // 计算出表达式
-                self.gen_expr(arg);
-                // 根据表达式结果的类型进行压栈
-                self.push();
+            writeln!("\n  # ↓对表达式进行计算，然后压栈↓");
+            // 计算出表达式
+            self.gen_expr(arg);
+            let typ = arg.typ.as_ref().unwrap();
+            let at = arg.typ.as_ref().unwrap().borrow();
+            match at.kind {
+                TypeKind::Struct | TypeKind::Union => self.push_struct(typ.clone()),
+                TypeKind::Float | TypeKind::Double => {
+                    self.push_float();
+                }
+                _ => {
+                    self.push();
+                }
             }
             writeln!("  # ↑结束压栈↑");
         }
@@ -1114,29 +1180,70 @@ impl<'a> Generator<'a> {
 
         // 遍历所有参数，优先使用寄存器传递，然后是栈传递
         for arg in args.iter_mut() {
-            let is_float = arg.typ.as_ref().unwrap().borrow().is_float();
-            if is_float {
-                // 浮点优先使用FP，而后是GP，最后是栈传递
-                if fp < FP_MAX {
-                    writeln!("  # 浮点{}值通过fa{}传递", arg.fval, fp);
-                    fp += 1;
-                } else if gp < GP_MAX {
-                    writeln!("  # 浮点{}值通过a{}传递", arg.fval, gp);
-                    gp += 1;
-                } else {
-                    writeln!("  # 浮点{}值通过栈传递", arg.fval);
-                    arg.pass_by_stack = true;
-                    stack += 1;
+            let at = arg.typ.as_ref().unwrap().clone();
+            let kind = at.borrow().kind.clone();
+            match kind {
+                TypeKind::Struct | TypeKind::Union => {
+                    // 判断结构体的类型
+                    let tys = cal_flo_st_mems_ty(at.clone(), gp, fp);
+                    // 结构体的大小
+                    let mut typ = at.borrow_mut();
+                    typ.fs_reg1ty = Some(tys[0].clone());
+                    typ.fs_reg2ty = Some(tys[1].clone());
+                    eprintln!(
+                        "push_args {} {}",
+                        tys[0].borrow().is_float(),
+                        tys[1].borrow().is_float()
+                    );
+                    let ts = typ.size;
+                    let fs_reg1ty = tys[0].clone();
+                    let fs_reg2ty = tys[1].clone();
+                    if fs_reg1ty.borrow().is_float() || fs_reg2ty.borrow().is_float() {
+                        for reg in tys.iter() {
+                            if reg.borrow().is_float() {
+                                fp += 1;
+                            }
+                            if reg.borrow().is_int() {
+                                gp += 1;
+                            }
+                        }
+                    } else {
+                        // 9~16字节整型结构体用两个寄存器，其他字节结构体用一个寄存器
+                        let reg = if 8 < ts && ts <= 16 { 2 } else { 1 };
+                        for _ in 1..reg + 1 {
+                            if gp < GP_MAX {
+                                gp += 1;
+                            } else {
+                                arg.pass_by_stack = true;
+                                stack += 1;
+                            }
+                        }
+                    }
                 }
-            } else {
-                // 整型优先使用GP，最后是栈传递
-                if gp < GP_MAX {
-                    writeln!("  # 整型{}值通过a{}传递", arg.val, gp);
-                    gp += 1;
-                } else {
-                    writeln!("  # 整型{}值通过栈传递", arg.val);
-                    arg.pass_by_stack = true;
-                    stack += 1;
+                TypeKind::Float | TypeKind::Double => {
+                    // 浮点优先使用FP，而后是GP，最后是栈传递
+                    if fp < FP_MAX {
+                        writeln!("  # 浮点{}值通过fa{}传递", arg.fval, fp);
+                        fp += 1;
+                    } else if gp < GP_MAX {
+                        writeln!("  # 浮点{}值通过a{}传递", arg.fval, gp);
+                        gp += 1;
+                    } else {
+                        writeln!("  # 浮点{}值通过栈传递", arg.fval);
+                        arg.pass_by_stack = true;
+                        stack += 1;
+                    }
+                }
+                _ => {
+                    // 整型优先使用GP，最后是栈传递
+                    if gp < GP_MAX {
+                        writeln!("  # 整型{}值通过a{}传递", arg.val, gp);
+                        gp += 1;
+                    } else {
+                        writeln!("  # 整型{}值通过栈传递", arg.val);
+                        arg.pass_by_stack = true;
+                        stack += 1;
+                    }
                 }
             }
         }
@@ -1146,16 +1253,116 @@ impl<'a> Generator<'a> {
             writeln!("  # 对齐栈边界到16字节");
             writeln!("  addi sp, sp, -8");
             self.depth += 1;
+            eprintln!("对齐栈边界 depth = {}, step = {}", self.depth, 1);
             stack += 1;
         }
 
         // 进行压栈
+        // 开辟大于16字节的结构体的栈空间
+        let bsstack = self.create_bsspace(args);
         // 第一遍对栈传递的变量进行压栈
         self.push_args0(args, true);
         // 第二遍对寄存器传递的变量进行压栈
         self.push_args0(args, false);
         // 返回栈传递参数的个数
-        stack
+        stack + bsstack
+    }
+
+    /// 为大结构体开辟空间
+    fn create_bsspace(&mut self, args: &Vec<NodeLink>) -> usize {
+        let mut bsstack = 0usize;
+        for arg in args.iter() {
+            let at = arg.typ.as_ref().unwrap();
+            let typ = at.borrow();
+            if typ.size > 16 && typ.kind == TypeKind::Struct {
+                writeln!("\n  # 大于16字节的结构体，先开辟相应的栈空间\n");
+                let size = align_to(typ.size, 8) as usize;
+                writeln!("  addi sp, sp, -{}", size);
+                self.depth += size / 8;
+                eprintln!("create_bsspace depth = {}, step = {}", self.depth, size / 8);
+                bsstack += size / 8;
+            }
+        }
+        bsstack
+    }
+
+    /// 传递结构体的指针
+    fn push_struct(&mut self, typ: TypeLink) {
+        let t = typ.borrow();
+        // 大于16字节的结构体
+        if t.size > 16 {
+            // 将结构体复制一份到栈中，然后通过寄存器或栈传递被复制结构体的地址
+            // ---------------------------------
+            //             大结构体      ←
+            // ---------------------------------
+            //      栈传递的   其他变量
+            // ---------------------------------
+            //            大结构体的指针  ↑
+            // ---------------------------------
+
+            // 计算大结构体的偏移量
+            let size = align_to(t.size, 8) as usize;
+            let bsoffset = (self.depth + self.bsdepth) * 8;
+            self.bsdepth += size / 8;
+
+            writeln!("  # 复制{}字节的，结构体到{}(sp)的位置", size, bsoffset);
+            for i in 0..size {
+                writeln!("  lb t0, {}(a0)", i);
+                writeln!("  sb t0, {}(sp)", i + bsoffset);
+            }
+
+            writeln!("  # 大于16字节的结构体，对结构体地址压栈");
+            writeln!("  addi a0, sp, {}", bsoffset);
+            self.push();
+            return;
+        }
+
+        // 含有两个成员（含浮点）的结构体
+        // 展开到栈内的两个8字节的空间
+        let fs_reg1ty = t.fs_reg1ty.as_ref().unwrap();
+        let fs_reg2ty = t.fs_reg2ty.as_ref().unwrap();
+        if (fs_reg1ty.borrow().is_float() && fs_reg2ty.borrow().kind != TypeKind::Void)
+            || fs_reg2ty.borrow().is_float()
+        {
+            writeln!("  # 对含有两个成员（含浮点）结构体进行压栈");
+            writeln!("  addi sp, sp, -16");
+            self.depth += 2;
+            eprintln!(
+                "push_struct1 depth = {}, step = {} {} {}",
+                self.depth,
+                2,
+                fs_reg1ty.borrow().is_float(),
+                fs_reg2ty.borrow().is_float()
+            );
+
+            writeln!("  ld t0, 0(a0)");
+            writeln!("  sd t0, 0(sp)");
+
+            // 计算第二部分在结构体中的偏移量
+            writeln!("  ld t0, {}(a0)", fs_reg2ty.borrow().size);
+            writeln!("  sd t0, 8(sp)");
+
+            return;
+        }
+
+        // 处理只有一个浮点成员的结构体
+        // 或者是小于16字节的结构体
+        let s = if fs_reg1ty.borrow().is_float() {
+            "只有一个浮点"
+        } else {
+            "小于16字节"
+        };
+        let size = align_to(t.size, 8) as usize;
+        writeln!("  # 为{}的结构体开辟{}字节的空间，", s, size);
+        writeln!("  addi sp, sp, -{}", size);
+        self.depth += size / 8;
+        eprintln!("push_struct2 depth = {}, step = {}", self.depth, size / 8);
+
+        writeln!("  # 开辟{}字节的空间，复制{}的内存", size, s);
+        for i in 0..t.size {
+            writeln!("  lb t0, {}(a0)", i);
+            writeln!("  sb t0, {}(sp)", i);
+        }
     }
 
     /// 压栈，将结果临时压入栈中备用
@@ -1167,6 +1374,7 @@ impl<'a> Generator<'a> {
         writeln!("  addi sp, sp, -8");
         writeln!("  sd a0, 0(sp)");
         self.depth += 1;
+        eprintln!("push depth = {}, step = {}", self.depth, 1);
     }
 
     /// 弹栈，将sp指向的地址的值，弹出到a1
@@ -1175,6 +1383,7 @@ impl<'a> Generator<'a> {
         writeln!("  ld a{}, 0(sp)", reg);
         writeln!("  addi sp, sp, 8");
         self.depth -= 1;
+        eprintln!("pop depth = {}, step = {}", self.depth, -1);
     }
 
     /// 对于浮点类型进行压栈
@@ -1183,6 +1392,7 @@ impl<'a> Generator<'a> {
         writeln!("  addi sp, sp, -8");
         writeln!("  fsd fa0, 0(sp)");
         self.depth += 1;
+        eprintln!("push_float depth = {}, step = {}", self.depth, 1);
     }
 
     /// 对于浮点类型进行弹栈
@@ -1191,6 +1401,7 @@ impl<'a> Generator<'a> {
         writeln!("  fld fa{}, 0(sp)", reg);
         writeln!("  addi sp, sp, 8");
         self.depth -= 1;
+        eprintln!("pop_float depth = {}, step = {}", self.depth, -1);
     }
 
     /// 加载a0指向的值
@@ -1227,7 +1438,7 @@ impl<'a> Generator<'a> {
         self.pop(1);
 
         let kind = &typ.borrow().kind;
-        if *kind == TypeKind::Struct || *kind == TypeKind::Union {
+        if typ.borrow().is_struct_union() {
             let k = if *kind == TypeKind::Struct {
                 "结构体"
             } else {

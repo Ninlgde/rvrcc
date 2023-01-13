@@ -1,9 +1,9 @@
 //! C语言的类型实现
 
-use crate::error_token;
 use crate::node::{Node, NodeKind, NodeLink};
 use crate::obj::Member;
 use crate::token::Token;
+use crate::{error_token, FP_MAX, GP_MAX};
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -73,6 +73,10 @@ pub struct Type {
     pub(crate) members: Vec<Box<Member>>,
     /// 是否为灵活的，表示需要重新构造
     pub(crate) is_flexible: bool,
+    /// 浮点结构体的对应寄存器
+    pub(crate) fs_reg1ty: Option<TypeLink>,
+    /// 浮点结构体的对应寄存器
+    pub(crate) fs_reg2ty: Option<TypeLink>,
 }
 
 impl Type {
@@ -93,9 +97,12 @@ impl Type {
             len: 0,
             members: vec![],
             is_flexible: false,
+            fs_reg1ty: None,
+            fs_reg2ty: None,
         }
     }
 
+    /// 创建无符号的某种类型
     fn new_unsigned(kind: TypeKind, size: isize, align: isize) -> Self {
         let mut typ = Self::new(kind, size, align);
         typ.is_unsigned = true;
@@ -215,7 +222,9 @@ impl Type {
     /// 创建一个union/struct类型
     /// 后续代码中会确定其为union还是struct
     pub fn new_union_struct() -> Type {
-        let typ = Self::new(TypeKind::Struct, 0, 1);
+        let mut typ = Self::new(TypeKind::Struct, 0, 1);
+        typ.fs_reg1ty = Some(Type::new_void());
+        typ.fs_reg2ty = Some(Type::new_void());
         typ
     }
 
@@ -239,10 +248,16 @@ impl Type {
         return self.is_int() || self.is_float();
     }
 
+    /// 是否是方法类型
     pub fn is_func(&self) -> bool {
         self.kind == TypeKind::Func
             || (self.kind == TypeKind::Ptr
                 && self.get_base_type().unwrap().borrow().kind == TypeKind::Func)
+    }
+
+    /// 是否是struct或者union
+    pub fn is_struct_union(&self) -> bool {
+        self.kind == TypeKind::Struct || self.kind == TypeKind::Union
     }
 
     /// 是否含有基础类型
@@ -270,6 +285,7 @@ impl Type {
         }
     }
 
+    /// 获取基础类型
     pub fn get_base_type(&self) -> Option<TypeLink> {
         if self.has_base() {
             return Some(self.base.as_ref().unwrap().clone());
@@ -343,6 +359,81 @@ impl Type {
         dst.members = members;
         dst.is_flexible = src.borrow().is_flexible;
         Rc::new(RefCell::new(dst))
+    }
+}
+
+// 是否为一或两个含浮点成员变量的结构体
+pub fn cal_flo_st_mems_ty(typ: TypeLink, gp: usize, fp: usize) -> Vec<TypeLink> {
+    let ct = typ.clone();
+    let t = typ.borrow();
+
+    // 联合体不通过浮点寄存器传递
+    if t.kind == TypeKind::Union {
+        return vec![Type::new_void(), Type::new_void()];
+    }
+
+    // RTy：RegsType，结构体的第一、二个寄存器的类型
+    let mut rty = vec![Type::new_void(), Type::new_void()];
+    // 记录可以使用的寄存器的索引值
+    let mut regs_ty_idx = 0;
+    // 获取浮点结构体的寄存器类型，如果不是则为TyVoid
+    get_flo_st_mems_ty(ct, &mut rty, &mut regs_ty_idx);
+
+    // 不是浮点结构体，直接退出
+    if regs_ty_idx > 2 {
+        return vec![Type::new_void(), Type::new_void()];
+    }
+
+    let rt0 = rty[0].borrow();
+    let rt1 = rty[1].borrow();
+    // 只有一个浮点成员的结构体，使用1个FP
+    let bool1 = rt0.is_float() && rt1.kind == TypeKind::Void && fp < FP_MAX;
+    // 一个浮点成员和一个整型成员的结构体，使用1个FP和1个GP
+    let bool2 = (rt0.is_float() && rt1.is_int() && fp < FP_MAX && gp < GP_MAX)
+        || (rt0.is_int() && rt1.is_float() && fp < FP_MAX && gp < GP_MAX);
+    // 两个浮点成员的结构体，使用2个FP
+    let bool3 = rt0.is_float() && rt1.is_float() && fp + 1 < FP_MAX;
+    if bool1 || bool2 || bool3 {
+        return rty.to_vec();
+    }
+    vec![Type::new_void(), Type::new_void()]
+}
+
+// 获取浮点结构体的成员类型
+pub fn get_flo_st_mems_ty(typ: TypeLink, result: &mut Vec<TypeLink>, idx: &mut usize) {
+    match typ.borrow().kind {
+        TypeKind::Struct => {
+            // 遍历结构体的成员，获取成员类型
+            for member in typ.borrow().members.iter() {
+                let mt = member.typ.as_ref().unwrap();
+                get_flo_st_mems_ty(mt.clone(), result, idx);
+            }
+        }
+        TypeKind::Union => {
+            if *idx < 2 && typ.borrow().size <= 8 {
+                // 联合体若不超过8字节，视为Long类型处理
+                result[*idx] = Type::new_long();
+                *idx += 1;
+            } else {
+                // 否则不是浮点结构体
+                *idx += 2;
+            }
+        }
+        TypeKind::Array => {
+            // 遍历数组的成员，计算是否为浮点结构体
+            for _ in 0..typ.borrow().len {
+                let b = typ.borrow();
+                let bt = b.base.as_ref().unwrap();
+                get_flo_st_mems_ty(bt.clone(), result, idx);
+            }
+        }
+        _ => {
+            // 若为基础类型，且存在可用寄存器时，填充成员的类型
+            if *idx < 2 {
+                result[*idx] = typ.clone();
+            }
+            *idx += 1;
+        }
     }
 }
 

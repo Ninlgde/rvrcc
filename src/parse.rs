@@ -1165,7 +1165,7 @@ impl<'a> Parser<'a> {
         self.initializer0(&mut init);
 
         let t = typ.borrow();
-        if (t.kind == TypeKind::Struct || t.kind == TypeKind::Union) && t.is_flexible {
+        if t.is_struct_union() && t.is_flexible {
             // 复制结构体类型
             let new_type = Type::copy_struct_type(typ);
             let mut t = new_type.borrow_mut();
@@ -2308,7 +2308,7 @@ impl<'a> Parser<'a> {
         add_type(&mut lhs);
 
         let lhs_t = lhs.typ.as_ref().unwrap().clone();
-        if lhs_t.borrow().kind != TypeKind::Struct && lhs_t.borrow().kind != TypeKind::Union {
+        if !lhs_t.borrow().is_struct_union() {
             error_token!(&lhs.token, "not a struct nor a union");
         }
 
@@ -2634,13 +2634,9 @@ impl<'a> Parser<'a> {
 
             if i < params.len() {
                 let param = params[i];
-                if param.borrow().kind == TypeKind::Struct || param.borrow().kind == TypeKind::Union
-                {
-                    error_token!(&arg.token, "passing struct or union is not supported yet");
-                    unreachable!()
+                if !param.borrow().is_struct_union() {
+                    arg = Node::new_cast(arg, param.clone());
                 }
-
-                arg = Node::new_cast(arg, param.clone());
                 i += 1;
             } else if arg.typ.as_ref().unwrap().borrow().kind == TypeKind::Float {
                 // 若无形参类型，浮点数会被提升为double
