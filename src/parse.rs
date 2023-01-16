@@ -270,6 +270,13 @@ impl<'a> Parser<'a> {
             // 进入新的域
             self.enter_scope();
             self.create_param_lvars(typ.borrow().get_params());
+
+            // 有大于16字节的结构体返回值的函数
+            let rt = typ.borrow().return_type.as_ref().unwrap().clone();
+            if rt.borrow().is_struct_union() && rt.borrow().size > 16 {
+                // 第一个形参是隐式的，包含了结构体的地址
+                self.new_lvar("".to_string(), Type::pointer_to(rt));
+            }
             params = self.locals.to_vec();
 
             if typ.borrow().is_variadic {
@@ -1260,16 +1267,15 @@ impl<'a> Parser<'a> {
             self.skip(";");
             add_type(&mut expr);
             let cur_func = self.cur_func.as_ref().unwrap().clone();
-            let cast = Node::new_cast(
-                expr,
-                cur_func
-                    .borrow_mut()
-                    .get_func_return_type()
-                    .as_ref()
-                    .unwrap()
-                    .clone(),
-            );
-            let node = Node::new_unary(NodeKind::Return, cast, nt);
+            let cur_func = cur_func.borrow();
+            // 对于返回值为结构体时不进行类型转换
+            if !cur_func.get_type().borrow().is_struct_union() {
+                expr = Node::new_cast(
+                    expr,
+                    cur_func.get_func_return_type().as_ref().unwrap().clone(),
+                );
+            }
+            let node = Node::new_unary(NodeKind::Return, expr, nt);
             return Some(node);
         }
 

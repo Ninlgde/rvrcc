@@ -136,6 +136,14 @@ impl Obj {
         }
     }
 
+    /// 获取参数
+    pub fn get_params(&self) -> &Vec<ObjLink> {
+        match self {
+            Self::Func { params, .. } => params,
+            _ => unreachable!(),
+        }
+    }
+
     /// 是否是函数对象
     pub fn is_func(&self) -> bool {
         matches!(self, Self::Func { .. })

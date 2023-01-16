@@ -46,6 +46,8 @@ struct Generator<'a> {
     program: &'a mut Vec<ObjLink>,
     /// 当前生成的方法名
     current_function_name: String,
+    /// 当前生成的方法
+    current_function: Option<ObjLink>,
     /// 栈深
     depth: usize,
     /// 代码段计数
@@ -59,6 +61,7 @@ impl<'a> Generator<'a> {
         Generator {
             program,
             current_function_name: "".to_string(),
+            current_function: None,
             depth: 0,
             counter: 0,
             bsdepth: 0,
@@ -278,8 +281,8 @@ impl<'a> Generator<'a> {
 
     /// 生成代码段
     fn emit_text(&mut self) {
-        for function in self.program.to_vec().iter() {
-            let function = &*function.borrow();
+        for func in self.program.to_vec().iter() {
+            let function = &*func.borrow();
             match function {
                 Obj::Func {
                     name,
@@ -308,6 +311,7 @@ impl<'a> Generator<'a> {
                     writeln!("# {}段标签", name);
                     writeln!("{}:", name);
                     self.current_function_name = name.to_string();
+                    self.current_function = Some(func.clone());
 
                     // 栈布局
                     //-------------------------------// sp
@@ -647,7 +651,20 @@ impl<'a> Generator<'a> {
             NodeKind::Return => {
                 writeln!("# 返回语句");
                 if node.lhs.is_some() {
-                    self.gen_expr(node.lhs.as_ref().unwrap());
+                    let lhs = node.lhs.as_ref().unwrap();
+                    self.gen_expr(lhs);
+
+                    // 处理结构体作为返回值的情况
+                    let typ = lhs.typ.as_ref().unwrap().clone();
+                    if typ.borrow().is_struct_union() {
+                        if typ.borrow().size <= 16 {
+                            // 小于16字节拷贝寄存器
+                            self.copy_struct_reg();
+                        } else {
+                            // 大于16字节拷贝内存
+                            self.copy_struct_mem();
+                        }
+                    }
                 }
                 // 无条件跳转语句，跳转到.L.return段
                 // j offset是 jal x0, offset的别名指令
@@ -1405,6 +1422,7 @@ impl<'a> Generator<'a> {
         stack + bsstack
     }
 
+    /// 复制结构体返回值到缓冲区中
     fn copy_ret_buffer(&mut self, var: &ObjLink) {
         let binding = var.borrow();
         let typ = binding.get_type();
@@ -1412,7 +1430,6 @@ impl<'a> Generator<'a> {
         let mut fp = 0;
 
         let tys = cal_flo_st_mems_ty(typ.clone(), gp, fp);
-        // 结构体的大小
         let mut typ = typ.borrow_mut();
         typ.fs_reg1ty = Some(tys[0].clone());
         typ.fs_reg2ty = Some(tys[1].clone());
@@ -1454,7 +1471,6 @@ impl<'a> Generator<'a> {
         writeln!("  # 复制整型结构体返回值到缓冲区中");
         let mut offset = 0;
         while offset < typ.size {
-            // let off = typ.size - offset;
             match typ.size - offset {
                 1 => {
                     writeln!("  sb a{}, {}(t1)", gp, offset);
@@ -1474,6 +1490,96 @@ impl<'a> Generator<'a> {
                 }
             }
             offset += 8;
+        }
+    }
+
+    /// 拷贝结构体的寄存器
+    fn copy_struct_reg(&mut self) {
+        let cf = self.current_function.as_ref().unwrap().borrow();
+        let cft = cf.get_type().clone();
+        let crt = cft.borrow().return_type.as_ref().unwrap().clone();
+        let mut gp = 0;
+        let mut fp = 0;
+
+        writeln!("  # 复制结构体寄存器");
+        writeln!("  # 读取寄存器，写入存有struct地址的0(t1)中");
+        writeln!("  mv t1, a0");
+
+        let tys = cal_flo_st_mems_ty(crt.clone(), gp, fp);
+        let mut typ = crt.borrow_mut();
+        typ.fs_reg1ty = Some(tys[0].clone());
+        typ.fs_reg2ty = Some(tys[1].clone());
+        let fs_reg1ty = tys[0].clone();
+        let fs_reg2ty = tys[1].clone();
+
+        if fs_reg1ty.borrow().is_float() || fs_reg2ty.borrow().is_float() {
+            let mut offset = 0;
+            for reg in tys.iter() {
+                let kind = reg.borrow().kind.clone();
+                match kind {
+                    TypeKind::Float => {
+                        writeln!("  flw fa{}, {}(t1)", fp, offset);
+                        offset = 4;
+                        fp += 1;
+                    }
+                    TypeKind::Double => {
+                        writeln!("  fld fa{}, {}(t1)", fp, offset);
+                        offset = 8;
+                        fp += 1;
+                    }
+                    TypeKind::Void => {}
+                    _ => {
+                        writeln!("  ld a{}, {}(t1)", gp, offset);
+                        offset = 8;
+                        gp += 1;
+                    }
+                }
+            }
+            return;
+        }
+
+        writeln!("  # 复制返回的整型结构体的值");
+        let mut offset = 0;
+        while offset < typ.size {
+            match typ.size - offset {
+                1 => {
+                    writeln!("  lb a{}, {}(t1)", gp, offset);
+                    gp += 1;
+                }
+                2 => {
+                    writeln!("  lh a{}, {}(t1)", gp, offset);
+                    gp += 1;
+                }
+                3 | 4 => {
+                    writeln!("  lw a{}, {}(t1)", gp, offset);
+                    gp += 1;
+                }
+                _ => {
+                    writeln!("  ld a{}, {}(t1)", gp, offset);
+                    gp += 1;
+                }
+            }
+            offset += 8;
+        }
+    }
+
+    /// 大于16字节的结构体返回值，需要拷贝内存
+    fn copy_struct_mem(&mut self) {
+        let cf = self.current_function.as_ref().unwrap().borrow();
+        let cft = cf.get_type().clone();
+        let crt = cft.borrow().return_type.as_ref().unwrap().clone();
+        let var = cf.get_params().first().unwrap();
+
+        writeln!("  # 复制大于16字节结构体内存");
+        writeln!("  # 将栈内struct地址存入t1，调用者的结构体的地址");
+        writeln!("  li t0, {}", var.borrow().get_offset());
+        writeln!("  add t0, fp, t0");
+        writeln!("  ld t1, 0(t0)");
+
+        writeln!("  # 遍历结构体并从a0位置复制所有字节到t1");
+        for i in 0..crt.borrow().size {
+            writeln!("  lb t0, {}(a0)", i);
+            writeln!("  sb t0, {}(t1)", i);
         }
     }
 
