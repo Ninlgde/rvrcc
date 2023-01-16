@@ -34,6 +34,8 @@ pub enum Obj {
         align: isize,
         /// 对应的终结符
         token: Option<Token>,
+        /// 结构体类型 一半用寄存器，一半用栈
+        is_half_by_stack: bool,
     },
     /// 函数
     Func {
@@ -112,6 +114,28 @@ impl Obj {
         }
     }
 
+    /// 获取一半用寄存器，一半用栈
+    pub fn get_is_half_by_stack(&self) -> bool {
+        match self {
+            Self::Var {
+                is_half_by_stack, ..
+            } => *is_half_by_stack,
+            _ => false,
+        }
+    }
+
+    /// 设置一半用寄存器，一半用栈
+    pub fn set_is_half_by_stack(&mut self, b: bool) {
+        match self {
+            Self::Var {
+                is_half_by_stack, ..
+            } => {
+                *is_half_by_stack = b;
+            }
+            _ => (),
+        }
+    }
+
     /// 是否是函数对象
     pub fn is_func(&self) -> bool {
         matches!(self, Self::Func { .. })
@@ -158,6 +182,7 @@ impl Obj {
             is_definition: false,
             align,
             token: None,
+            is_half_by_stack: false,
         }
     }
 

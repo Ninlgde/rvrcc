@@ -3,12 +3,9 @@
 use crate::ctype::{cal_flo_st_mems_ty, TypeKind, TypeLink};
 use crate::node::{NodeKind, NodeLink};
 use crate::obj::{Obj, ObjLink};
-use crate::{align_to, error_token, write_file, FP_MAX, GP_MAX, INPUTS};
-use std::fmt;
+use crate::{align_to, error_token, write_file, FP_MAX, GP_MAX, INPUTS, OUTPUT};
 use std::io::Write;
-
-/// 输出文件
-static mut OUTPUT: Option<Box<dyn Write>> = None;
+use std::{cmp, fmt};
 
 /// 汇编代码生成到文件
 pub fn codegen(program: &mut Vec<ObjLink>, write_file: Box<dyn Write>) {
@@ -39,7 +36,7 @@ macro_rules! writeln {
 #[macro_export]
 macro_rules! write {
     ($fmt: literal $(, $($arg: tt)+)?) => {
-        $crate::codegen::write_file(format_args!(concat!($fmt, "") $(, $($arg)+)?))
+        $crate::codegen::write2output(format_args!(concat!($fmt, "") $(, $($arg)+)?))
     };
 }
 
@@ -108,22 +105,67 @@ impl<'a> Generator<'a> {
                     for param in params.iter().rev() {
                         let mut var = param.borrow_mut();
                         let typ = var.get_type().clone();
-                        let size = typ.borrow().size;
-                        if typ.borrow().is_float() {
-                            if fp < FP_MAX {
-                                writeln!(" #  FP{}传递浮点变量{}", fp, var.get_name());
-                                fp += 1;
-                                continue;
-                            } else if gp < GP_MAX {
-                                writeln!(" #  GP{}传递浮点变量{}", gp, var.get_name());
-                                gp += 1;
-                                continue;
+                        let kind = typ.borrow().kind.clone();
+                        match kind {
+                            TypeKind::Struct | TypeKind::Union => {
+                                // 判断结构体的类型
+                                let tys = cal_flo_st_mems_ty(typ.clone(), gp, fp);
+                                // 结构体的大小
+                                let mut typ = typ.borrow_mut();
+                                typ.fs_reg1ty = Some(tys[0].clone());
+                                typ.fs_reg2ty = Some(tys[1].clone());
+                                let ts = typ.size;
+                                let fs_reg1ty = tys[0].clone();
+                                let fs_reg2ty = tys[1].clone();
+                                // 计算浮点结构体所使用的寄存器
+                                // 这里一定寄存器可用，所以不判定是否超过寄存器最大值
+                                if fs_reg1ty.borrow().is_float() || fs_reg2ty.borrow().is_float() {
+                                    for reg in tys.iter() {
+                                        if reg.borrow().is_float() {
+                                            fp += 1;
+                                        }
+                                        if reg.borrow().is_int() {
+                                            gp += 1;
+                                        }
+                                    }
+                                    continue;
+                                }
+
+                                // 9～16字节的结构体要用两个寄存器
+                                if 8 < ts && ts <= 16 {
+                                    // 如果只剩一个寄存器，那么剩余一半通过栈传递
+                                    if gp == GP_MAX - 1 {
+                                        var.set_is_half_by_stack(true);
+                                    }
+                                    if gp < GP_MAX {
+                                        gp += 1;
+                                    }
+                                }
+                                // 所有字节的结构体都在至少使用了一个寄存器（如果可用）
+                                if gp < GP_MAX {
+                                    gp += 1;
+                                    continue;
+                                }
+
+                                // 没使用寄存器的需要栈传递
                             }
-                        } else {
-                            if gp < GP_MAX {
-                                writeln!(" #  GP{}传递整型变量{}", gp, var.get_name());
-                                gp += 1;
-                                continue;
+                            TypeKind::Float | TypeKind::Double => {
+                                if fp < FP_MAX {
+                                    writeln!(" #  FP{}传递浮点变量{}", fp, var.get_name());
+                                    fp += 1;
+                                    continue;
+                                } else if gp < GP_MAX {
+                                    writeln!(" #  GP{}传递浮点变量{}", gp, var.get_name());
+                                    gp += 1;
+                                    continue;
+                                }
+                            }
+                            _ => {
+                                if gp < GP_MAX {
+                                    writeln!(" #  GP{}传递整型变量{}", gp, var.get_name());
+                                    gp += 1;
+                                    continue;
+                                }
                             }
                         }
                         // 栈传递
@@ -131,8 +173,10 @@ impl<'a> Generator<'a> {
                         re_offset = align_to(re_offset, 8);
                         // 为栈传递变量赋一个偏移量，或者说是反向栈地址
                         var.set_offset(re_offset);
-                        // 栈传递变量计算反向偏移量
-                        re_offset += size;
+                        // 栈传递变量计算反向偏移量，传递一半的结构体减去寄存器的部分
+                        let is_half = var.get_is_half_by_stack();
+                        let size = typ.borrow().size;
+                        re_offset += if is_half { size - 8 } else { size };
                         writeln!(" #  栈传递变量{}偏移量{}", var.get_name(), var.get_offset());
                     }
 
@@ -141,7 +185,7 @@ impl<'a> Generator<'a> {
                         {
                             let cv = var.clone();
                             let v = cv.borrow();
-                            if v.get_offset() != 0 {
+                            if v.get_offset() != 0 && !v.get_is_half_by_stack() {
                                 continue;
                             }
                             let t = v.get_type().borrow();
@@ -294,29 +338,109 @@ impl<'a> Generator<'a> {
                     writeln!("  add sp, sp, t0");
 
                     // 正常传递的形参
+                    // 记录整型寄存器，浮点寄存器使用的数量
                     let mut gp = 0;
                     let mut fp = 0;
-                    for p in params.iter().rev() {
-                        let p = p.borrow();
-                        if p.get_offset() > 0 {
+                    for param in params.iter().rev() {
+                        let var = param.borrow();
+                        let typ = var.get_type().clone();
+                        if var.get_offset() > 0 && !var.get_is_half_by_stack() {
                             continue;
                         }
-                        let is_float = p.get_type().borrow().is_float();
-                        let size = p.get_type().borrow().size;
-                        if is_float {
-                            if fp < FP_MAX {
-                                writeln!("  # 将浮点形参{}的寄存器fa{}的值压栈", p.get_name(), fp);
-                                self.store_float(fp, p.get_offset(), size);
-                                fp += 1;
-                            } else {
-                                writeln!("  # 将浮点形参{}的寄存器a{}的值压栈", p.get_name(), gp);
-                                self.store_general(gp, p.get_offset(), size);
+                        let typ = typ.borrow();
+                        let ts = typ.size;
+                        let offset = var.get_offset();
+                        // 正常传递的形参
+                        match typ.kind {
+                            TypeKind::Struct | TypeKind::Union => {
+                                let fs_reg1ty = typ.fs_reg1ty.as_ref().unwrap();
+                                let fs_reg2ty = typ.fs_reg2ty.as_ref().unwrap();
+                                // 对寄存器传递的参数进行压栈
+                                if fs_reg1ty.borrow().is_float() || fs_reg2ty.borrow().is_float() {
+                                    // 浮点寄存器的第一部分
+                                    if fs_reg1ty.borrow().kind == TypeKind::Float {
+                                        self.store_float(fp, offset, 4);
+                                        fp += 1;
+                                    }
+                                    if fs_reg1ty.borrow().kind == TypeKind::Double {
+                                        self.store_float(fp, offset, 8);
+                                        fp += 1;
+                                    }
+                                    if fs_reg1ty.borrow().is_int() {
+                                        self.store_general(gp, offset, cmp::min(8, ts));
+                                        gp += 1;
+                                    }
+
+                                    // 浮点寄存器的第二部分
+                                    if fs_reg2ty.borrow().kind != TypeKind::Void {
+                                        let off2 = fs_reg2ty.borrow().size;
+                                        if fs_reg2ty.borrow().kind == TypeKind::Float
+                                            || fs_reg2ty.borrow().kind == TypeKind::Double
+                                        {
+                                            self.store_float(fp, offset + off2, off2);
+                                            fp += 1;
+                                        }
+                                        if fs_reg2ty.borrow().is_int() {
+                                            self.store_general(gp, offset + off2, off2);
+                                            gp += 1;
+                                        }
+                                    }
+                                } else {
+                                    // 大于16字节的结构体参数，通过访问它的地址，
+                                    // 将原来位置的结构体复制到栈中
+                                    if ts > 16 {
+                                        self.store_struct(gp, offset, ts);
+                                        gp += 1;
+                                    } else {
+                                        // 一半寄存器，一半栈传递的结构体
+                                        if var.get_is_half_by_stack() {
+                                            self.store_general(gp, offset, 8);
+                                            gp += 1;
+                                            // 拷贝栈传递的一半结构体到当前栈中
+                                            for i in 0..ts - 8 {
+                                                writeln!("  lb t0, {}(fp)", 16 + i);
+                                                writeln!("  li t1, {}", offset + 8 + i);
+                                                writeln!("  add t1, fp, t1");
+                                                writeln!("  sb t0, 0(t1)");
+                                            }
+                                        } else {
+                                            // 处理小于16字节的结构体
+                                            if ts <= 16 {
+                                                self.store_general(gp, offset, cmp::min(8, ts));
+                                                gp += 1;
+                                            }
+                                            if ts > 8 {
+                                                self.store_general(gp, offset + 8, ts - 8);
+                                                gp += 1;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            TypeKind::Float | TypeKind::Double => {
+                                if fp < FP_MAX {
+                                    writeln!(
+                                        "  # 将浮点形参{}的寄存器fa{}的值压栈",
+                                        var.get_name(),
+                                        fp
+                                    );
+                                    self.store_float(fp, offset, ts);
+                                    fp += 1;
+                                } else {
+                                    writeln!(
+                                        "  # 将浮点形参{}的寄存器a{}的值压栈",
+                                        var.get_name(),
+                                        gp
+                                    );
+                                    self.store_general(gp, offset, ts);
+                                    gp += 1;
+                                }
+                            }
+                            _ => {
+                                writeln!("  # 将整型形参{}的寄存器a{}的值压栈", var.get_name(), gp);
+                                self.store_general(gp, offset, ts);
                                 gp += 1;
                             }
-                        } else {
-                            writeln!("  # 将整型形参{}的寄存器a{}的值压栈", p.get_name(), gp);
-                            self.store_general(gp, p.get_offset(), size);
-                            gp += 1;
                         }
                     }
 
@@ -769,13 +893,6 @@ impl<'a> Generator<'a> {
                             let fs_reg1ty = typ.fs_reg1ty.as_ref().unwrap();
                             let fs_reg2ty = typ.fs_reg2ty.as_ref().unwrap();
 
-                            eprintln!(
-                                "function call oo depth = {}, step = {}, {}, {}",
-                                self.depth,
-                                -1,
-                                fs_reg1ty.borrow().is_float(),
-                                fs_reg2ty.borrow().is_float()
-                            );
                             // 处理一或两个浮点成员变量的结构体
                             if fs_reg1ty.borrow().is_float() || fs_reg2ty.borrow().is_float() {
                                 let regs = vec![fs_reg1ty.clone(), fs_reg2ty.clone()];
@@ -788,13 +905,6 @@ impl<'a> Generator<'a> {
                                         writeln!("  addi sp, sp, 8");
                                         fp += 1;
                                         self.depth -= 1;
-                                        eprintln!(
-                                            "function call depth = {}, step = {}, {}, {}",
-                                            self.depth,
-                                            -1,
-                                            fs_reg1ty.borrow().is_float(),
-                                            fs_reg2ty.borrow().is_float()
-                                        );
                                     }
                                     if reg.kind == TypeKind::Double {
                                         writeln!("  # {}字节double结构体{}通过fa{}传递", ts, i, fp);
@@ -849,7 +959,6 @@ impl<'a> Generator<'a> {
                 if stack > 0 {
                     // 栈的深度减去栈传递参数的字节数
                     self.depth -= stack;
-                    eprintln!("stack call depth = {}, step = -{}", self.depth, stack);
                     writeln!("  # 回收栈传递参数的{}个字节", stack * 8);
                     writeln!("  addi sp, sp, {}", stack * 8);
                     // 清除记录的大结构体的数量
@@ -1014,6 +1123,7 @@ impl<'a> Generator<'a> {
         }
     }
 
+    /// 处理浮点类型
     fn gen_float(&mut self, node: &NodeLink) {
         // 递归到最右节点
         self.gen_expr(node.rhs.as_ref().unwrap());
@@ -1190,11 +1300,6 @@ impl<'a> Generator<'a> {
                     let mut typ = at.borrow_mut();
                     typ.fs_reg1ty = Some(tys[0].clone());
                     typ.fs_reg2ty = Some(tys[1].clone());
-                    eprintln!(
-                        "push_args {} {}",
-                        tys[0].borrow().is_float(),
-                        tys[1].borrow().is_float()
-                    );
                     let ts = typ.size;
                     let fs_reg1ty = tys[0].clone();
                     let fs_reg2ty = tys[1].clone();
@@ -1223,13 +1328,13 @@ impl<'a> Generator<'a> {
                 TypeKind::Float | TypeKind::Double => {
                     // 浮点优先使用FP，而后是GP，最后是栈传递
                     if fp < FP_MAX {
-                        writeln!("  # 浮点{}值通过fa{}传递", arg.fval, fp);
+                        writeln!("  # 浮点{0:.6}值通过fa{}传递", arg.fval, fp);
                         fp += 1;
                     } else if gp < GP_MAX {
-                        writeln!("  # 浮点{}值通过a{}传递", arg.fval, gp);
+                        writeln!("  # 浮点{0:.6}值通过a{}传递", arg.fval, gp);
                         gp += 1;
                     } else {
-                        writeln!("  # 浮点{}值通过栈传递", arg.fval);
+                        writeln!("  # 浮点{0:.6}值通过栈传递", arg.fval);
                         arg.pass_by_stack = true;
                         stack += 1;
                     }
@@ -1253,7 +1358,6 @@ impl<'a> Generator<'a> {
             writeln!("  # 对齐栈边界到16字节");
             writeln!("  addi sp, sp, -8");
             self.depth += 1;
-            eprintln!("对齐栈边界 depth = {}, step = {}", self.depth, 1);
             stack += 1;
         }
 
@@ -1279,7 +1383,6 @@ impl<'a> Generator<'a> {
                 let size = align_to(typ.size, 8) as usize;
                 writeln!("  addi sp, sp, -{}", size);
                 self.depth += size / 8;
-                eprintln!("create_bsspace depth = {}, step = {}", self.depth, size / 8);
                 bsstack += size / 8;
             }
         }
@@ -1327,13 +1430,6 @@ impl<'a> Generator<'a> {
             writeln!("  # 对含有两个成员（含浮点）结构体进行压栈");
             writeln!("  addi sp, sp, -16");
             self.depth += 2;
-            eprintln!(
-                "push_struct1 depth = {}, step = {} {} {}",
-                self.depth,
-                2,
-                fs_reg1ty.borrow().is_float(),
-                fs_reg2ty.borrow().is_float()
-            );
 
             writeln!("  ld t0, 0(a0)");
             writeln!("  sd t0, 0(sp)");
@@ -1356,7 +1452,6 @@ impl<'a> Generator<'a> {
         writeln!("  # 为{}的结构体开辟{}字节的空间，", s, size);
         writeln!("  addi sp, sp, -{}", size);
         self.depth += size / 8;
-        eprintln!("push_struct2 depth = {}, step = {}", self.depth, size / 8);
 
         writeln!("  # 开辟{}字节的空间，复制{}的内存", size, s);
         for i in 0..t.size {
@@ -1374,7 +1469,6 @@ impl<'a> Generator<'a> {
         writeln!("  addi sp, sp, -8");
         writeln!("  sd a0, 0(sp)");
         self.depth += 1;
-        eprintln!("push depth = {}, step = {}", self.depth, 1);
     }
 
     /// 弹栈，将sp指向的地址的值，弹出到a1
@@ -1383,7 +1477,6 @@ impl<'a> Generator<'a> {
         writeln!("  ld a{}, 0(sp)", reg);
         writeln!("  addi sp, sp, 8");
         self.depth -= 1;
-        eprintln!("pop depth = {}, step = {}", self.depth, -1);
     }
 
     /// 对于浮点类型进行压栈
@@ -1392,7 +1485,6 @@ impl<'a> Generator<'a> {
         writeln!("  addi sp, sp, -8");
         writeln!("  fsd fa0, 0(sp)");
         self.depth += 1;
-        eprintln!("push_float depth = {}, step = {}", self.depth, 1);
     }
 
     /// 对于浮点类型进行弹栈
@@ -1401,7 +1493,6 @@ impl<'a> Generator<'a> {
         writeln!("  fld fa{}, 0(sp)", reg);
         writeln!("  addi sp, sp, 8");
         self.depth -= 1;
-        eprintln!("pop_float depth = {}, step = {}", self.depth, -1);
     }
 
     /// 加载a0指向的值
@@ -1503,6 +1594,17 @@ impl<'a> Generator<'a> {
             _ => {
                 unreachable!();
             }
+        }
+    }
+
+    /// 存储结构体到栈内开辟的空间
+    fn store_struct(&mut self, register: usize, offset: isize, size: isize) {
+        // t0是结构体的地址，复制t0指向的结构体到栈相应的位置中
+        for i in 0..size {
+            writeln!("  lb t0, {}(a{})", i, register);
+            writeln!("  li t1, {}", offset + i);
+            writeln!("  add t1, fp, t1");
+            writeln!("  sb t0, 0(t1)");
         }
     }
 

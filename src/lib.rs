@@ -19,6 +19,7 @@ mod token;
 mod tokenize;
 mod utils;
 
+use std::io::Write;
 use utils::*;
 
 use crate::token::FileLink;
@@ -40,6 +41,9 @@ pub use utils::write_file;
 
 /// 输入(stdin or file)
 pub static mut INPUT: Option<FileLink> = None;
+
+/// 输出文件
+pub static mut OUTPUT: Option<Box<dyn Write>> = None;
 
 /// 输入文件列表
 pub static mut INPUTS: Vec<FileLink> = vec![];

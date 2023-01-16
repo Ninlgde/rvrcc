@@ -230,6 +230,7 @@ fn run_subprocess(arg_strs: Vec<String>, print_debug: bool) {
     child.wait().unwrap();
 }
 
+/// 使用as编译汇编到目标文件
 fn assemble(input: String, output: String, print_debug: bool) {
     let cmd = vec![
         "riscv64-unknown-linux-gnu-as".to_string(),
@@ -242,6 +243,7 @@ fn assemble(input: String, output: String, print_debug: bool) {
     run_subprocess(cmd, print_debug);
 }
 
+/// 使用ld来link目标文件到可执行文件
 fn run_linker(inputs: Vec<String>, output: String, print_debug: bool) {
     // 需要传递ld子进程的参数
     let mut arr = vec![];
@@ -306,10 +308,10 @@ fn run_linker(inputs: Vec<String>, output: String, print_debug: bool) {
 
 /// 查找库路径
 fn find_lib_path() -> String {
-    if file_exists(&"/usr/lib/riscv64-linux-gnu/crti.o".to_string()) {
+    if file_exists("/usr/lib/riscv64-linux-gnu/crti.o") {
         return "/usr/lib/riscv64-linux-gnu".to_string();
     }
-    if file_exists(&"/usr/lib64/crti.o".to_string()) {
+    if file_exists("/usr/lib64/crti.o") {
         return "/usr/lib64".to_string();
     }
     let lib_path = format!("{}/sysroot/usr/lib/crti.o", RISCV_HOME);
@@ -329,7 +331,7 @@ fn find_gcc_lib_path() -> String {
         "{}/lib/gcc/riscv64-unknown-linux-gnu/*/crtbegin.o",
         RISCV_HOME
     );
-    paths.push(rslbp.as_str());
+    paths.push(&rslbp);
     for path in paths {
         let lib_path = find_file(path);
         if lib_path.len() > 0 {

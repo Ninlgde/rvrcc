@@ -119,7 +119,7 @@ pub fn dirname(path: String) -> String {
 }
 
 /// 文件是否存在
-pub fn file_exists(file: &String) -> bool {
+pub fn file_exists(file: &str) -> bool {
     Path::new(file).exists()
 }
 

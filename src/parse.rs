@@ -761,7 +761,7 @@ impl<'a> Parser<'a> {
                 t = Type::pointer_to(tc.clone());
                 t.borrow_mut().set_name(name);
             }
-
+            let t = Type::from(&t);
             // 倒序插入
             params.insert(0, t);
         }

@@ -346,6 +346,28 @@ impl Type {
         r1
     }
 
+    /// copy from other
+    pub fn from(other: &TypeLink) -> TypeLink {
+        Rc::new(RefCell::new(Type {
+            kind: other.borrow().kind.clone(),
+            name: other.borrow().name.clone(),
+            name_string: other.borrow().name_string.to_string(),
+            name_pos: other.borrow().name_pos.clone(),
+            size: other.borrow().size,
+            align: other.borrow().align,
+            is_unsigned: other.borrow().is_unsigned,
+            base: other.borrow().base.clone(),
+            return_type: other.borrow().return_type.clone(),
+            params: other.borrow().params.to_vec(),
+            is_variadic: other.borrow().is_variadic,
+            len: other.borrow().len,
+            members: other.borrow().members.to_vec(),
+            is_flexible: other.borrow().is_flexible,
+            fs_reg1ty: other.borrow().fs_reg1ty.clone(),
+            fs_reg2ty: other.borrow().fs_reg2ty.clone(),
+        }))
+    }
+
     /// 复制结构体的类型
     pub fn copy_struct_type(src: &TypeLink) -> TypeLink {
         let st = src.borrow().kind.clone();

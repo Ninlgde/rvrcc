@@ -240,7 +240,7 @@ impl Node {
         add_type(&mut expr);
         let mut node = Self::new(NodeKind::Cast, expr.token.clone());
         node.lhs = Some(expr);
-        node.typ = Some(typ);
+        node.typ = Some(Type::from(&typ));
         node
     }
 
