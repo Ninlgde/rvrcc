@@ -858,8 +858,7 @@ impl<'a> Generator<'a> {
             NodeKind::FuncCall => {
                 // 计算所有参数的值，正向压栈
                 // 此处获取到栈传递参数的数量
-                let mut args = node.args.to_vec();
-                let stack = self.push_args(&mut args);
+                let stack = self.push_args(&node);
                 self.gen_expr(node.lhs.as_ref().unwrap());
                 // 将a0的值存入t0
                 writeln!("  mv t0, a0");
@@ -868,6 +867,12 @@ impl<'a> Generator<'a> {
                 let mut gp = 0;
                 let mut fp = 0;
                 let mut pi = 0;
+
+                if node.ret_buf.is_some() && node.typ.as_ref().unwrap().borrow().size > 16 {
+                    writeln!("  # 返回结构体大于16字节，那么第一个参数指向返回缓冲区");
+                    self.pop(gp);
+                    gp += 1;
+                }
 
                 let func_type = node.func_type.as_ref().unwrap().clone();
                 let params = &func_type.borrow().params;
@@ -996,6 +1001,15 @@ impl<'a> Generator<'a> {
                     }
                     _ => {}
                 }
+
+                // 如果返回的结构体小于16字节，直接使用寄存器返回
+                if node.ret_buf.is_some() && node.typ.as_ref().unwrap().borrow().size <= 16 {
+                    let ret_buf = node.ret_buf.as_ref().unwrap();
+                    self.copy_ret_buffer(ret_buf);
+                    writeln!("  li t0, {}", ret_buf.borrow().get_offset());
+                    writeln!("  add a0, fp, t0");
+                }
+
                 return;
             }
             _ => {}
@@ -1247,6 +1261,11 @@ impl<'a> Generator<'a> {
             let offset = node.member.as_ref().unwrap().offset;
             writeln!("  li t0, {}", offset);
             writeln!("  add a0, a0, t0");
+        } else if node.kind == NodeKind::FuncCall {
+            // 如果存在返回值缓冲区
+            if node.ret_buf.is_some() {
+                self.gen_expr(node);
+            }
         } else {
             error_token!(&node.get_token(), "not an lvalue")
         }
@@ -1283,12 +1302,18 @@ impl<'a> Generator<'a> {
     }
 
     /// 处理参数后进行压栈
-    fn push_args(&mut self, args: &mut Vec<NodeLink>) -> usize {
+    fn push_args(&mut self, node: &NodeLink) -> usize {
         let mut stack = 0;
         let mut fp = 0;
         let mut gp = 0;
 
+        // 如果是超过16字节的结构体，则通过第一个寄存器传递结构体的指针
+        if node.ret_buf.is_some() && node.typ.as_ref().unwrap().borrow().size > 16 {
+            gp += 1;
+        }
+
         // 遍历所有参数，优先使用寄存器传递，然后是栈传递
+        let mut args = node.args.to_vec();
         for arg in args.iter_mut() {
             let at = arg.typ.as_ref().unwrap().clone();
             let kind = at.borrow().kind.clone();
@@ -1328,13 +1353,13 @@ impl<'a> Generator<'a> {
                 TypeKind::Float | TypeKind::Double => {
                     // 浮点优先使用FP，而后是GP，最后是栈传递
                     if fp < FP_MAX {
-                        writeln!("  # 浮点{0:.6}值通过fa{}传递", arg.fval, fp);
+                        writeln!("  # 浮点{}值通过fa{}传递", arg.fval, fp);
                         fp += 1;
                     } else if gp < GP_MAX {
-                        writeln!("  # 浮点{0:.6}值通过a{}传递", arg.fval, gp);
+                        writeln!("  # 浮点{}值通过a{}传递", arg.fval, gp);
                         gp += 1;
                     } else {
-                        writeln!("  # 浮点{0:.6}值通过栈传递", arg.fval);
+                        writeln!("  # 浮点{}值通过栈传递", arg.fval);
                         arg.pass_by_stack = true;
                         stack += 1;
                     }
@@ -1363,13 +1388,93 @@ impl<'a> Generator<'a> {
 
         // 进行压栈
         // 开辟大于16字节的结构体的栈空间
-        let bsstack = self.create_bsspace(args);
+        let bsstack = self.create_bsspace(&args);
         // 第一遍对栈传递的变量进行压栈
-        self.push_args0(args, true);
+        self.push_args0(&args, true);
         // 第二遍对寄存器传递的变量进行压栈
-        self.push_args0(args, false);
+        self.push_args0(&args, false);
+
+        if node.ret_buf.is_some() && node.typ.as_ref().unwrap().borrow().size > 16 {
+            let ret = node.ret_buf.as_ref().unwrap();
+            writeln!("  # 返回类型是大于16字节的结构体，指向其的指针，压入栈顶");
+            writeln!("  li t0, {}", ret.borrow().get_offset());
+            writeln!("  add a0, fp, t0");
+            self.push();
+        }
         // 返回栈传递参数的个数
         stack + bsstack
+    }
+
+    fn copy_ret_buffer(&mut self, var: &ObjLink) {
+        let binding = var.borrow();
+        let typ = binding.get_type();
+        let mut gp = 0;
+        let mut fp = 0;
+
+        let tys = cal_flo_st_mems_ty(typ.clone(), gp, fp);
+        // 结构体的大小
+        let mut typ = typ.borrow_mut();
+        typ.fs_reg1ty = Some(tys[0].clone());
+        typ.fs_reg2ty = Some(tys[1].clone());
+        let fs_reg1ty = tys[0].clone();
+        let fs_reg2ty = tys[1].clone();
+
+        writeln!("  # 拷贝到返回缓冲区");
+        writeln!("  # 加载struct地址到t0");
+        writeln!("  li t0, {}", var.borrow().get_offset());
+        writeln!("  add t1, fp, t0");
+
+        // 处理浮点结构体的情况
+        if fs_reg1ty.borrow().is_float() || fs_reg2ty.borrow().is_float() {
+            let mut offset = 0;
+            for reg in tys.iter() {
+                let kind = reg.borrow().kind.clone();
+                match kind {
+                    TypeKind::Float => {
+                        writeln!("  fsw fa{}, {}(t1)", fp, offset);
+                        offset = 4;
+                        fp += 1;
+                    }
+                    TypeKind::Double => {
+                        writeln!("  fsd fa{}, {}(t1)", fp, offset);
+                        offset = 8;
+                        fp += 1;
+                    }
+                    TypeKind::Void => {}
+                    _ => {
+                        writeln!("  sd a{}, {}(t1)", gp, offset);
+                        offset = 8;
+                        gp += 1;
+                    }
+                }
+            }
+            return;
+        }
+
+        writeln!("  # 复制整型结构体返回值到缓冲区中");
+        let mut offset = 0;
+        while offset < typ.size {
+            // let off = typ.size - offset;
+            match typ.size - offset {
+                1 => {
+                    writeln!("  sb a{}, {}(t1)", gp, offset);
+                    gp += 1;
+                }
+                2 => {
+                    writeln!("  sh a{}, {}(t1)", gp, offset);
+                    gp += 1;
+                }
+                3 | 4 => {
+                    writeln!("  sw a{}, {}(t1)", gp, offset);
+                    gp += 1;
+                }
+                _ => {
+                    writeln!("  sd a{}, {}(t1)", gp, offset);
+                    gp += 1;
+                }
+            }
+            offset += 8;
+        }
     }
 
     /// 为大结构体开辟空间

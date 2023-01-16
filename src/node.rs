@@ -135,6 +135,8 @@ pub struct Node {
     pub(crate) args: Vec<NodeLink>,
     /// 通过栈传递
     pub(crate) pass_by_stack: bool,
+    /// 返回值缓冲区
+    pub(crate) ret_buf: Option<ObjLink>,
     /// 存储ND_VAR的字符串
     pub(crate) var: Option<ObjLink>,
     /// 存储ND_NUM种类的值
@@ -172,6 +174,7 @@ impl Node {
             func_type: None,
             args: Vec::new(),
             pass_by_stack: false,
+            ret_buf: None,
             var: None,
             val: 0,
             fval: 0.0,

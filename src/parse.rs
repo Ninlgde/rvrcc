@@ -2652,8 +2652,14 @@ impl<'a> Parser<'a> {
         let mut node = Node::new_unary(NodeKind::FuncCall, func, nt);
         node.func_type = Some(t.clone());
         let tb = t.borrow();
-        node.typ = Some(tb.return_type.as_ref().unwrap().clone());
+        let rt = tb.return_type.as_ref().unwrap();
+        node.typ = Some(rt.clone());
         node.args = nodes;
+
+        // 如果函数返回值是结构体，那么调用者需为返回值开辟一块空间
+        if rt.borrow().is_struct_union() {
+            node.ret_buf = self.new_lvar("".to_string(), rt.clone());
+        }
         Some(node)
     }
 
