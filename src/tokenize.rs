@@ -2,8 +2,8 @@ use crate::ctype::{Type, TypeLink};
 use crate::keywords::KEYWORDS;
 use crate::token::{File, Token};
 use crate::{
-    error_at, error_token, read_file, remove_backslash_newline, slice_to_string, FileLink, INPUT,
-    INPUTS,
+    canonicalize_newline, error_at, error_token, read_file, remove_backslash_newline,
+    slice_to_string, FileLink, INPUT, INPUTS,
 };
 
 static mut FILE_NO: usize = 0;
@@ -13,6 +13,7 @@ pub fn tokenize_file(path: String) -> Vec<Token> {
     if content.eq("") {
         return Vec::new();
     }
+    let content = canonicalize_newline(content);
     let content = remove_backslash_newline(content);
     // 文件编号
     let file_no = unsafe { FILE_NO };

@@ -192,7 +192,35 @@ pub fn print_tokens(mut write_file: Box<dyn Write>, tokens: Vec<Token>) {
     write!(write_file, "\n").unwrap();
 }
 
+/// Replaces \r or \r\n with \n.
+pub fn canonicalize_newline(input: String) -> String {
+    let mut chars = input.into_bytes();
+    // 旧字符串的索引I（从0开始）
+    // 新字符串的索引J（从0开始）
+    // 因为J始终<=I，所以二者共用空间，不会有问题
+    let mut i = 0;
+    let mut j = 0;
+
+    while i < chars.len() {
+        if chars[i] == 0x0d && chars[i + 1] == 0x0a {
+            i += 2;
+            chars[j] = 0x0a;
+        } else if chars[i] == 0x0d {
+            i += 1;
+            chars[j] = 0x0d;
+        } else {
+            chars[j] = chars[i];
+            i += 1;
+        }
+        j += 1;
+    }
+
+    // 截取[0..j) 返回字符串
+    String::from_utf8_lossy(&chars[0..j]).to_string()
+}
+
 /// 移除续行，即反斜杠+换行符的形式
+/// Removes backslashes followed by a newline.
 pub fn remove_backslash_newline(input: String) -> String {
     let mut chars = input.into_bytes();
     // 旧字符串的索引I（从0开始）
