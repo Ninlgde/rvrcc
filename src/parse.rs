@@ -2205,6 +2205,22 @@ impl<'a> Parser<'a> {
             let base_type = self.declspec(&mut attr);
             let mut is_first = true;
 
+            // Anonymous struct member
+            if base_type.borrow().is_struct_union() && self.consume(";") {
+                let mut member = Member::new("".to_string(), Some(base_type), idx);
+                idx += 1;
+                let va = attr.as_ref().unwrap();
+                if va.align != 0 {
+                    member.align = va.align;
+                } else {
+                    member.align = member.typ.as_ref().unwrap().borrow().align;
+                }
+
+                members.push(member);
+                continue;
+            }
+
+            // Regular struct members
             while !self.consume(";") {
                 if !is_first {
                     self.skip(",");
@@ -2376,28 +2392,61 @@ impl<'a> Parser<'a> {
     // 获取结构体成员
     fn get_struct_member(&mut self, typ: &TypeLink, token: &Token) -> Option<Box<Member>> {
         for member in typ.borrow().members.iter() {
+            // Anonymous struct member
+            if member.typ.as_ref().unwrap().borrow().is_struct_union() && member.name.eq("") {
+                let sm = self.get_struct_member(member.typ.as_ref().unwrap(), token);
+                if sm.is_some() {
+                    return Some(member.clone());
+                }
+                continue;
+            }
+
+            // Regular struct member
             if token.equal(member.name.as_str()) {
                 return Some(member.clone());
             }
         }
-        error_token!(token, "no such member");
         None
     }
 
-    /// 构建结构体成员的节点
-    fn struct_ref(&mut self, mut lhs: NodeLink) -> Option<NodeLink> {
-        add_type(&mut lhs);
+    /// Create a node representing a struct member access, such as foo.bar
+    /// where foo is a struct and bar is a member name.
+    ///
+    /// C has a feature called "anonymous struct" which allows a struct to
+    /// have another unnamed struct as a member like this:
+    ///
+    ///   struct { struct { int a; }; int b; } x;
+    ///
+    /// The members of an anonymous struct belong to the outer struct's
+    /// member namespace. Therefore, in the above example, you can access
+    /// member "a" of the anonymous struct as "x.a".
+    ///
+    /// This function takes care of anonymous structs.
+    fn struct_ref(&mut self, mut node: NodeLink) -> Option<NodeLink> {
+        add_type(&mut node);
 
-        let lhs_t = lhs.typ.as_ref().unwrap().clone();
-        if !lhs_t.borrow().is_struct_union() {
-            error_token!(&lhs.token, "not a struct nor a union");
+        let ndt = node.typ.as_ref().unwrap().clone();
+        if !ndt.borrow().is_struct_union() {
+            error_token!(&node.token, "not a struct nor a union");
         }
 
-        let lhs_t = lhs.typ.as_ref().unwrap().clone();
-        let (pos, _) = self.current();
-        let nt = self.tokens[pos].clone();
-        let mut node = Node::new_unary(NodeKind::Member, lhs, nt.clone());
-        node.member = Some(self.get_struct_member(&lhs_t, &nt).unwrap());
+        let mut ndt = node.typ.as_ref().unwrap().clone();
+        loop {
+            let nt = self.current_token().clone();
+            let member = self.get_struct_member(&ndt, &nt);
+            if member.is_none() {
+                error_token!(&nt, "no such member");
+            }
+            let member = member.unwrap();
+            let name = member.name.to_string();
+            let mt = member.typ.as_ref().unwrap().clone();
+            node = Node::new_unary(NodeKind::Member, node, nt.clone());
+            node.member = Some(member);
+            if !name.eq("") {
+                break;
+            }
+            ndt = mt;
+        }
 
         Some(node)
     }
