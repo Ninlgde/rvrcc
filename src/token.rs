@@ -18,6 +18,8 @@ pub enum TokenKind {
     Keyword,
     /// 数字
     Num,
+    // 预处理数值
+    PpNum,
     /// 字符串
     Str,
     /// 文件终止符，即文件的最后
@@ -184,6 +186,14 @@ impl TokenInner {
         self.kind = TokenKind::Keyword
     }
 
+    /// 转化成num
+    fn to_number(&mut self, ival: i64, fval: f64, typ: TypeLink) {
+        self.kind = TokenKind::Num;
+        self.ival = ival;
+        self.fval = fval;
+        self.typ = Some(typ);
+    }
+
     /// 获取文件编号
     fn get_file_no(&self) -> usize {
         self.file.as_ref().unwrap().borrow().no
@@ -281,6 +291,17 @@ impl Token {
         Token { inner }
     }
 
+    /// 构造pp num
+    pub fn new_ppnum(
+        has_space: bool,
+        at_bol: bool,
+        name: String,
+        offset: usize,
+        line_no: usize,
+    ) -> Self {
+        Token::new(TokenKind::PpNum, has_space, at_bol, name, offset, line_no)
+    }
+
     /// 构造str
     pub fn new_str(
         has_space: bool,
@@ -341,6 +362,12 @@ impl Token {
     pub fn to_keyword(&mut self) {
         let mut inner = self.inner.borrow_mut();
         inner.to_keyword();
+    }
+
+    /// 转化成num
+    pub fn to_number(&mut self, ival: i64, fval: f64, typ: TypeLink) {
+        let mut inner = self.inner.borrow_mut();
+        inner.to_number(ival, fval, typ);
     }
 
     /// 获取文件
@@ -407,6 +434,12 @@ impl Token {
     pub fn is_num(&self) -> bool {
         let inner = self.inner.borrow();
         inner.kind == TokenKind::Num
+    }
+
+    /// 是否是预处理数字
+    pub fn is_ppnum(&self) -> bool {
+        let inner = self.inner.borrow();
+        inner.kind == TokenKind::PpNum
     }
 
     /// 是否行首是#号

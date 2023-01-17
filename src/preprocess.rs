@@ -3,7 +3,7 @@
 use crate::cmacro::{init_macros, HideSet, Macro, MacroArg, MacroParam};
 use crate::parse::Parser;
 use crate::token::{File, Token, TokenVecOps};
-use crate::tokenize::{convert_keywords, tokenize};
+use crate::tokenize::{convert_pp_tokens, tokenize};
 use crate::{
     dirname, error_token, file_exists, join_adjacent_string_literals, tokenize_file, warn_token,
 };
@@ -13,8 +13,8 @@ pub fn preprocess(tokens: &mut Vec<Token>, include_path: Vec<String>) -> Vec<Tok
     // 处理宏和指示
     let mut processor = Preprocessor::new(tokens, include_path);
     let mut tokens = processor.process();
-    // 将所有关键字的终结符，都标记为KEYWORD
-    convert_keywords(&mut tokens);
+    // 将所有关键字的终结符，都标记为KEYWORD, ppnum->num
+    convert_pp_tokens(&mut tokens);
 
     let tokens = join_adjacent_string_literals(tokens);
     tokens
@@ -377,6 +377,9 @@ impl<'a> Preprocessor<'a> {
                 *ex = nt;
             }
         }
+
+        // 转换预处理数值到正常数值
+        convert_pp_tokens(&mut expr);
 
         // 计算常量表达式的值
         let mut parser = Parser::new(&expr);

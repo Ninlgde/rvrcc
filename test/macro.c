@@ -393,6 +393,11 @@ int main() {
 #define M14(x, ...) x
     ASSERT(5, M14(5));
 
-    printf("OK\n");
+// [207] 解析数值终结符为pp-number
+#define CONCAT(x,y) x##y
+    ASSERT(5, ({ int f0zz=5; CONCAT(f,0zz); }));
+    ASSERT(5, ({ CONCAT(4,.57) + 0.5; }));
+
+    printf("\033[32mOK\033[0m\n");
     return 0;
 }

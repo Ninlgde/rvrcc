@@ -2,7 +2,8 @@ use crate::ctype::{Type, TypeLink};
 use crate::keywords::KEYWORDS;
 use crate::token::{File, Token};
 use crate::{
-    error_at, read_file, remove_backslash_newline, slice_to_string, FileLink, INPUT, INPUTS,
+    error_at, error_token, read_file, remove_backslash_newline, slice_to_string, FileLink, INPUT,
+    INPUTS,
 };
 
 static mut FILE_NO: usize = 0;
@@ -101,12 +102,20 @@ pub fn tokenize(input: FileLink) -> Vec<Token> {
 
         // 解析数值
         if c.is_digit(10) || (c == '.' && read_char(&chars, pos + 1).is_digit(10)) {
-            // 初始化，类似于C++的构造函数
-            // 我们不使用Head来存储信息，仅用来表示链表入口，这样每次都是存储在Cur->Next
-            // 否则下述操作将使第一个Token的地址不在Head中。
-            let (val, fval, typ) = read_number(&chars, &mut pos);
+            pos += 1;
+            loop {
+                let c = read_char(&chars, pos);
+                let cn = read_char(&chars, pos + 1);
+                if c != '\0' && cn != '\0' && "eEpP".contains(c) && "+-".contains(cn) {
+                    pos += 2;
+                } else if c.is_ascii_alphanumeric() || c == '.' {
+                    pos += 1;
+                } else {
+                    break;
+                }
+            }
             let name = slice_to_string(&chars, old_pos, pos);
-            let token = Token::new_num(has_space, at_bol, name, old_pos, line_no, val, fval, typ);
+            let token = Token::new_ppnum(has_space, at_bol, name, old_pos, line_no);
             tokens.push(token);
             at_bol = false;
             has_space = false;
@@ -190,13 +199,27 @@ pub fn read_char(chars: &Vec<u8>, pos: usize) -> char {
 }
 
 // 将所有关键字的终结符，都标记为KEYWORD
-pub fn convert_keywords(tokens: &mut Vec<Token>) {
+pub fn convert_pp_tokens(tokens: &mut Vec<Token>) {
     for token in tokens.iter_mut() {
         let name = token.get_name();
         if KEYWORDS.contains(&name.as_str()) {
             token.to_keyword();
+        } else if token.is_ppnum() {
+            convert_num(token);
         }
     }
+}
+
+/// 转换成num
+fn convert_num(token: &mut Token) {
+    let chars = token.get_name().into_bytes();
+    let mut pos = 0;
+
+    let (ival, fval, typ) = read_number(&chars, &mut pos);
+    if pos != chars.len() {
+        error_token!(token, "invalid numeric constant");
+    }
+    token.to_number(ival, fval, typ);
 }
 
 /// 判断chars中pos开头的字符是否与sub字符串匹配
@@ -218,8 +241,8 @@ fn starts_with_ignore_case(chars: &Vec<u8>, pos: usize, sub: &str) -> bool {
     let sub = binding.as_bytes();
     for i in 0..sub.len() {
         // 'a' - 'A' = 32
-        let char = read_char(chars, pos + i) as u8;
-        if sub[i] != char && sub[i] - 32 != char {
+        let char = read_char(chars, pos + i);
+        if !char.eq_ignore_ascii_case(&(sub[i] as char)) {
             return false;
         }
     }
