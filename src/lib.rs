@@ -45,7 +45,7 @@ pub use utils::write_file;
 pub static mut INPUT: Option<FileLink> = None;
 
 /// 输出文件
-pub static mut OUTPUT: Option<Box<dyn Write>> = None;
+pub static mut OUTPUT: Option<&mut dyn Write> = None;
 
 /// 输入文件列表
 pub static mut INPUTS: Vec<FileLink> = vec![];

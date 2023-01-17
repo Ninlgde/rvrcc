@@ -8,7 +8,7 @@ use std::io::Write;
 use std::{cmp, fmt};
 
 /// 汇编代码生成到文件
-pub fn codegen(program: &mut Vec<ObjLink>, write_file: Box<dyn Write>) {
+pub fn codegen(program: &mut Vec<ObjLink>, write_file: &'static mut dyn Write) {
     unsafe {
         OUTPUT = Some(write_file);
     }

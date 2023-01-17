@@ -15,6 +15,7 @@ use rvrcc::{
     preprocess, print_tokens, replace_extn, tokenize_file, Args, TempFile, TempFileCleaner,
 };
 use std::env;
+use std::io::Write;
 use std::process::{exit, Command};
 
 const RISCV_HOME: &str = "/Users/malikma/Desktop/source/opt/riscv_linux";
@@ -174,10 +175,20 @@ fn cc1(args: Args) {
     let mut program = parse(&tokens);
 
     // 打开输出文件
-    let file = open_file_for_write(&args.output_file);
+    let mut file = open_file_for_write(&args.output_file);
     // 根据ast,向输出文件中写入相关汇编
-    codegen(&mut program, file);
+    unsafe {
+        // 输出汇编到缓冲区中
+        codegen(&mut program, &mut BUF);
+
+        // 从缓冲区中写入到文件中
+        file.write(BUF.as_ref()).expect("write failed");
+    }
 }
+
+/// 防止编译器在编译途中退出，而只生成了部分的文件
+/// 开启临时输出缓冲区
+static mut BUF: Vec<u8> = Vec::new();
 
 /// 执行调用cc1程序
 /// 因为rvrcc自身就是cc1程序
