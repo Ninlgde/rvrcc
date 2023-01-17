@@ -1,9 +1,10 @@
 //! 初始化器
 
 use crate::ctype::{TypeKind, TypeLink};
-use crate::node::{add_with_type, eval0, eval_double, Node, NodeKind, NodeLink};
+use crate::node::{add_with_type, eval, eval0, eval_double, Node, NodeKind, NodeLink};
 use crate::obj::{Member, ObjLink};
 use crate::token::Token;
+use crate::vec_i8_into_u8;
 use std::ptr;
 
 /// 可变的初始化器。此处为树状结构。
@@ -296,13 +297,30 @@ pub fn write_gvar_data(
     // 处理结构体
     if t.kind == TypeKind::Struct {
         for member in t.members.iter() {
-            cur = write_gvar_data(
-                cur,
-                init.children[member.idx].clone(),
-                member.typ.as_ref().unwrap(),
-                chars,
-                offset + member.offset as usize,
-            )
+            let mt = member.typ.as_ref().unwrap();
+            let init = init.children[member.idx].clone();
+            if member.is_bitfield {
+                // 结构体位域成员
+                let mut expr = init.expr;
+                if expr.is_none() {
+                    break;
+                }
+
+                // 获取相对于缓冲区的偏移量
+                let start = offset + member.offset as usize;
+                // 读取已经写入的值
+                let old_val = read_buf(chars, start, mt.borrow().size);
+                // 计算需要写入的新值
+                let new_val = eval(expr.as_mut().unwrap());
+                // 获取位域长度的掩码
+                let mask = (1i64 << member.bit_width) - 1;
+                // 对新值取交位域长度的位，然后左移到相应的偏移位置
+                // 最后与旧值取或，得到合并之后的值
+                let combined = old_val | ((new_val & mask) << member.bit_offset);
+                write_buf(chars, start, combined, mt.borrow().size);
+            } else {
+                cur = write_gvar_data(cur, init, mt, chars, offset + member.offset as usize)
+            }
         }
         return cur;
     }
@@ -356,6 +374,17 @@ pub fn write_gvar_data(
     }
 }
 
+/// 对临时转换Buf类型读取Sz大小的数值
+fn read_buf(chars: &mut Vec<i8>, start: usize, size: isize) -> i64 {
+    let size = size as usize;
+    let bytes = &chars[start..start + size];
+    let mut bytes = vec_i8_into_u8(bytes.to_vec());
+    while bytes.len() < 8 {
+        bytes.push(0);
+    }
+    i64::from_le_bytes(bytes.try_into().unwrap())
+}
+
 /// 把val写入buf
 fn write_buf(chars: &mut Vec<i8>, start: usize, val: i64, size: isize) {
     let bytes = val.to_le_bytes();
@@ -364,6 +393,7 @@ fn write_buf(chars: &mut Vec<i8>, start: usize, val: i64, size: isize) {
     }
 }
 
+/// 把float val写入buf
 fn write_float_buf(chars: &mut Vec<i8>, start: usize, fval: f64, size: isize) {
     if size == 4 {
         let fval = fval as f32;
