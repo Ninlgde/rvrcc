@@ -347,6 +347,8 @@ pub fn init_macros() {
 
     add_builtin("__FILE__", file_macro);
     add_builtin("__LINE__", line_macro);
+    // 支持__COUNTER__
+    add_builtin("__COUNTER__", counter_macro);
 
     // 支持__DATE__和__TIME__
     let now = Utc::now();
@@ -377,15 +379,14 @@ fn format_time(now: DateTime<Utc>) -> String {
     )
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_macro() {
-        // 支持__DATE__和__TIME__
-        let now = Utc::now();
-        print!("{} {:02} {}", now.month0(), now.day() - 9, now.year());
+/// 给__COUNTER__宏使用的计数器
+static mut COUNTER: i64 = 0;
+/// __COUNTER__ is expanded to serial values starting from 0.
+fn counter_macro(input: Vec<Token>) -> Vec<Token> {
+    unsafe {
+        let nt = new_num_token(COUNTER, input.first().unwrap());
+        COUNTER = COUNTER + 1;
+        vec![nt, Token::new_eof(0, 0)]
     }
 }
 
