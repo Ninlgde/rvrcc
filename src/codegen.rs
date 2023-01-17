@@ -89,6 +89,7 @@ impl<'a> Generator<'a> {
                     locals,
                     stack_size,
                     params,
+                    va_area,
                     ..
                 } => {
                     // 反向偏移量
@@ -181,6 +182,11 @@ impl<'a> Generator<'a> {
                         let size = typ.borrow().size;
                         re_offset += if is_half { size - 8 } else { size };
                         writeln!(" #  栈传递变量{}偏移量{}", var.get_name(), var.get_offset());
+                    }
+
+                    if va_area.is_some() {
+                        re_offset = align_to(re_offset, 8);
+                        va_area.as_mut().unwrap().borrow_mut().set_offset(re_offset);
                     }
 
                     let mut offset = 0;
@@ -314,7 +320,11 @@ impl<'a> Generator<'a> {
                     self.current_function = Some(func.clone());
 
                     // 栈布局
-                    //-------------------------------// sp
+                    // ------------------------------//
+                    //        上一级函数的栈传递参数
+                    // ==============================// sp（本级函数）
+                    //         VaArea(寄存器可用时)
+                    // ------------------------------// sp = sp（本级函数）-VaArea
                     //              ra
                     //-------------------------------// ra = sp-8
                     //              fp
@@ -325,6 +335,28 @@ impl<'a> Generator<'a> {
                     //-------------------------------//
 
                     // Prologue, 前言
+
+                    // 为剩余的整型寄存器开辟空间，用于存储可变参数
+                    let mut va_size = 0;
+                    if va_area.is_some() {
+                        // 遍历正常参数所使用的浮点、整型寄存器
+                        let mut gps = 0;
+                        let mut fps = 0;
+                        // 可变参数函数，非可变的参数使用寄存器
+                        for param in params.iter().rev() {
+                            let pt = param.borrow().get_type().clone();
+                            if pt.borrow().is_float() && fps < FP_MAX {
+                                // 可变参数函数中的浮点参数
+                                fps += 1;
+                            } else if gps < GP_MAX {
+                                // 可变参数函数中的整型参数
+                                gps += 1;
+                            }
+                        }
+                        va_size = (8 - gps) * 8;
+                        writeln!("  # VaArea的区域，大小为{}", va_size);
+                        writeln!("  addi sp, sp, -{}", va_size);
+                    }
                     // 将ra寄存器压栈,保存ra的值
                     writeln!("  # 将ra寄存器压栈,保存ra的值");
                     writeln!("  addi sp, sp, -16");
@@ -450,9 +482,11 @@ impl<'a> Generator<'a> {
 
                     // 可变参数
                     if va_area.is_some() {
+                        // 可变参数位置位于本函数的最上方，即sp的位置，也就是fp+16
                         // 可变参数存入__va_area__，注意最多为7个
                         let va_area = va_area.as_ref().unwrap().borrow();
                         let mut offset = va_area.get_offset();
+                        writeln!("  # 可变参数VaArea的偏移量为{}", offset);
                         while gp < GP_MAX {
                             writeln!(
                                 "  # 可变参数，相对{}的偏移量为{}",
@@ -484,6 +518,11 @@ impl<'a> Generator<'a> {
                     writeln!("  # 将ra寄存器弹栈,恢复ra的值");
                     writeln!("  ld ra, 8(sp)");
                     writeln!("  addi sp, sp, 16");
+                    // 归还可变参数寄存器压栈的那一部分
+                    if va_area.is_some() {
+                        writeln!("  # 归还VaArea的区域，大小为{}", va_size);
+                        writeln!("  addi sp, sp, {}", va_size);
+                    }
                     // 返回
                     writeln!("  # 返回a0值给系统调用");
                     writeln!("  ret");
@@ -1329,9 +1368,33 @@ impl<'a> Generator<'a> {
             gp += 1;
         }
 
+        let nft = node.func_type.as_ref().unwrap();
+        let binding = nft.borrow();
+        let mut params_peek = binding.params.iter().peekable();
+
         // 遍历所有参数，优先使用寄存器传递，然后是栈传递
         let mut args = node.args.to_vec();
         for arg in args.iter_mut() {
+            // 如果是可变参数的参数，只使用整型寄存器和栈传递
+            if binding.is_variadic && params_peek.peek().is_none() {
+                let val = if arg.val == 0 {
+                    arg.fval.to_bits() as i64
+                } else {
+                    arg.val
+                };
+                if gp < GP_MAX {
+                    writeln!("  # 可变参数{}值通过a{}传递", val, gp);
+                    gp += 1;
+                } else {
+                    writeln!("  # 可变参数{}值通过栈传递", val);
+                    arg.pass_by_stack = true;
+                    stack += 1;
+                }
+                continue;
+            }
+            // 遍历相应的实参，用于检查是不是到了可变参数
+            params_peek.next();
+
             let at = arg.typ.as_ref().unwrap().clone();
             let kind = at.borrow().kind.clone();
             match kind {

@@ -144,6 +144,21 @@ impl Obj {
         }
     }
 
+    /// 获取参数
+    pub fn get_va_area(&self) -> &Option<ObjLink> {
+        match self {
+            Self::Func { va_area, .. } => va_area,
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn set_va_area(&mut self, va: Option<ObjLink>) {
+        match self {
+            Self::Func { va_area, .. } => *va_area = va,
+            _ => unreachable!(),
+        }
+    }
+
     /// 是否是函数对象
     pub fn is_func(&self) -> bool {
         matches!(self, Self::Func { .. })

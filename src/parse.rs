@@ -282,7 +282,7 @@ impl<'a> Parser<'a> {
             if typ.borrow().is_variadic {
                 va_area = self.new_lvar(
                     "__va_area__".to_string(),
-                    Type::array_of(Type::new_char(), 64),
+                    Type::array_of(Type::new_char(), 0),
                 );
             }
 
