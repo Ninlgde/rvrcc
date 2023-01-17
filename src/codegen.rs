@@ -832,6 +832,8 @@ impl<'a> Generator<'a> {
                 // 如果是位域成员变量，需要先从内存中读取当前值，然后合并到新值中
                 if lhs.kind == NodeKind::Member && lhs.member.as_ref().unwrap().is_bitfield {
                     writeln!("\n  # 位域成员变量进行赋值↓");
+                    writeln!("  # 备份需要赋的a0值");
+                    writeln!("  mv t2, a0");
                     writeln!("  # 计算位域成员变量的新值：");
                     let member = lhs.member.as_ref().unwrap();
                     // 将需要赋的值a0存入t1
@@ -860,7 +862,11 @@ impl<'a> Generator<'a> {
                     writeln!("  and a0, a0, t0");
                     // 取或，将成员变量的新值写入到掩码位
                     writeln!("  or a0, a0, t1");
+                    self.store(node.typ.as_ref().unwrap().clone());
+                    writeln!("  # 恢复需要赋的a0值作为返回值");
+                    writeln!("  mv a0, t2");
                     writeln!("  # 完成位域成员变量的赋值↑\n");
+                    return;
                 }
 
                 self.store(node.typ.as_ref().unwrap().clone());

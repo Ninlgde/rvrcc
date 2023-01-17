@@ -1600,12 +1600,54 @@ impl<'a> Parser<'a> {
     }
 
     /// 转换 A op= B为 TMP = &A, *TMP = *TMP op B
+    /// 结构体需要特殊处理
     fn to_assign(&mut self, mut binary: NodeLink) -> Option<NodeLink> {
         // A
         add_type(binary.lhs.as_mut().unwrap());
         // B
         add_type(binary.rhs.as_mut().unwrap());
         let token = &binary.token;
+
+        // 转换 A.X op= B 为 TMP = &A, (*TMP).X = (*TMP).X op B
+        if binary.lhs.as_ref().unwrap().kind == NodeKind::Member {
+            let blhslhs = binary.lhs.as_ref().unwrap().lhs.as_ref().unwrap();
+            // TMP
+            let var = self
+                .new_lvar(
+                    "".to_string(),
+                    Type::pointer_to(blhslhs.typ.as_ref().unwrap().clone()),
+                )
+                .unwrap();
+            // TMP = &A
+            let lhs = Node::new_var(var.clone(), token.clone());
+            let rhs = Node::new_unary(NodeKind::Addr, blhslhs.clone(), token.clone());
+            let expr1 = Node::new_binary(NodeKind::Assign, lhs, rhs, token.clone());
+            // (*TMP).X ，op=左边的
+            let nv = Node::new_var(var.clone(), token.clone());
+            let lhs = Node::new_unary(NodeKind::DeRef, nv, token.clone());
+            let mut expr2 = Node::new_unary(NodeKind::Member, lhs, token.clone());
+            expr2.member = binary.lhs.as_ref().unwrap().member.clone();
+            // (*TMP).X ，op=右边的
+            let nv = Node::new_var(var.clone(), token.clone());
+            let lhs = Node::new_unary(NodeKind::DeRef, nv, token.clone());
+            let mut expr3 = Node::new_unary(NodeKind::Member, lhs, token.clone());
+            expr3.member = binary.lhs.as_ref().unwrap().member.clone();
+            // (*TMP).X = (*TMP).X op B
+            let rhs = Node::new_binary(
+                binary.kind.clone(),
+                expr3,
+                binary.rhs.take().unwrap(),
+                token.clone(),
+            );
+            let expr4 = Node::new_binary(NodeKind::Assign, expr2, rhs, token.clone());
+            // TMP = &A, (*TMP).X = (*TMP).X op B
+            return Some(Node::new_binary(
+                NodeKind::Comma,
+                expr1,
+                expr4,
+                token.clone(),
+            ));
+        }
 
         // TMP
         let var = self
