@@ -1,5 +1,5 @@
 # C编译器参数：使用C11标准，生成debug信息，禁止将未初始化的全局变量放入到common段
-CFLAGS=-std=c11 -g -fno-common
+CFLAGS=-std=c11 -g -fno-common -Wall -Wno-switch
 # 构建测试项目用的riscv64-unknown-linux-gnu-gcc编译器
 CC=riscv64-unknown-linux-gnu-gcc
 # test/文件夹的c测试文件
@@ -60,7 +60,7 @@ stage2/rvcc: $(OBJS:%=stage2/%)
 # 利用stage1的rvcc去将rvcc的源代码编译为stage2的可重定位文件
 stage2/%.o: rvrcc stage2/%.c
 	mkdir -p stage2/test
-	./target/release/rvrcc -c -o stage2/$*.o stage2/$*.c -###
+	./target/release/rvrcc -Iinclude -Itest -c -o stage2/$*.o stage2/$*.c -###
 
 # 利用stage2的rvcc去进行测试
 stage2/test/%.exe: stage2 test/%.c
