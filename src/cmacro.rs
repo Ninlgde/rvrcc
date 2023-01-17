@@ -261,74 +261,86 @@ impl HideSet {
     }
 }
 
-// 定义预定义的宏
-pub fn define_macro(name: &str, buf: &str) -> Macro {
-    let body = tokenize(File::new_link("<built-in>".to_string(), 1, buf.to_string()));
-    Macro::new(name, body, false, true)
+pub static mut BUILTIN_MACROS: Vec<Macro> = vec![];
+
+/// 定义宏
+pub fn define(s: &str) {
+    let eq = s.find("=");
+    if eq.is_some() {
+        let eq = eq.unwrap();
+        // 存在赋值，使用该值
+        define_macro(&s[0..eq], &s[eq + 1..s.len()])
+    } else {
+        // 不存在赋值，则设为1
+        define_macro(s, "1");
+    }
 }
 
-// 增加内建的宏和相应的宏处理函数
-pub fn add_builtin(name: &str, handler: MacroHandlerFn) -> Macro {
+/// 定义预定义的宏
+pub fn define_macro(name: &str, buf: &str) {
+    let body = tokenize(File::new_link("<built-in>".to_string(), 1, buf.to_string()));
+    unsafe { BUILTIN_MACROS.push(Macro::new(name, body, false, true)) }
+}
+
+/// 增加内建的宏和相应的宏处理函数
+pub fn add_builtin(name: &str, handler: MacroHandlerFn) {
     let mut macro_ = Macro::new(name, vec![], false, true);
     macro_.set_handler(handler);
-    macro_
+    unsafe { BUILTIN_MACROS.push(macro_) }
 }
 
-// 初始化预定义的宏
-pub fn init_macros() -> Vec<Macro> {
-    let mut macros = vec![];
-    macros.push(define_macro("_LP64", "1"));
-    macros.push(define_macro("__C99_MACRO_WITH_VA_ARGS", "1"));
-    macros.push(define_macro("__ELF__", "1"));
-    macros.push(define_macro("__LP64__", "1"));
-    macros.push(define_macro("__SIZEOF_DOUBLE__", "8"));
-    macros.push(define_macro("__SIZEOF_FLOAT__", "4"));
-    macros.push(define_macro("__SIZEOF_INT__", "4"));
-    macros.push(define_macro("__SIZEOF_LONG_DOUBLE__", "8"));
-    macros.push(define_macro("__SIZEOF_LONG_LONG__", "8"));
-    macros.push(define_macro("__SIZEOF_LONG__", "8"));
-    macros.push(define_macro("__SIZEOF_POINTER__", "8"));
-    macros.push(define_macro("__SIZEOF_PTRDIFF_T__", "8"));
-    macros.push(define_macro("__SIZEOF_SHORT__", "2"));
-    macros.push(define_macro("__SIZEOF_SIZE_T__", "8"));
-    macros.push(define_macro("__SIZE_TYPE__", "unsigned long"));
-    macros.push(define_macro("__STDC_HOSTED__", "1"));
-    macros.push(define_macro("__STDC_NO_ATOMICS__", "1"));
-    macros.push(define_macro("__STDC_NO_COMPLEX__", "1"));
-    macros.push(define_macro("__STDC_NO_THREADS__", "1"));
-    macros.push(define_macro("__STDC_NO_VLA__", "1"));
-    macros.push(define_macro("__STDC_VERSION__", "201112L"));
-    macros.push(define_macro("__STDC__", "1"));
-    macros.push(define_macro("__USER_LABEL_PREFIX__", ""));
-    macros.push(define_macro("__alignof__", "_Alignof"));
-    macros.push(define_macro("__rvrcc__", "1"));
-    macros.push(define_macro("__rvcc__", "1"));
-    macros.push(define_macro("__const__", "const"));
-    macros.push(define_macro("__gnu_linux__", "1"));
-    macros.push(define_macro("__inline__", "inline"));
-    macros.push(define_macro("__linux", "1"));
-    macros.push(define_macro("__linux__", "1"));
-    macros.push(define_macro("__signed__", "signed"));
-    macros.push(define_macro("__typeof__", "typeof"));
-    macros.push(define_macro("__unix", "1"));
-    macros.push(define_macro("__unix__", "1"));
-    macros.push(define_macro("__volatile__", "volatile"));
-    macros.push(define_macro("linux", "1"));
-    macros.push(define_macro("unix", "1"));
-    macros.push(define_macro("__riscv_mul", "1"));
-    macros.push(define_macro("__riscv_muldiv", "1"));
-    macros.push(define_macro("__riscv_fdiv", "1"));
-    macros.push(define_macro("__riscv_xlen", "64"));
-    macros.push(define_macro("__riscv", "1"));
-    macros.push(define_macro("__riscv64", "1"));
-    macros.push(define_macro("__riscv_div", "1"));
-    macros.push(define_macro("__riscv_float_abi_double", "1"));
-    macros.push(define_macro("__riscv_flen", "64"));
+/// 初始化预定义的宏
+pub fn init_macros() {
+    define_macro("_LP64", "1");
+    define_macro("__C99_MACRO_WITH_VA_ARGS", "1");
+    define_macro("__ELF__", "1");
+    define_macro("__LP64__", "1");
+    define_macro("__SIZEOF_DOUBLE__", "8");
+    define_macro("__SIZEOF_FLOAT__", "4");
+    define_macro("__SIZEOF_INT__", "4");
+    define_macro("__SIZEOF_LONG_DOUBLE__", "8");
+    define_macro("__SIZEOF_LONG_LONG__", "8");
+    define_macro("__SIZEOF_LONG__", "8");
+    define_macro("__SIZEOF_POINTER__", "8");
+    define_macro("__SIZEOF_PTRDIFF_T__", "8");
+    define_macro("__SIZEOF_SHORT__", "2");
+    define_macro("__SIZEOF_SIZE_T__", "8");
+    define_macro("__SIZE_TYPE__", "unsigned long");
+    define_macro("__STDC_HOSTED__", "1");
+    define_macro("__STDC_NO_ATOMICS__", "1");
+    define_macro("__STDC_NO_COMPLEX__", "1");
+    define_macro("__STDC_NO_THREADS__", "1");
+    define_macro("__STDC_NO_VLA__", "1");
+    define_macro("__STDC_VERSION__", "201112L");
+    define_macro("__STDC__", "1");
+    define_macro("__USER_LABEL_PREFIX__", "");
+    define_macro("__alignof__", "_Alignof");
+    define_macro("__rvrcc__", "1");
+    define_macro("__rvcc__", "1");
+    define_macro("__const__", "const");
+    define_macro("__gnu_linux__", "1");
+    define_macro("__inline__", "inline");
+    define_macro("__linux", "1");
+    define_macro("__linux__", "1");
+    define_macro("__signed__", "signed");
+    define_macro("__typeof__", "typeof");
+    define_macro("__unix", "1");
+    define_macro("__unix__", "1");
+    define_macro("__volatile__", "volatile");
+    define_macro("linux", "1");
+    define_macro("unix", "1");
+    define_macro("__riscv_mul", "1");
+    define_macro("__riscv_muldiv", "1");
+    define_macro("__riscv_fdiv", "1");
+    define_macro("__riscv_xlen", "64");
+    define_macro("__riscv", "1");
+    define_macro("__riscv64", "1");
+    define_macro("__riscv_div", "1");
+    define_macro("__riscv_float_abi_double", "1");
+    define_macro("__riscv_flen", "64");
 
-    macros.push(add_builtin("__FILE__", file_macro));
-    macros.push(add_builtin("__LINE__", line_macro));
-
-    macros
+    add_builtin("__FILE__", file_macro);
+    add_builtin("__LINE__", line_macro);
 }
 
 /// 文件标号函数

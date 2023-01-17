@@ -11,8 +11,8 @@
 //! ld链接为可执行文件
 
 use rvrcc::{
-    codegen, dirname, file_exists, find_file, open_file_for_write, parse, parse_args, preprocess,
-    print_tokens, replace_extn, tokenize_file, Args, TempFile, TempFileCleaner,
+    codegen, dirname, file_exists, find_file, init_macros, open_file_for_write, parse, parse_args,
+    preprocess, print_tokens, replace_extn, tokenize_file, Args, TempFile, TempFileCleaner,
 };
 use std::env;
 use std::process::{exit, Command};
@@ -21,6 +21,8 @@ const RISCV_HOME: &str = "/Users/malikma/Desktop/source/opt/riscv_linux";
 
 /// rvcc的程序入口函数
 fn main() {
+    // 初始化预定义的宏
+    init_macros();
     // 获取命令行参数
     let arg_strs: Vec<String> = env::args().collect();
     // 解析传入程序的参数

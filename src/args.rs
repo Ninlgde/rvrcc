@@ -1,5 +1,6 @@
 //! 命令行参数解析
 
+use crate::cmacro::define;
 use std::ffi::CString;
 use std::fs::remove_file;
 use std::process::exit;
@@ -127,6 +128,21 @@ impl Args {
             if arg.starts_with("-I") {
                 let incl = &arg[2..];
                 result.include_path.push(incl.to_string());
+                i += 1;
+                continue;
+            }
+
+            // 解析-D
+            if arg.eq("-D") {
+                define(args[i + 1].as_str());
+                i += 2;
+                continue;
+            }
+
+            // 解析-Dxxxx
+            if arg.starts_with("-D") {
+                let incl = &arg[2..];
+                define(incl);
                 i += 1;
                 continue;
             }

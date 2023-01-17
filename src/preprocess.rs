@@ -1,6 +1,6 @@
 //! 预处理
 
-use crate::cmacro::{init_macros, HideSet, Macro, MacroArg, MacroParam};
+use crate::cmacro::{HideSet, Macro, MacroArg, MacroParam, BUILTIN_MACROS};
 use crate::parse::Parser;
 use crate::token::{File, Token, TokenVecOps};
 use crate::tokenize::{convert_pp_tokens, tokenize};
@@ -61,7 +61,7 @@ impl<'a> Preprocessor<'a> {
             cursor: 0,
             result: vec![],
             cond_incls: vec![],
-            macros: init_macros(),
+            macros: unsafe { BUILTIN_MACROS.to_vec() },
             include_path,
         }
     }

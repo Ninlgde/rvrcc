@@ -120,4 +120,13 @@ echo foo > $tmp/dir/i-option-test
 echo "#include \"i-option-test\"" | $rvrcc -I$tmp/dir -E - | grep -q foo
 check -I
 
+# [208] 支持-D选项
+# -D
+echo foo | $rvrcc -Dfoo -E - | grep -q 1
+check -D
+
+# -D
+echo foo | $rvrcc -Dfoo=bar -E - | grep -q bar
+check -D
+
 echo OK

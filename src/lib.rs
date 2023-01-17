@@ -27,6 +27,8 @@ pub use args::parse_args;
 pub use args::Args;
 pub use args::TempFile;
 pub use args::TempFileCleaner;
+pub use cmacro::define_macro;
+pub use cmacro::init_macros;
 pub use codegen::codegen;
 pub use parse::parse;
 pub use preprocess::preprocess;
