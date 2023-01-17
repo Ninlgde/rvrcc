@@ -2264,7 +2264,10 @@ impl<'a> Parser<'a> {
             let member = &mut tm.members[i];
             let ms = member.typ.as_ref().unwrap().borrow().size;
             let ma = member.align;
-            if member.is_bitfield {
+            if member.is_bitfield && member.bit_width == 0 {
+                // 零宽度的位域有特殊含义，仅作用于对齐
+                bits = align_to(bits, ms * 8)
+            } else if member.is_bitfield {
                 // 位域成员变量
                 // Bits此时对应成员最低位，Bits + Mem->BitWidth - 1对应成员最高位
                 // 二者若不相等，则说明当前这个类型剩余的空间存不下，需要新开辟空间
