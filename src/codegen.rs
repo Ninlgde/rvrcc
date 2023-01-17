@@ -198,8 +198,13 @@ impl<'a> Generator<'a> {
                                 continue;
                             }
                             let t = v.get_type().borrow();
+                            let align = if t.kind == TypeKind::Array && t.size > 16 {
+                                cmp::max(16, v.get_align())
+                            } else {
+                                v.get_align()
+                            };
                             offset += t.size as isize;
-                            offset = align_to(offset, v.get_align());
+                            offset = align_to(offset, align);
                         }
                         let mut v = var.borrow_mut();
                         v.set_offset(-offset);
