@@ -486,6 +486,13 @@ pub struct Member {
     pub(crate) idx: usize,
     /// 对齐量
     pub(crate) align: isize,
+    /// 位域
+    /// 是否为位域
+    pub(crate) is_bitfield: bool,
+    /// 位偏移量
+    pub(crate) bit_offset: isize,
+    /// 位宽度
+    pub(crate) bit_width: isize,
 }
 
 impl Member {
@@ -497,12 +504,10 @@ impl Member {
             token: None,
             idx,
             align: 0,
+            is_bitfield: false,
+            bit_offset: 0,
+            bit_width: 0,
         })
-    }
-
-    // 设置内部偏移量
-    pub fn set_offset(&mut self, offset: isize) {
-        self.offset = offset
     }
 
     #[allow(dead_code)]

@@ -19,6 +19,13 @@ pub fn align_to(n: isize, align: isize) -> isize {
     (n + align - 1) / align * align
 }
 
+/// 向下对齐值
+/// N % Align != 0 , 即 N 未对齐时,  AlignDown(N) = AlignTo(N) - Align
+/// N % Align == 0 , 即 N 已对齐时， AlignDown(N) = AlignTo(N)
+pub fn align_down(n: isize, align: isize) -> isize {
+    align_to(n - align + 1, align)
+}
+
 /// 读取文件
 pub fn read_file(path: &String) -> String {
     let mut buffer = String::new();

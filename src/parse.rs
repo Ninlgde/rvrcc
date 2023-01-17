@@ -104,7 +104,7 @@ use crate::keywords::{
 use crate::node::{add_with_type, eval, sub_with_type, LabelInfo, Node, NodeKind, NodeLink};
 use crate::obj::{Member, Obj, ObjLink, Scope, VarAttr, VarScope};
 use crate::token::{Token, TokenVecOps};
-use crate::{align_to, error_token, vec_u8_into_i8};
+use crate::{align_down, align_to, error_token, vec_u8_into_i8};
 use std::cell::RefCell;
 use std::cmp;
 use std::rc::Rc;
@@ -2177,6 +2177,13 @@ impl<'a> Parser<'a> {
                 } else {
                     member.align = member.typ.as_ref().unwrap().borrow().align;
                 }
+
+                // 位域成员赋值
+                if self.consume(":") {
+                    member.is_bitfield = true;
+                    member.bit_width = self.const_expr() as isize;
+                }
+
                 members.push(member);
             }
         }
@@ -2208,20 +2215,39 @@ impl<'a> Parser<'a> {
             return typ.clone();
         }
 
-        let mut offset: isize = 0;
+        let mut bits: isize = 0;
 
+        // 遍历成员
         for i in 0..tm.members.len() {
             let member = &mut tm.members[i];
-            let align = member.align;
-            offset = align_to(offset, align);
-            member.set_offset(offset);
-            offset += member.typ.as_ref().unwrap().borrow().size;
+            let ms = member.typ.as_ref().unwrap().borrow().size;
+            let ma = member.align;
+            if member.is_bitfield {
+                // 位域成员变量
+                // Bits此时对应成员最低位，Bits + Mem->BitWidth - 1对应成员最高位
+                // 二者若不相等，则说明当前这个类型剩余的空间存不下，需要新开辟空间
+                if bits / (ms * 8) != (bits + member.bit_width - 1) / (ms * 8) {
+                    // 新开辟一个当前当前类型的空间
+                    bits = align_to(bits, ms * 8);
+                }
+                // 若当前字节能够存下，则向下对齐，得到成员变量的偏移量
+                member.offset = align_down(bits / 8, ms);
+                member.bit_offset = bits % (ms * 8);
+                bits += member.bit_width;
+            } else {
+                // 常规结构体成员变量
+                bits = align_to(bits, ma * 8);
+                member.offset = bits / 8;
+                bits += ms * 8;
+            }
+            // 类型的对齐值，不小于当前成员变量的对齐值
 
-            if tm.align < align {
-                tm.align = align;
+            if tm.align < ma {
+                tm.align = ma;
             }
         }
-        tm.size = align_to(offset, tm.align);
+        // 结构体的大小
+        tm.size = align_to(bits, tm.align * 8) / 8;
 
         typ.clone()
     }

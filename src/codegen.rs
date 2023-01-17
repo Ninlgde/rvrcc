@@ -777,10 +777,36 @@ impl<'a> Generator<'a> {
                 return;
             }
             // 变量
-            NodeKind::Var | NodeKind::Member => {
+            NodeKind::Var => {
                 // 计算出变量的地址，然后存入a0
                 self.gen_addr(node);
                 self.load(node.typ.as_ref().unwrap().clone());
+                return;
+            }
+            // 成员变量
+            NodeKind::Member => {
+                // 计算出变量的地址，然后存入a0
+                self.gen_addr(node);
+                self.load(node.typ.as_ref().unwrap().clone());
+
+                let member = node.member.as_ref().unwrap();
+                if member.is_bitfield {
+                    writeln!(
+                        "  # 清除位域的成员变量（{}字节）未用到的位",
+                        member.bit_width
+                    );
+                    // 清除位域成员变量未用到的高位
+                    writeln!(
+                        "  slli a0, a0, {}",
+                        64 - member.bit_width - member.bit_offset
+                    );
+                    // 清除位域成员变量未用到的低位
+                    if member.typ.as_ref().unwrap().borrow().is_unsigned {
+                        writeln!("  srli a0, a0, {}", 64 - member.bit_width);
+                    } else {
+                        writeln!("  srai a0, a0, {}", 64 - member.bit_width);
+                    }
+                }
                 return;
             }
             // 解引用
@@ -797,10 +823,46 @@ impl<'a> Generator<'a> {
             // 赋值
             NodeKind::Assign => {
                 // 左部是左值，保存值到的地址
-                self.gen_addr(node.lhs.as_ref().unwrap());
+                let lhs = node.lhs.as_ref().unwrap();
+                self.gen_addr(lhs);
                 self.push();
                 // 右部是右值，为表达式的值
                 self.gen_expr(node.rhs.as_ref().unwrap());
+
+                // 如果是位域成员变量，需要先从内存中读取当前值，然后合并到新值中
+                if lhs.kind == NodeKind::Member && lhs.member.as_ref().unwrap().is_bitfield {
+                    writeln!("\n  # 位域成员变量进行赋值↓");
+                    writeln!("  # 计算位域成员变量的新值：");
+                    let member = lhs.member.as_ref().unwrap();
+                    // 将需要赋的值a0存入t1
+                    writeln!("  mv t1, a0");
+                    // 构造一个和位域成员长度相同，全为1的二进制数
+                    writeln!("  li t0, {}", (1i64 << member.bit_width) - 1);
+                    // 取交之后，位域长度的低位，存储了我们需要的值，其他位都为0
+                    writeln!("  and t1, t1, t0");
+                    // 然后将该值左移，相应的位偏移量中
+                    // 此时我们所需要的位域数值已经处于正确的位置，且其他位置都为0
+                    writeln!("  slli t1, t1, {}", member.bit_offset);
+
+                    writeln!("  # 读取位域当前值：");
+                    // 将位域值保存的地址加载进来
+                    writeln!("  ld a0, 0(sp)");
+                    // 读取该地址的值
+                    self.load(member.typ.as_ref().unwrap().clone());
+
+                    writeln!("  # 写入成员变量新值到位域当前值中：");
+                    // 位域值对应的掩码，即t1需要写入的位置
+                    // 掩码位都为1，其余位为0
+                    let mask = ((1i64 << member.bit_width) - 1) << member.bit_offset;
+                    // 对掩码取反，此时，其余位都为1，掩码位都为0
+                    writeln!("  li t0, {}", !mask);
+                    // 取交，保留除掩码位外所有的位
+                    writeln!("  and a0, a0, t0");
+                    // 取或，将成员变量的新值写入到掩码位
+                    writeln!("  or a0, a0, t1");
+                    writeln!("  # 完成位域成员变量的赋值↑\n");
+                }
+
                 self.store(node.typ.as_ref().unwrap().clone());
                 return;
             }
