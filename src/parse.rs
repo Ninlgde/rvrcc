@@ -2035,11 +2035,13 @@ impl<'a> Parser<'a> {
 
         // "*" cast
         if token.equal("*") {
-            return Some(Node::new_unary(
-                NodeKind::DeRef,
-                self.next().cast().unwrap(),
-                nt,
-            ));
+            let mut node = self.next().cast().unwrap();
+            add_type(&mut node);
+            // 如果func是函数，那么*func等价于func
+            if node.typ.as_ref().unwrap().borrow().kind == TypeKind::Func {
+                return Some(node);
+            }
+            return Some(Node::new_unary(NodeKind::DeRef, node, nt));
         }
 
         // "!" cast

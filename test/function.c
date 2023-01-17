@@ -1205,6 +1205,9 @@ int main() {
     ASSERT(10, ({ struct_type_8_2_test_4().a; }));
     ASSERT(20, ({ struct_type_8_2_test_4().b; }));
 
+    printf("[206] 支持解引用函数\n");
+    ASSERT(5, (***add2)(2, 3));
+
     printf("\033[32mOK\033[0m\n");
     return 0;
 }
