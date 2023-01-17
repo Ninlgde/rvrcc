@@ -2068,11 +2068,13 @@ impl<'a> Parser<'a> {
 
         // "&" cast
         if token.equal("&") {
-            return Some(Node::new_unary(
-                NodeKind::Addr,
-                self.next().cast().unwrap(),
-                nt,
-            ));
+            let mut node = self.next().cast().unwrap();
+            add_type(&mut node);
+            // 不能够获取位域的地址
+            if node.kind == NodeKind::Member && node.member.as_ref().unwrap().is_bitfield {
+                error_token!(&nt, "cannot take address of bitfield")
+            }
+            return Some(Node::new_unary(NodeKind::Addr, node, nt));
         }
 
         // "*" cast
