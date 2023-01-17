@@ -282,6 +282,11 @@ pub fn define_macro(name: &str, buf: &str) {
     unsafe { BUILTIN_MACROS.push(Macro::new(name, body, false, true)) }
 }
 
+/// 取消定义宏
+pub fn undef_macro(name: &str) {
+    unsafe { BUILTIN_MACROS.push(Macro::new(name, vec![], true, true)) }
+}
+
 /// 增加内建的宏和相应的宏处理函数
 pub fn add_builtin(name: &str, handler: MacroHandlerFn) {
     let mut macro_ = Macro::new(name, vec![], false, true);

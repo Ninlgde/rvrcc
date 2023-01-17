@@ -1,6 +1,6 @@
 //! 命令行参数解析
 
-use crate::cmacro::define;
+use crate::cmacro::{define, undef_macro};
 use std::ffi::CString;
 use std::fs::remove_file;
 use std::process::exit;
@@ -143,6 +143,21 @@ impl Args {
             if arg.starts_with("-D") {
                 let incl = &arg[2..];
                 define(incl);
+                i += 1;
+                continue;
+            }
+
+            // 解析-U
+            if arg.eq("-U") {
+                undef_macro(args[i + 1].as_str());
+                i += 2;
+                continue;
+            }
+
+            // 解析-Uxxxx
+            if arg.starts_with("-U") {
+                let incl = &arg[2..];
+                undef_macro(incl);
                 i += 1;
                 continue;
             }
