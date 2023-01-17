@@ -1,6 +1,7 @@
 use crate::preprocess::{new_num_token, new_str_token};
 use crate::token::{File, Token};
 use crate::tokenize::tokenize;
+use chrono::{DateTime, Datelike, Timelike, Utc};
 use std::cell::RefCell;
 use std::ptr;
 use std::rc::Rc;
@@ -346,6 +347,46 @@ pub fn init_macros() {
 
     add_builtin("__FILE__", file_macro);
     add_builtin("__LINE__", line_macro);
+
+    // 支持__DATE__和__TIME__
+    let now = Utc::now();
+    define_macro("__DATE__", &format_date(now));
+    define_macro("__TIME__", &format_time(now));
+}
+
+/// __DATE__ is expanded to the current date, e.g. "May 17 2020".
+fn format_date(now: DateTime<Utc>) -> String {
+    let mon = vec![
+        "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+    ];
+    format!(
+        "\"{} {:02} {}\"",
+        mon[now.month0() as usize],
+        now.day(),
+        now.year()
+    )
+}
+
+/// __TIME__ is expanded to the current time, e.g. "13:34:03".
+fn format_time(now: DateTime<Utc>) -> String {
+    format!(
+        "\"{:02} {:02} {:02}\"",
+        now.hour(),
+        now.minute(),
+        now.second()
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_macro() {
+        // 支持__DATE__和__TIME__
+        let now = Utc::now();
+        print!("{} {:02} {}", now.month0(), now.day() - 9, now.year());
+    }
 }
 
 /// 文件标号函数
