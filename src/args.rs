@@ -97,9 +97,17 @@ impl Args {
                 print_usage(0);
             }
 
+            // 解析-o
             if arg.eq("-o") {
                 output = args[i + 1].as_str();
                 i += 2;
+                continue;
+            }
+
+            // 解析-oxxxx
+            if arg.starts_with("-o") {
+                output = &arg[2..];
+                i += 1;
                 continue;
             }
 
@@ -176,9 +184,20 @@ impl Args {
                 continue;
             }
 
-            // 解析-oxxxx
-            if arg.starts_with("-o") {
-                output = &arg[2..];
+            // 忽略多个选项
+            if arg.starts_with("-O")
+                || arg.starts_with("-W")
+                || arg.starts_with("-g")
+                || arg.starts_with("-std=")
+                || arg.eq("-ffreestanding")
+                || arg.eq("-fno-builtin")
+                || arg.eq("-fno-omit-frame-pointer")
+                || arg.eq("-fno-stack-protector")
+                || arg.eq("-fno-strict-aliasing")
+                || arg.eq("-m64")
+                || arg.eq("-mno-red-zone")
+                || arg.eq("-w")
+            {
                 i += 1;
                 continue;
             }
