@@ -1209,5 +1209,4 @@ int main() {
     ASSERT(5, (***add2)(2, 3));
 
     printf("\033[32mOK\033[0m\n");
-    return 0;
 }

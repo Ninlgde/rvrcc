@@ -508,6 +508,11 @@ impl<'a> Generator<'a> {
                     self.gen_stmt(&body.as_ref().unwrap().clone());
                     assert_eq!(self.depth, 0);
 
+                    // main默认返回0
+                    if name.eq("main") {
+                        writeln!("  li a0, 0");
+                    }
+
                     // Epilogue，后语
                     // 输出return段标签
                     writeln!("# ====={}段结束===============", name);
