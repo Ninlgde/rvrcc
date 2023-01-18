@@ -17,6 +17,7 @@ mod parse;
 mod preprocess;
 mod token;
 mod tokenize;
+mod unicode;
 mod utils;
 
 use std::io::Write;

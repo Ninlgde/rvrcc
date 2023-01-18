@@ -75,7 +75,6 @@ test-stage2: $(TESTS:test/%=stage2/test/%)
 clean:
 	rm -rf rvcc tmp* $(TESTS) test/*.s test/*.exe stage2/
 	find * -type f '(' -name '*~' -o -name '*.o' -o -name '*.s' ')' -exec rm {} ';'
-	@cargo clean
 
 # 伪目标，没有实际的依赖文件
 .PHONY: test clean

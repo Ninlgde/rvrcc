@@ -1,9 +1,11 @@
 use crate::ctype::{Type, TypeLink};
 use crate::keywords::KEYWORDS;
 use crate::token::{File, Token};
+use crate::unicode::convert_universal_chars;
 use crate::{
-    canonicalize_newline, error_at, error_token, read_file, remove_backslash_newline,
-    slice_to_string, FileLink, INPUT, INPUTS,
+    canonicalize_newline, error_at, error_token, from_hex, read_char, read_file,
+    remove_backslash_newline, slice_to_string, starts_with, starts_with_ignore_case, FileLink,
+    INPUT, INPUTS,
 };
 
 static mut FILE_NO: usize = 0;
@@ -15,6 +17,7 @@ pub fn tokenize_file(path: String) -> Vec<Token> {
     }
     let content = canonicalize_newline(content);
     let content = remove_backslash_newline(content);
+    let content = convert_universal_chars(content);
     // 文件编号
     let file_no = unsafe { FILE_NO };
     // 文件路径，文件编号从1开始，文件内容
@@ -190,15 +193,6 @@ pub fn tokenize(input: FileLink) -> Vec<Token> {
     tokens
 }
 
-/// 从chars里读取一直字符
-/// 超过上限的返回\0
-pub fn read_char(chars: &Vec<u8>, pos: usize) -> char {
-    if pos >= chars.len() {
-        return '\0';
-    }
-    chars[pos] as char
-}
-
 // 将所有关键字的终结符，都标记为KEYWORD
 pub fn convert_pp_tokens(tokens: &mut Vec<Token>) {
     for token in tokens.iter_mut() {
@@ -221,33 +215,6 @@ fn convert_num(token: &mut Token) {
         error_token!(token, "invalid numeric constant");
     }
     token.to_number(ival, fval, typ);
-}
-
-/// 判断chars中pos开头的字符是否与sub字符串匹配
-fn starts_with(chars: &Vec<u8>, pos: usize, sub: &str) -> bool {
-    let sub = sub.as_bytes();
-    for i in 0..sub.len() {
-        let char = read_char(chars, pos + i) as u8;
-        if sub[i] != char {
-            return false;
-        }
-    }
-    true
-}
-
-/// 判断chars中pos开头的字符是否与sub字符串匹配
-/// 忽略大小写
-fn starts_with_ignore_case(chars: &Vec<u8>, pos: usize, sub: &str) -> bool {
-    let binding = sub.to_ascii_lowercase();
-    let sub = binding.as_bytes();
-    for i in 0..sub.len() {
-        // 'a' - 'A' = 32
-        let char = read_char(chars, pos + i);
-        if !char.eq_ignore_ascii_case(&(sub[i] as char)) {
-            return false;
-        }
-    }
-    true
 }
 
 /// 读取一个操作符
@@ -378,22 +345,6 @@ fn string_literal_end(chars: &Vec<u8>, pos: &mut usize) {
         }
         *pos += 1;
     }
-}
-
-// 返回一位十六进制转十进制
-// hexDigit = [0-9a-fA-F]
-// 16: 0 1 2 3 4 5 6 7 8 9  A  B  C  D  E  F
-// 10: 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15
-fn from_hex(c: char) -> u8 {
-    if '0' <= c && c <= '9' {
-        return c as u8 - '0' as u8;
-    }
-
-    if 'a' <= c && c <= 'f' {
-        return c as u8 - 'a' as u8 + 10;
-    }
-
-    return c as u8 - 'A' as u8 + 10;
 }
 
 /// 读取字符字面量

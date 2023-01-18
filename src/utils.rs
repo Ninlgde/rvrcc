@@ -192,6 +192,58 @@ pub fn print_tokens(mut write_file: Box<dyn Write>, tokens: Vec<Token>) {
     write!(write_file, "\n").unwrap();
 }
 
+/// 返回一位十六进制转十进制
+/// hexDigit = [0-9a-fA-F]
+/// 16: 0 1 2 3 4 5 6 7 8 9  A  B  C  D  E  F
+/// 10: 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15
+pub fn from_hex(c: char) -> u8 {
+    if '0' <= c && c <= '9' {
+        return c as u8 - '0' as u8;
+    }
+
+    if 'a' <= c && c <= 'f' {
+        return c as u8 - 'a' as u8 + 10;
+    }
+
+    return c as u8 - 'A' as u8 + 10;
+}
+
+/// 从chars里读取一直字符
+/// 超过上限的返回\0
+pub fn read_char(chars: &Vec<u8>, pos: usize) -> char {
+    if pos >= chars.len() {
+        return '\0';
+    }
+    chars[pos] as char
+}
+
+/// 判断chars中pos开头的字符是否与sub字符串匹配
+pub fn starts_with(chars: &Vec<u8>, pos: usize, sub: &str) -> bool {
+    let sub = sub.as_bytes();
+    for i in 0..sub.len() {
+        let char = read_char(chars, pos + i) as u8;
+        if sub[i] != char {
+            return false;
+        }
+    }
+    true
+}
+
+/// 判断chars中pos开头的字符是否与sub字符串匹配
+/// 忽略大小写
+pub fn starts_with_ignore_case(chars: &Vec<u8>, pos: usize, sub: &str) -> bool {
+    let binding = sub.to_ascii_lowercase();
+    let sub = binding.as_bytes();
+    for i in 0..sub.len() {
+        // 'a' - 'A' = 32
+        let char = read_char(chars, pos + i);
+        if !char.eq_ignore_ascii_case(&(sub[i] as char)) {
+            return false;
+        }
+    }
+    true
+}
+
 /// Replaces \r or \r\n with \n.
 pub fn canonicalize_newline(input: String) -> String {
     let mut chars = input.into_bytes();
