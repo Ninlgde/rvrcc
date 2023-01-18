@@ -1,7 +1,7 @@
 use crate::ctype::{Type, TypeLink};
 use crate::keywords::KEYWORDS;
 use crate::token::{File, Token};
-use crate::unicode::{convert_universal_chars, decode_utf8};
+use crate::unicode::{convert_universal_chars, decode_utf8, is_ident1, is_ident2};
 use crate::{
     canonicalize_newline, error_at, error_token, from_hex, read_char, read_file,
     remove_backslash_newline, slice_to_string, starts_with, starts_with_ignore_case, FileLink,
@@ -361,16 +361,21 @@ fn read_punct(chars: &Vec<u8>, pos: &mut usize) {
     }
 }
 
-/// 读取一个id
+/// Read an identifier and returns the length of it.
+/// If p does not point to a valid identifier, 0 is returned.
 fn read_ident(chars: &Vec<u8>, pos: &mut usize) {
-    let c = read_char(chars, *pos);
-    if c.is_alphabetic() || c == '_' {
-        loop {
-            *pos += 1;
-            let c = read_char(chars, *pos);
-            if !(c.is_alphabetic() || c == '_' || c.is_digit(10)) {
-                break;
-            }
+    let start = *pos;
+    let c = decode_utf8(chars, pos);
+    if !is_ident1(c) {
+        *pos = start;
+        return;
+    }
+    loop {
+        let ps = *pos;
+        let c = decode_utf8(chars, pos);
+        if !is_ident2(c) {
+            *pos = ps;
+            return;
         }
     }
 }
