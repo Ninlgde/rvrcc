@@ -1014,6 +1014,12 @@ impl<'a> Parser<'a> {
                     let idx = 2 * i;
                     val = ((chars[idx + 1] as i64) << 8) + chars[idx] as i64;
                 }
+                4 => {
+                    let idx = 4 * i;
+                    for i in 0..4 {
+                        val += (chars[idx + i] as i64) << 8 * i;
+                    }
+                }
                 _ => {}
             }
             child.expr = Some(Node::new_num(val, token.clone()));
