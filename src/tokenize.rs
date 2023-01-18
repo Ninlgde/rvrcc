@@ -174,6 +174,23 @@ pub fn tokenize(input: FileLink) -> Vec<Token> {
             continue;
         }
 
+        // UTF-32 string literal
+        if starts_with(&chars, pos, "U\"") {
+            pos += 1;
+            let mut val = read_utf32string_literal(&chars, &mut pos);
+            val.push('\0' as u32);
+            let len = val.len();
+            let typ = Type::array_of(Type::new_unsigned_int(), len as isize);
+            let name = slice_to_string(&chars, old_pos, pos + 1);
+            let val = unsafe { val.align_to::<u8>().1.to_vec() };
+            let token = Token::new_str(has_space, at_bol, name, old_pos, line_no, val, typ);
+            tokens.push(token);
+            at_bol = false;
+            has_space = false;
+            pos += 1; // 跳过"
+            continue;
+        }
+
         // 解析字符字面量
         if c == '\'' {
             let c = read_char_literal(&chars, &mut pos, old_pos) as i8 as i64; // to char
@@ -377,7 +394,7 @@ fn read_utf16string_literal(chars: &Vec<u8>, pos: &mut usize) -> Vec<u16> {
     while i < *pos {
         if read_char(chars, i) == '\\' {
             i += 1; // skip \\
-            let c = read_escaped_char(chars, &mut i) as u8 as char;
+            let c = read_escaped_char(chars, &mut i);
             new_chars.push(c as u16);
             continue;
         }
@@ -393,9 +410,28 @@ fn read_utf16string_literal(chars: &Vec<u8>, pos: &mut usize) -> Vec<u16> {
         }
     }
 
-    // unsafe {
-    //     let n = new_chars.align_to::<u8>().1.to_vec();
-    // }
+    new_chars
+}
+
+/// Read a UTF-8-encoded string literal and transcode it in UTF-32.
+///
+/// UTF-32 is a fixed-width encoding for Unicode. Each code point is
+/// encoded in 4 bytes.
+fn read_utf32string_literal(chars: &Vec<u8>, pos: &mut usize) -> Vec<u32> {
+    let old_pos = *pos;
+    string_literal_end(chars, pos);
+    let mut new_chars = vec![];
+    let mut i = old_pos + 1;
+    while i < *pos {
+        if read_char(chars, i) == '\\' {
+            i += 1; // skip \\
+            let c = read_escaped_char(chars, &mut i);
+            new_chars.push(c as u32);
+        } else {
+            let c = decode_utf8(chars, &mut i);
+            new_chars.push(c);
+        }
+    }
 
     new_chars
 }
