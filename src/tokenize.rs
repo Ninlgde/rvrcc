@@ -197,6 +197,25 @@ pub fn tokenize(input: FileLink) -> Vec<Token> {
             continue;
         }
 
+        // UTF-32 character literal
+        if starts_with(&chars, pos, "U'") {
+            let c = read_char_literal(&chars, &mut pos, old_pos + 1);
+            let name = slice_to_string(&chars, old_pos, pos);
+            let token = Token::new_char_literal(
+                has_space,
+                at_bol,
+                name,
+                old_pos,
+                line_no,
+                c,
+                Type::new_unsigned_int(),
+            );
+            tokens.push(token);
+            at_bol = false;
+            has_space = false;
+            continue;
+        }
+
         // 解析标识符
         read_ident(&chars, &mut pos);
         if old_pos != pos {
