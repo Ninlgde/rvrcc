@@ -145,6 +145,7 @@ impl TokenInner {
     fn new_str(
         has_space: bool,
         at_bol: bool,
+        name: String,
         offset: usize,
         line_no: usize,
         chars: Vec<u8>,
@@ -154,6 +155,7 @@ impl TokenInner {
         token.kind = TokenKind::Str;
         token.has_space = has_space;
         token.at_bol = at_bol;
+        token.name = name;
         token.offset = offset;
         token.line_no = line_no;
         token.chars = chars;
@@ -308,13 +310,14 @@ impl Token {
     pub fn new_str(
         has_space: bool,
         at_bol: bool,
+        name: String,
         offset: usize,
         line_no: usize,
         val: Vec<u8>,
         typ: TypeLink,
     ) -> Self {
         let inner = Rc::new(RefCell::new(TokenInner::new_str(
-            has_space, at_bol, offset, line_no, val, typ,
+            has_space, at_bol, name, offset, line_no, val, typ,
         )));
         Token { inner }
     }
@@ -486,10 +489,6 @@ impl Token {
 
     /// 获取终结符的name
     pub fn get_name(&self) -> String {
-        if self.is_string() {
-            // 字面量 转换转义字符
-            return format!("{:?}", self.get_string_literal());
-        }
         let inner = self.inner.borrow();
         inner.name.to_string()
     }

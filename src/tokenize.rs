@@ -132,7 +132,24 @@ pub fn tokenize(input: FileLink) -> Vec<Token> {
             val.push('\0' as u8);
             let len = val.len();
             let typ = Type::array_of(Type::new_char(), len as isize);
-            let token = Token::new_str(has_space, at_bol, old_pos, line_no, val, typ);
+            let name = slice_to_string(&chars, old_pos, pos + 1);
+            let token = Token::new_str(has_space, at_bol, name, old_pos, line_no, val, typ);
+            tokens.push(token);
+            at_bol = false;
+            has_space = false;
+            pos += 1; // 跳过"
+            continue;
+        }
+
+        // UTF-8 string literal
+        if starts_with(&chars, pos, "u8\"") {
+            pos += 2;
+            let mut val = read_string_literal(&chars, &mut pos);
+            val.push('\0' as u8);
+            let len = val.len();
+            let typ = Type::array_of(Type::new_char(), len as isize);
+            let name = slice_to_string(&chars, old_pos, pos + 1);
+            let token = Token::new_str(has_space, at_bol, name, old_pos, line_no, val, typ);
             tokens.push(token);
             at_bol = false;
             has_space = false;
