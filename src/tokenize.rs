@@ -191,6 +191,23 @@ pub fn tokenize(input: FileLink) -> Vec<Token> {
             continue;
         }
 
+        // Wide string literal
+        if starts_with(&chars, pos, "L\"") {
+            pos += 1;
+            let mut val = read_utf32string_literal(&chars, &mut pos);
+            val.push('\0' as u32);
+            let len = val.len();
+            let typ = Type::array_of(Type::new_int(), len as isize);
+            let name = slice_to_string(&chars, old_pos, pos + 1);
+            let val = unsafe { val.align_to::<u8>().1.to_vec() };
+            let token = Token::new_str(has_space, at_bol, name, old_pos, line_no, val, typ);
+            tokens.push(token);
+            at_bol = false;
+            has_space = false;
+            pos += 1; // 跳过"
+            continue;
+        }
+
         // 解析字符字面量
         if c == '\'' {
             let c = read_char_literal(&chars, &mut pos, old_pos) as i8 as i64; // to char
