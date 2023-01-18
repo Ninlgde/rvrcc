@@ -1002,9 +1002,21 @@ impl<'a> Parser<'a> {
         let (_, token) = self.current();
         let mut len = token_type.borrow().len;
         len = cmp::min(t.len, len);
+        let bs = t.base.as_ref().unwrap().borrow().size;
         for i in 0..len as usize {
             let mut child = &mut init.children[i];
-            child.expr = Some(Node::new_num(chars[i as usize] as i64, token.clone()));
+            let mut val = 0i64;
+            match bs {
+                1 => {
+                    val = chars[i as usize] as i64;
+                }
+                2 => {
+                    let idx = 2 * i;
+                    val = ((chars[idx + 1] as i64) << 8) + chars[idx] as i64;
+                }
+                _ => {}
+            }
+            child.expr = Some(Node::new_num(val, token.clone()));
         }
         self.next();
     }
