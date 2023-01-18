@@ -1,5 +1,5 @@
 use crate::cmacro::HideSet;
-use crate::ctype::{Type, TypeLink};
+use crate::ctype::TypeLink;
 use crate::keywords::KW_TYPENAME;
 use crate::{error_token, INPUT};
 use std::cell::RefCell;
@@ -165,9 +165,11 @@ impl TokenInner {
     fn new_char_literal(
         has_space: bool,
         at_bol: bool,
+        name: String,
         offset: usize,
         line_no: usize,
         c: i64,
+        typ: TypeLink,
     ) -> Self {
         let mut token = Self::null();
         token.kind = TokenKind::Num;
@@ -176,8 +178,8 @@ impl TokenInner {
         token.offset = offset;
         token.line_no = line_no;
         token.ival = c;
-        token.name = format!("{:?}", c); // name = '{c}'
-        token.typ = Some(Type::new_int());
+        token.name = name; // name = '{c}'
+        token.typ = Some(typ);
         token
     }
 
@@ -321,12 +323,14 @@ impl Token {
     pub fn new_char_literal(
         has_space: bool,
         at_bol: bool,
+        name: String,
         offset: usize,
         line_no: usize,
         c: i64,
+        typ: TypeLink,
     ) -> Self {
         let inner = Rc::new(RefCell::new(TokenInner::new_char_literal(
-            has_space, at_bol, offset, line_no, c,
+            has_space, at_bol, name, offset, line_no, c, typ,
         )));
         Token { inner }
     }

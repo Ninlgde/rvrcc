@@ -142,8 +142,36 @@ pub fn tokenize(input: FileLink) -> Vec<Token> {
 
         // 解析字符字面量
         if c == '\'' {
-            let c = read_char_literal(&chars, &mut pos, old_pos) as i8; // to char
-            let token = Token::new_char_literal(has_space, at_bol, old_pos, line_no, c as i64);
+            let c = read_char_literal(&chars, &mut pos, old_pos) as i8 as i64; // to char
+            let name = slice_to_string(&chars, old_pos, pos);
+            let token = Token::new_char_literal(
+                has_space,
+                at_bol,
+                name,
+                old_pos,
+                line_no,
+                c,
+                Type::new_int(),
+            );
+            tokens.push(token);
+            at_bol = false;
+            has_space = false;
+            continue;
+        }
+
+        // UTF-16 character literal
+        if starts_with(&chars, pos, "u'") {
+            let c = read_char_literal(&chars, &mut pos, old_pos + 1) & 0xffff;
+            let name = slice_to_string(&chars, old_pos, pos);
+            let token = Token::new_char_literal(
+                has_space,
+                at_bol,
+                name,
+                old_pos,
+                line_no,
+                c,
+                Type::new_short(),
+            );
             tokens.push(token);
             at_bol = false;
             has_space = false;
@@ -153,7 +181,16 @@ pub fn tokenize(input: FileLink) -> Vec<Token> {
         // 宽字符字面量，占两个字节
         if starts_with(&chars, pos, "L'") {
             let c = read_char_literal(&chars, &mut pos, old_pos + 1);
-            let token = Token::new_char_literal(has_space, at_bol, old_pos, line_no, c);
+            let name = slice_to_string(&chars, old_pos, pos);
+            let token = Token::new_char_literal(
+                has_space,
+                at_bol,
+                name,
+                old_pos,
+                line_no,
+                c,
+                Type::new_int(),
+            );
             tokens.push(token);
             at_bol = false;
             has_space = false;
