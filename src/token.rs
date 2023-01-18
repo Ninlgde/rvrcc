@@ -167,7 +167,7 @@ impl TokenInner {
         at_bol: bool,
         offset: usize,
         line_no: usize,
-        c: char,
+        c: i64,
     ) -> Self {
         let mut token = Self::null();
         token.kind = TokenKind::Num;
@@ -175,7 +175,7 @@ impl TokenInner {
         token.at_bol = at_bol;
         token.offset = offset;
         token.line_no = line_no;
-        token.ival = c as i64;
+        token.ival = c;
         token.name = format!("{:?}", c); // name = '{c}'
         token.typ = Some(Type::new_int());
         token
@@ -323,7 +323,7 @@ impl Token {
         at_bol: bool,
         offset: usize,
         line_no: usize,
-        c: char,
+        c: i64,
     ) -> Self {
         let inner = Rc::new(RefCell::new(TokenInner::new_char_literal(
             has_space, at_bol, offset, line_no, c,

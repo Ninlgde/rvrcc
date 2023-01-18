@@ -1,6 +1,6 @@
 //! unicode
 
-use crate::{from_hex, starts_with};
+use crate::{error_at, from_hex, starts_with};
 
 /// Replace \u or \U escape sequences with corresponding UTF-8 bytes.
 pub fn convert_universal_chars(input: String) -> String {
@@ -63,7 +63,7 @@ fn read_universal_char(chars: &Vec<u8>, pos: usize, len: usize) -> u32 {
 }
 
 /// Encode a given character in UTF-8.
-fn encode_utf8(chars: &mut Vec<u8>, pos: usize, c: u32) -> usize {
+pub fn encode_utf8(chars: &mut Vec<u8>, pos: usize, c: u32) -> usize {
     if c <= 0x7f {
         chars[pos] = c as u8;
         return 1;
@@ -87,4 +87,46 @@ fn encode_utf8(chars: &mut Vec<u8>, pos: usize, c: u32) -> usize {
     chars[pos + 2] = ((c >> 6) & 0x3f) as u8 | 0x80;
     chars[pos + 3] = (c & 0x3f) as u8 | 0x80;
     return 4;
+}
+
+/// Read a UTF-8-encoded Unicode code point from a source file.
+/// We assume that source files are always in UTF-8.
+///
+/// UTF-8 is a variable-width encoding in which one code point is
+/// encoded in one to four bytes. One byte UTF-8 code points are
+/// identical to ASCII. Non-ASCII characters are encoded using more
+/// than one byte.
+pub fn decode_utf8(chars: &Vec<u8>, pos: &mut usize) -> u32 {
+    let c = chars[*pos] as u32;
+    if c < 128 {
+        *pos += 1;
+        return c;
+    }
+    let start = *pos;
+    let mut len = 0;
+    let mut reuslt = 0u32;
+
+    if c >= 0xf0 {
+        len = 4;
+        reuslt = c & 0x7;
+    } else if c >= 0xe0 {
+        len = 3;
+        reuslt = c & 0xf
+    } else if c >= 0xc0 {
+        len = 2;
+        reuslt = c & 0x1f;
+    } else {
+        error_at!(0, start, "invalid UTF-8 sequence");
+    }
+
+    for i in 1..len {
+        let c = chars[*pos + i] as u32;
+        if (c >> 6) != 0x2 {
+            error_at!(0, start, "invalid UTF-8 sequence");
+        }
+        reuslt = (reuslt << 6) | (c & 0x3f)
+    }
+
+    *pos += len;
+    reuslt
 }

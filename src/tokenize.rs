@@ -1,7 +1,7 @@
 use crate::ctype::{Type, TypeLink};
 use crate::keywords::KEYWORDS;
 use crate::token::{File, Token};
-use crate::unicode::convert_universal_chars;
+use crate::unicode::{convert_universal_chars, decode_utf8};
 use crate::{
     canonicalize_newline, error_at, error_token, from_hex, read_char, read_file,
     remove_backslash_newline, slice_to_string, starts_with, starts_with_ignore_case, FileLink,
@@ -142,8 +142,8 @@ pub fn tokenize(input: FileLink) -> Vec<Token> {
 
         // 解析字符字面量
         if c == '\'' {
-            let c = read_char_literal(&chars, &mut pos, old_pos);
-            let token = Token::new_char_literal(has_space, at_bol, old_pos, line_no, c);
+            let c = read_char_literal(&chars, &mut pos, old_pos) as i8; // to char
+            let token = Token::new_char_literal(has_space, at_bol, old_pos, line_no, c as i64);
             tokens.push(token);
             at_bol = false;
             has_space = false;
@@ -261,7 +261,7 @@ fn read_string_literal(chars: &Vec<u8>, pos: &mut usize) -> Vec<u8> {
         let mut c = read_char(chars, i);
         if c == '\\' {
             i += 1; // skip \\
-            c = read_escaped_char(chars, &mut i);
+            c = read_escaped_char(chars, &mut i) as u8 as char;
             new_chars.push(c as u8);
         } else {
             i += 1;
@@ -273,7 +273,7 @@ fn read_string_literal(chars: &Vec<u8>, pos: &mut usize) -> Vec<u8> {
 }
 
 /// 读取转义字符
-fn read_escaped_char(chars: &Vec<u8>, pos: &mut usize) -> char {
+fn read_escaped_char(chars: &Vec<u8>, pos: &mut usize) -> i32 {
     let mut c = read_char(chars, *pos);
     if '0' <= c && c <= '7' {
         // 读取一个八进制数字，不能长于三位
@@ -291,7 +291,7 @@ fn read_escaped_char(chars: &Vec<u8>, pos: &mut usize) -> char {
             }
         }
 
-        return r as char;
+        return r as i32;
     }
 
     if c == 'x' {
@@ -299,31 +299,31 @@ fn read_escaped_char(chars: &Vec<u8>, pos: &mut usize) -> char {
         c = read_char(chars, *pos);
         if !c.is_digit(16) {
             error_at!(0, *pos, "invalid hex escape sequence");
-            return '\0';
+            return '\0' as i32;
         }
 
-        let mut r = 0u8;
+        let mut r = 0i32;
         while c.is_digit(16) {
-            r = (r << 4) + from_hex(c);
+            r = (r << 4) + from_hex(c) as i32;
             *pos += 1;
             c = read_char(chars, *pos);
         }
 
-        return r as char;
+        return r;
     }
 
     *pos += 1;
     match c {
-        'a' => 7 as char,  // 响铃（警报）
-        'b' => 8 as char,  // 退格
-        't' => 9 as char,  // 水平制表符，tab
-        'n' => 10 as char, // 换行
-        'v' => 11 as char, // 垂直制表符
-        'f' => 12 as char, // 换页
-        'r' => 13 as char, // 回车
+        'a' => 7,  // 响铃（警报）
+        'b' => 8,  // 退格
+        't' => 9,  // 水平制表符，tab
+        'n' => 10, // 换行
+        'v' => 11, // 垂直制表符
+        'f' => 12, // 换页
+        'r' => 13, // 回车
         // 属于GNU C拓展
-        'e' => 27 as char, // 转义符
-        _ => c,            // 默认将原字符返回
+        'e' => 27,     // 转义符
+        _ => c as i32, // 默认将原字符返回
     }
 }
 
@@ -348,7 +348,7 @@ fn string_literal_end(chars: &Vec<u8>, pos: &mut usize) {
 }
 
 /// 读取字符字面量
-fn read_char_literal(chars: &Vec<u8>, pos: &mut usize, quote: usize) -> char {
+fn read_char_literal(chars: &Vec<u8>, pos: &mut usize, quote: usize) -> i64 {
     *pos = quote + 1; // 忽略'
     let mut c = read_char(chars, *pos);
 
@@ -359,10 +359,9 @@ fn read_char_literal(chars: &Vec<u8>, pos: &mut usize, quote: usize) -> char {
     let r;
     if c == '\\' {
         *pos += 1;
-        r = read_escaped_char(chars, pos);
+        r = read_escaped_char(chars, pos) as i64;
     } else {
-        r = read_char(chars, *pos);
-        *pos += 1;
+        r = decode_utf8(chars, pos) as i64;
     }
 
     c = read_char(chars, *pos);
