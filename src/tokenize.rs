@@ -157,6 +157,23 @@ pub fn tokenize(input: FileLink) -> Vec<Token> {
             continue;
         }
 
+        // UTF-16 string literal
+        if starts_with(&chars, pos, "u\"") {
+            pos += 1;
+            let mut val = read_utf16string_literal(&chars, &mut pos);
+            val.push('\0' as u16);
+            let len = val.len();
+            let typ = Type::array_of(Type::new_unsigned_short(), len as isize);
+            let name = slice_to_string(&chars, old_pos, pos + 1);
+            let val = unsafe { val.align_to::<u8>().1.to_vec() };
+            let token = Token::new_str(has_space, at_bol, name, old_pos, line_no, val, typ);
+            tokens.push(token);
+            at_bol = false;
+            has_space = false;
+            pos += 1; // 跳过"
+            continue;
+        }
+
         // 解析字符字面量
         if c == '\'' {
             let c = read_char_literal(&chars, &mut pos, old_pos) as i8 as i64; // to char
@@ -326,7 +343,7 @@ fn read_ident(chars: &Vec<u8>, pos: &mut usize) {
 
 /// 读取字符串字面量
 fn read_string_literal(chars: &Vec<u8>, pos: &mut usize) -> Vec<u8> {
-    let old_pos = *pos; // +1 忽略"
+    let old_pos = *pos;
     string_literal_end(chars, pos);
     let mut new_chars = vec![];
     let mut i = old_pos + 1;
@@ -341,6 +358,44 @@ fn read_string_literal(chars: &Vec<u8>, pos: &mut usize) -> Vec<u8> {
             new_chars.push(c as u8);
         }
     }
+
+    new_chars
+}
+
+/// Read a UTF-8-encoded string literal and transcode it in UTF-16.
+///
+/// UTF-16 is yet another variable-width encoding for Unicode. Code
+/// points smaller than U+10000 are encoded in 2 bytes. Code points
+/// equal to or larger than that are encoded in 4 bytes. Each 2 bytes
+/// in the 4 byte sequence is called "surrogate", and a 4 byte sequence
+/// is called a "surrogate pair".
+fn read_utf16string_literal(chars: &Vec<u8>, pos: &mut usize) -> Vec<u16> {
+    let old_pos = *pos;
+    string_literal_end(chars, pos);
+    let mut new_chars = vec![];
+    let mut i = old_pos + 1;
+    while i < *pos {
+        if read_char(chars, i) == '\\' {
+            i += 1; // skip \\
+            let c = read_escaped_char(chars, &mut i) as u8 as char;
+            new_chars.push(c as u16);
+            continue;
+        }
+        let mut c = decode_utf8(chars, &mut i);
+        if c < 0x10000 {
+            // Encode a code point in 2 bytes.
+            new_chars.push(c as u16);
+        } else {
+            // Encode a code point in 4 bytes.
+            c -= 0x10000;
+            new_chars.push(0xD800 + ((c >> 10) & 0x3FF) as u16);
+            new_chars.push(0xDC00 + (c & 0x3FF) as u16);
+        }
+    }
+
+    // unsafe {
+    //     let n = new_chars.align_to::<u8>().1.to_vec();
+    // }
 
     new_chars
 }
