@@ -1038,6 +1038,52 @@ impl<'a> Parser<'a> {
         self.assign();
     }
 
+    /// array-designator = "[" const-expr "]"
+    ///
+    /// C99 added the designated initializer to the language, which allows
+    /// programmers to move the "cursor" of an initializer to any element.
+    /// The syntax looks like this:
+    ///
+    ///   int x[10] = { 1, 2, [5]=3, 4, 5, 6, 7 };
+    ///
+    /// `[5]` moves the cursor to the 5th element, so the 5th element of x
+    /// is set to 3. Initialization then continues forward in order, so
+    /// 6th, 7th, 8th and 9th elements are initialized with 4, 5, 6 and 7,
+    /// respectively. Unspecified elements (in this case, 3rd and 4th
+    /// elements) are initialized with zero.
+    ///
+    /// Nesting is allowed, so the following initializer is valid:
+    ///
+    ///   int x[5][10] = { [5][8]=1, 2, 3 };
+    ///
+    /// It sets x[5][8], x[5][9] and x[6][0] to 1, 2 and 3, respectively.
+    fn array_designator(&mut self, typ: &TypeLink) -> usize {
+        let start = self.current_token().clone();
+        let i = self.next().const_expr();
+        if i >= typ.borrow().len as i64 {
+            error_token!(&start, "array designator index exceeds array bounds");
+        }
+        self.skip("]");
+        return i as usize;
+    }
+
+    /// designation = ("[" const-expr "]")* "=" initializer
+    fn designation(&mut self, init: &mut Box<Initializer>) {
+        let token = self.current_token().clone();
+        if token.equal("[") {
+            if init.typ.as_ref().unwrap().borrow().kind != TypeKind::Array {
+                error_token!(&token, "array index in non-array initializer");
+            }
+            let i = self.array_designator(init.typ.as_ref().unwrap());
+            self.designation(&mut init.children[i]);
+            self.array_initializer2(init, i + 1);
+            return;
+        }
+
+        self.skip("=");
+        self.initializer0(init);
+    }
+
     /// 计算数组初始化元素个数
     fn count_array_init_elements(&mut self, typ: TypeLink) -> isize {
         let (start_pos, _) = self.current();
@@ -1075,10 +1121,18 @@ impl<'a> Parser<'a> {
         let t = typ.borrow();
 
         // 遍历数组
+        let mut first = true;
         let mut i = 0;
         while !self.consume_end() {
-            if i > 0 {
+            if !first {
                 self.skip(",");
+            }
+            first = false;
+            if self.current_token().equal("[") {
+                i = self.array_designator(init.typ.as_ref().unwrap());
+                self.designation(&mut init.children[i]);
+                i += 1;
+                continue;
             }
             if i < t.len as usize {
                 // 正常解析元素
@@ -1092,7 +1146,7 @@ impl<'a> Parser<'a> {
     }
 
     /// array_initializer2 = initializer ("," initializer)* ","?
-    fn array_initializer2(&mut self, init: &mut Box<Initializer>) {
+    fn array_initializer2(&mut self, init: &mut Box<Initializer>, i: usize) {
         let typ = init.typ.as_ref().unwrap().clone();
         let t = typ.borrow();
         // 如果数组是可调整的，那么就计算数组的元素数，然后进行初始化器的构造
@@ -1106,13 +1160,18 @@ impl<'a> Parser<'a> {
         let t = typ.borrow();
 
         // 遍历数组
-        let mut i = 0;
+        let mut i = i;
         loop {
             if i >= t.len as usize || self.is_end() {
                 break;
             }
+            let (pos, _) = self.current();
             if i > 0 {
                 self.skip(",");
+            }
+            if self.current_token().equal("[") {
+                self.cursor = pos;
+                return;
             }
             self.initializer0(&mut init.children[i]);
             i += 1;
@@ -1136,7 +1195,7 @@ impl<'a> Parser<'a> {
             if token.equal("{") {
                 self.array_initializer1(init);
             } else {
-                self.array_initializer2(init);
+                self.array_initializer2(init, 0);
             }
             return;
         }

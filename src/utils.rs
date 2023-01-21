@@ -2,7 +2,7 @@ use crate::ctype::Type;
 use crate::error_token;
 use crate::token::Token;
 use crate::tokenize::tokenize_string_literal;
-use crate::unicode::{decode_utf8, get_string_kind, StringKind};
+use crate::unicode::{get_string_kind, StringKind};
 use std::fs::File;
 use std::io::{stdout, Read, Write};
 use std::path::Path;
@@ -406,41 +406,6 @@ pub fn join_adjacent_string_literals(mut tokens: Vec<Token>) -> Vec<Token> {
     }
 
     tokens[0..j].to_vec()
-}
-
-/// 扩展字符串`buf`,从`old_size`扩展至`new_size`
-#[allow(dead_code)]
-fn expend_vec_u8(buf: Vec<u8>, old_size: isize, new_size: isize) -> Vec<u8> {
-    if old_size == new_size {
-        return buf;
-    }
-    assert!(old_size < new_size);
-    let mut new_buf = vec![];
-    let mut i = 0;
-    while i < buf.len() {
-        let mut c = decode_utf8(&buf, &mut i);
-        if new_size == 2 {
-            let mut ncs = vec![];
-            if c < 0x10000 {
-                // Encode a code point in 2 bytes.
-                ncs.push(c as u16);
-            } else {
-                // Encode a code point in 4 bytes.
-                c -= 0x10000;
-                ncs.push(0xD800 + ((c >> 10) & 0x3FF) as u16);
-                ncs.push(0xDC00 + (c & 0x3FF) as u16);
-            }
-            let mut ncs = unsafe { ncs.align_to::<u8>().1.to_vec() };
-            new_buf.append(&mut ncs);
-        } else {
-            let mut ncs = vec![];
-            ncs.push(c);
-            let mut ncs = unsafe { ncs.align_to::<u8>().1.to_vec() };
-            new_buf.append(&mut ncs);
-        }
-    }
-
-    new_buf
 }
 
 /// UTF-8 texts may start with a 3-byte "BOM" marker sequence.

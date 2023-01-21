@@ -460,7 +460,6 @@ fn read_utf32string_literal(chars: &Vec<u8>, pos: &mut usize) -> Vec<u32> {
 }
 
 /// 转换字符串
-#[allow(dead_code)]
 pub fn tokenize_string_literal(token: &Token, new_size: isize) -> Vec<u8> {
     let sl = token.get_name();
     let chars = sl.into_bytes();
