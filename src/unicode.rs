@@ -1,6 +1,7 @@
 //! unicode
 
-use crate::{error_at, from_hex, read_char, starts_with};
+use crate::token::Token;
+use crate::{error_at, error_token, from_hex, read_char, starts_with};
 
 /// Replace \u or \U escape sequences with corresponding UTF-8 bytes.
 pub fn convert_universal_chars(input: String) -> String {
@@ -176,4 +177,41 @@ pub fn is_ident2(c: u32) -> bool {
     ];
 
     is_ident1(c) || is_range(range, c)
+}
+
+/// 字符串类型
+#[derive(Clone, PartialEq, Eq)]
+pub enum StringKind {
+    /// 普通字符串
+    None,
+    /// utf-8
+    Utf8,
+    /// utf-16
+    Utf16,
+    /// utf-32
+    Utf32,
+    /// 宽字符串
+    Wide,
+}
+
+/// 获取字符串的类型
+pub fn get_string_kind(token: &Token) -> StringKind {
+    let str = token.get_name();
+    if str.starts_with("\"") {
+        return StringKind::None;
+    }
+    if str.starts_with("u8") {
+        return StringKind::Utf8;
+    }
+    if str.starts_with("u") {
+        return StringKind::Utf16;
+    }
+    if str.starts_with("U") {
+        return StringKind::Utf32;
+    }
+    if str.starts_with("L") {
+        return StringKind::Wide;
+    }
+    error_token!(token, "invalid string");
+    panic!()
 }

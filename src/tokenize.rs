@@ -458,6 +458,24 @@ fn read_utf32string_literal(chars: &Vec<u8>, pos: &mut usize) -> Vec<u32> {
     new_chars
 }
 
+/// 转换字符串
+#[allow(dead_code)]
+pub fn tokenize_string_literal(token: &Token, new_size: isize) -> Vec<u8> {
+    let sl = token.get_name();
+    let chars = sl.into_bytes();
+    let new_char;
+    if new_size == 2 {
+        let mut ncs = read_utf16string_literal(&chars, &mut 0);
+        ncs.push('\0' as u16);
+        new_char = unsafe { ncs.align_to::<u8>().1.to_vec() };
+    } else {
+        let mut ncs = read_utf32string_literal(&chars, &mut 0);
+        ncs.push('\0' as u32);
+        new_char = unsafe { ncs.align_to::<u8>().1.to_vec() };
+    }
+    new_char
+}
+
 /// 读取转义字符
 fn read_escaped_char(chars: &Vec<u8>, pos: &mut usize) -> i32 {
     let mut c = read_char(chars, *pos);

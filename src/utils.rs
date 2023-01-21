@@ -1,5 +1,8 @@
 use crate::ctype::Type;
+use crate::error_token;
 use crate::token::Token;
+use crate::tokenize::tokenize_string_literal;
+use crate::unicode::{decode_utf8, get_string_kind, StringKind};
 use std::fs::File;
 use std::io::{stdout, Read, Write};
 use std::path::Path;
@@ -328,6 +331,49 @@ pub fn remove_backslash_newline(input: String) -> String {
 
 /// 拼接相邻的字符串
 pub fn join_adjacent_string_literals(mut tokens: Vec<Token>) -> Vec<Token> {
+    let mut i = 0;
+    while i < tokens.len() {
+        if !tokens[i].is_string() || !tokens[i + 1].is_string() {
+            i += 1;
+            continue;
+        }
+
+        let start = i;
+        let mut kind = get_string_kind(&tokens[i]);
+        let (_, t1t) = tokens[i].get_string();
+        let mut base_typ = t1t.borrow().base.as_ref().unwrap().clone();
+
+        while tokens[i + 1].is_string() {
+            let k = get_string_kind(&tokens[i + 1]);
+            if kind == StringKind::None {
+                kind = k;
+                let (_, t1t) = tokens[i + 1].get_string();
+                base_typ = t1t.borrow().base.as_ref().unwrap().clone();
+            } else if k != StringKind::None && kind != k {
+                error_token!(
+                    &tokens[i + 1],
+                    "unsupported non-standard concatenation of string literals"
+                );
+            }
+            i += 1;
+        }
+        let end = i + 1;
+
+        let bs = base_typ.borrow().size;
+        if bs > 1 {
+            for j in start..end {
+                let (_, typ) = tokens[j].get_string();
+                let bt = typ.borrow().base.clone();
+                if bt.unwrap().borrow().size == 1 {
+                    let chars = tokenize_string_literal(&tokens[j], bs);
+                    let len = chars.len() as isize / bs;
+                    let mut nt = Token::form(&tokens[j]);
+                    nt.set_string(chars, Type::array_of(base_typ.clone(), len));
+                    tokens[j] = nt;
+                }
+            }
+        }
+    }
     // 旧token的索引I（从0开始）
     // 新token的索引J（从0开始）
     // 因为J始终<=I，所以二者共用空间，不会有问题
@@ -335,23 +381,24 @@ pub fn join_adjacent_string_literals(mut tokens: Vec<Token>) -> Vec<Token> {
     let mut j = 0;
 
     while i < tokens.len() {
-        let cur = &tokens[i];
-        if !cur.is_string() || !tokens[i + 1].is_string() {
-            tokens[j] = cur.clone();
+        if !tokens[i].is_string() || !tokens[i + 1].is_string() {
+            tokens[j] = tokens[i].clone();
             i += 1;
             j += 1;
             continue;
         }
 
         // 拼接i 和i+1
-        let (t1, _) = cur.get_string();
+        let (t1, t1t) = tokens[i].get_string();
         let (mut t2, _) = tokens[i + 1].get_string();
+        let bs1 = t1t.borrow().base.as_ref().unwrap().borrow().size;
+        let mb = t1t.borrow().base.clone();
         // 要去掉i末尾的\0
-        let mut t = t1[0..t1.len() - 1].to_vec();
+        let mut t = t1[0..t1.len() - bs1 as usize].to_vec();
         t.append(&mut t2);
-        let len = t.len() as isize;
-        let mut nt = Token::form(cur);
-        nt.set_string(t, Type::array_of(Type::new_char(), len));
+        let len = t.len() as isize / bs1;
+        let mut nt = Token::form(&tokens[i]);
+        nt.set_string(t, Type::array_of(mb.unwrap(), len));
 
         // 把拼好的放在i+1的位置上,并且i++ 继续往后找
         tokens[i + 1] = nt;
@@ -359,4 +406,39 @@ pub fn join_adjacent_string_literals(mut tokens: Vec<Token>) -> Vec<Token> {
     }
 
     tokens[0..j].to_vec()
+}
+
+/// 扩展字符串`buf`,从`old_size`扩展至`new_size`
+#[allow(dead_code)]
+fn expend_vec_u8(buf: Vec<u8>, old_size: isize, new_size: isize) -> Vec<u8> {
+    if old_size == new_size {
+        return buf;
+    }
+    assert!(old_size < new_size);
+    let mut new_buf = vec![];
+    let mut i = 0;
+    while i < buf.len() {
+        let mut c = decode_utf8(&buf, &mut i);
+        if new_size == 2 {
+            let mut ncs = vec![];
+            if c < 0x10000 {
+                // Encode a code point in 2 bytes.
+                ncs.push(c as u16);
+            } else {
+                // Encode a code point in 4 bytes.
+                c -= 0x10000;
+                ncs.push(0xD800 + ((c >> 10) & 0x3FF) as u16);
+                ncs.push(0xDC00 + (c & 0x3FF) as u16);
+            }
+            let mut ncs = unsafe { ncs.align_to::<u8>().1.to_vec() };
+            new_buf.append(&mut ncs);
+        } else {
+            let mut ncs = vec![];
+            ncs.push(c);
+            let mut ncs = unsafe { ncs.align_to::<u8>().1.to_vec() };
+            new_buf.append(&mut ncs);
+        }
+    }
+
+    new_buf
 }
