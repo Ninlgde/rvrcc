@@ -1067,7 +1067,7 @@ impl<'a> Parser<'a> {
         return i as usize;
     }
 
-    /// designation = ("[" const-expr "]")* "=" initializer
+    /// designation = ("[" const-expr "]")* "="? initializer
     fn designation(&mut self, init: &mut Box<Initializer>) {
         let token = self.current_token().clone();
         if token.equal("[") {
@@ -1080,7 +1080,9 @@ impl<'a> Parser<'a> {
             return;
         }
 
-        self.skip("=");
+        if self.current_token().equal("=") {
+            self.next();
+        }
         self.initializer0(init);
     }
 
