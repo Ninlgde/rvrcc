@@ -1085,24 +1085,41 @@ impl<'a> Parser<'a> {
     }
 
     /// 计算数组初始化元素个数
+    /// An array length can be omitted if an array has an initializer
+    /// (e.g. `int x[] = {1,2,3}`). If it's omitted, count the number
+    /// of initializer elements.
     fn count_array_init_elements(&mut self, typ: TypeLink) -> isize {
         let (start_pos, _) = self.current();
-        let mut dummy = Initializer::new(typ.borrow().base.as_ref().unwrap().clone(), false);
+        let mut dummy = Initializer::new(typ.borrow().base.as_ref().unwrap().clone(), true);
 
         // 项数
-        let mut count = 0;
+        let mut first = true;
+        let mut i = 0;
+        let mut max = 0;
         // 遍历所有匹配的项
         while !self.consume_end() {
-            if count > 0 {
+            if !first {
                 self.skip(",");
             }
-            self.initializer0(&mut dummy);
-            count += 1;
+            first = false;
+            let token = self.current_token().clone();
+            if token.equal("[") {
+                i = self.next().const_expr();
+                if self.current_token().equal("...") {
+                    i = self.next().const_expr();
+                }
+                self.skip("]");
+                self.designation(&mut dummy)
+            } else {
+                self.initializer0(&mut dummy);
+            }
+            i += 1;
+            max = cmp::max(max, i);
         }
 
         // cursor 回档
         self.cursor = start_pos;
-        return count;
+        return max as isize;
     }
 
     /// array_initializer1 = "{" initializer ("," initializer)* ","? "}"
@@ -1110,6 +1127,12 @@ impl<'a> Parser<'a> {
         let typ = init.typ.as_ref().unwrap().clone();
         let t = typ.borrow();
         self.skip("{");
+        if init.is_flexible {
+            let len = self.count_array_init_elements(typ.clone());
+            // 在这里Ty也被重新构造为了数组
+            let new_type = Type::array_of(t.base.as_ref().unwrap().clone(), len);
+            *init = Initializer::new(new_type, false);
+        }
         // 如果数组是可调整的，那么就计算数组的元素数，然后进行初始化器的构造
         if init.is_flexible {
             let len = self.count_array_init_elements(typ.clone());
