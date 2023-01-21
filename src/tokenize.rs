@@ -4,8 +4,8 @@ use crate::token::{File, Token};
 use crate::unicode::{convert_universal_chars, decode_utf8, is_ident1, is_ident2};
 use crate::{
     canonicalize_newline, error_at, error_token, from_hex, read_char, read_file,
-    remove_backslash_newline, slice_to_string, starts_with, starts_with_ignore_case, FileLink,
-    INPUT, INPUTS,
+    remove_backslash_newline, skip_utf8_bom, slice_to_string, starts_with, starts_with_ignore_case,
+    FileLink, INPUT, INPUTS,
 };
 
 static mut FILE_NO: usize = 0;
@@ -15,6 +15,7 @@ pub fn tokenize_file(path: String) -> Vec<Token> {
     if content.eq("") {
         return Vec::new();
     }
+    let content = skip_utf8_bom(content);
     let content = canonicalize_newline(content);
     let content = remove_backslash_newline(content);
     let content = convert_universal_chars(content);

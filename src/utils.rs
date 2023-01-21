@@ -442,3 +442,18 @@ fn expend_vec_u8(buf: Vec<u8>, old_size: isize, new_size: isize) -> Vec<u8> {
 
     new_buf
 }
+
+/// UTF-8 texts may start with a 3-byte "BOM" marker sequence.
+/// If exists, just skip them because they are useless bytes.
+/// (It is actually not recommended to add BOM markers to UTF-8
+/// texts, but it's not uncommon particularly on Windows.)
+pub fn skip_utf8_bom(input: String) -> String {
+    let chars = input.clone().into_bytes();
+    if read_char(&chars, 0) == '\u{ef}'
+        && read_char(&chars, 1) == '\u{bb}'
+        && read_char(&chars, 2) == '\u{bf}'
+    {
+        return String::from_utf8_lossy(&chars[3..chars.len()]).to_string();
+    }
+    return input;
+}
