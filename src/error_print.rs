@@ -1,6 +1,7 @@
 //! 错误打印相关宏
 
 use crate::token::Token;
+use crate::unicode::display_width;
 use crate::{slice_to_string, FileLink, INPUT};
 use std::fmt;
 
@@ -50,7 +51,7 @@ pub fn print_with_error(file: FileLink, mut line_no: usize, offset: usize, args:
     let file_lineno = format!("{}:{}: ", file_name, line_no);
     let line = slice_to_string(&input, line_start, line_end);
     // 计算错误信息位置，在当前行内的偏移量+前面输出了多少个字符
-    let pos = offset - line_start + file_lineno.len();
+    let pos = display_width(&input[line_start..offset].to_vec()) + file_lineno.len();
 
     // 输出 文件名:错误行
     print!("{}", file_lineno);
