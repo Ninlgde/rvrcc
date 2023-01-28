@@ -13,6 +13,7 @@
 use rvrcc::{
     codegen, dirname, file_exists, find_file, init_macros, open_file_for_write, parse, parse_args,
     preprocess, print_tokens, replace_extn, tokenize_file, Args, TempFile, TempFileCleaner,
+    BASE_FILE,
 };
 use std::env;
 use std::io::Write;
@@ -155,6 +156,9 @@ fn main() {
 
 fn cc1(args: Args) {
     // tokenize 输入文件
+    unsafe {
+        BASE_FILE = args.base.to_string();
+    }
     let mut tokens = tokenize_file(args.base.to_string());
     // 终结符流生成失败，对应文件报错
     if tokens.len() == 0 {

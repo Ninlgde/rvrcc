@@ -1,6 +1,7 @@
 use crate::preprocess::{new_num_token, new_str_token};
 use crate::token::{File, Token};
 use crate::tokenize::tokenize;
+use crate::BASE_FILE;
 use chrono::{DateTime, Datelike, Timelike, Utc};
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -353,6 +354,8 @@ pub fn init_macros() {
     add_builtin("__COUNTER__", counter_macro);
     // 支持__TIMESTAMP__
     add_builtin("__TIMESTAMP__", timestamp_macro);
+    // 支持__BASE_FILE__
+    add_builtin("__BASE_FILE__", base_file_macro);
 
     // 支持__DATE__和__TIME__
     let now = Utc::now();
@@ -446,5 +449,12 @@ fn timestamp_macro(input: Vec<Token>) -> Vec<Token> {
         );
     }
     let nt = new_str_token(time, &head);
+    vec![nt, Token::new_eof(0, 0)]
+}
+
+/// __BASE_FILE__宏
+fn base_file_macro(input: Vec<Token>) -> Vec<Token> {
+    let head = input.first().unwrap().clone();
+    let nt = new_str_token(unsafe { BASE_FILE.to_string() }, &head);
     vec![nt, Token::new_eof(0, 0)]
 }

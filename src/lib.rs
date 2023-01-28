@@ -51,6 +51,9 @@ pub static mut OUTPUT: Option<&mut dyn Write> = None;
 /// 输入文件列表
 pub static mut INPUTS: Vec<FileLink> = vec![];
 
+/// 基础输入文件
+pub static mut BASE_FILE: String = String::new();
+
 /// gp上限
 pub const GP_MAX: usize = 8;
 /// fp上限
