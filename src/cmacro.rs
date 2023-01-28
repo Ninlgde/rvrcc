@@ -400,7 +400,8 @@ fn file_macro(input: Vec<Token>) -> Vec<Token> {
         head = head.get_origin().unwrap().clone();
     }
     // 根据原始宏的文件名构建字符串终结符
-    let nt = new_str_token(head.get_file_name(), &head);
+    let file = head.get_file().unwrap();
+    let nt = new_str_token(file.borrow().display_name.to_string(), &head);
     vec![nt, Token::new_eof(0, 0)]
 }
 
@@ -412,6 +413,8 @@ fn line_macro(input: Vec<Token>) -> Vec<Token> {
         head = head.get_origin().unwrap().clone();
     }
     // 根据原始的宏的行号构建数值终结符
-    let nt = new_num_token(head.get_line_no() as i64, &head);
+    let file = head.get_file().unwrap();
+    let line = head.get_line_no() as isize + file.borrow().line_delta;
+    let nt = new_num_token(line as i64, &head);
     vec![nt, Token::new_eof(0, 0)]
 }

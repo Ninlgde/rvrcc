@@ -1,6 +1,7 @@
 //! 预处理
 
 use crate::cmacro::{HideSet, Macro, MacroArg, MacroParam, BUILTIN_MACROS};
+use crate::ctype::TypeKind;
 use crate::parse::Parser;
 use crate::token::{File, Token, TokenVecOps};
 use crate::tokenize::{convert_pp_tokens, tokenize};
@@ -16,7 +17,10 @@ pub fn preprocess(tokens: &mut Vec<Token>, include_path: Vec<String>) -> Vec<Tok
     // 将所有关键字的终结符，都标记为KEYWORD, ppnum->num
     convert_pp_tokens(&mut tokens);
 
-    let tokens = join_adjacent_string_literals(tokens);
+    let mut tokens = join_adjacent_string_literals(tokens);
+    for token in tokens.iter_mut() {
+        token.set_line_no((token.get_line_no() as isize + token.get_line_delta()) as usize);
+    }
     tokens
 }
 
@@ -112,8 +116,11 @@ impl<'a> Preprocessor<'a> {
                 continue;
             }
 
-            let token = self.current_token();
+            let mut token = self.current_token().clone();
             if !token.is_hash() {
+                let file = token.get_file().unwrap();
+                token.set_file_name(file.borrow().display_name.to_string());
+                token.set_line_delta(file.borrow().line_delta);
                 // 如果不是#号开头则添加
                 self.add_token(token.clone());
                 self.next();
@@ -265,6 +272,12 @@ impl<'a> Preprocessor<'a> {
                 self.cond_incls.pop();
                 // 走到行首
                 self.next().skip_line();
+                continue;
+            }
+
+            // 匹配#line
+            if token.equal("line") {
+                self.next().read_line_marker();
                 continue;
             }
 
@@ -736,6 +749,32 @@ impl<'a> Preprocessor<'a> {
         }
         self.require(")");
         args
+    }
+
+    /// Read #line arguments
+    fn read_line_marker(&mut self) {
+        let start = self.current_token().clone();
+        let mut tokens = self.copy_line();
+        let tokens = preprocess(&mut tokens, vec![]);
+        if tokens.len() < 2 {
+            error_token!(&start, "invalid line marker");
+        }
+        let first = tokens.first().unwrap();
+        if !first.is_num() || first.get_num().2.borrow().kind != TypeKind::Int {
+            error_token!(first, "invalid line marker");
+        }
+        let file = start.get_file().unwrap();
+        file.borrow_mut()
+            .set_line_delta(first.get_num().0 as isize - start.get_line_no() as isize);
+
+        let t = &tokens[1];
+        if t.at_eof() {
+            return;
+        }
+        if !t.is_string() {
+            error_token!(t, "filename expected");
+        }
+        file.borrow_mut().set_display_name(&t.get_string_literal());
     }
 }
 

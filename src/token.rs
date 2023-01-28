@@ -36,6 +36,10 @@ pub struct TokenInner {
     line_no: usize,
     /// 源文件位置
     file: Option<FileLink>,
+    /// Line number
+    line_delta: isize,
+    /// Filename
+    file_name: String,
     /// 终结符在行首（begin of line）时为true
     at_bol: bool,
     /// 终结符前是否有空格
@@ -72,7 +76,9 @@ impl TokenInner {
             name: other.borrow().name.clone(),
             offset: other.borrow().offset,
             line_no: other.borrow().line_no,
+            line_delta: 0,
             file: Some(other.borrow().file.as_ref().unwrap().clone()),
+            file_name: other.borrow().file_name.clone(),
             at_bol: other.borrow().at_bol,
             has_space: other.borrow().has_space,
             ival: other.borrow().ival,
@@ -91,7 +97,9 @@ impl TokenInner {
             name: "".to_string(),
             offset: 0,
             line_no: 0,
+            line_delta: 0,
             file: Some(unsafe { INPUT.as_ref().unwrap().clone() }),
+            file_name: "".to_string(),
             at_bol: false,
             has_space: false,
             ival: 0,
@@ -119,7 +127,9 @@ impl TokenInner {
         token.name = name;
         token.offset = offset;
         token.line_no = line_no;
-        token.file = Some(unsafe { INPUT.as_ref().unwrap().clone() });
+        let current_file = unsafe { INPUT.as_ref().unwrap().clone() };
+        token.file_name = current_file.borrow().display_name.clone();
+        token.file = Some(current_file);
         token
     }
 
@@ -205,7 +215,8 @@ impl TokenInner {
 
     /// 获取文件名
     fn get_file_name(&self) -> String {
-        self.file.as_ref().unwrap().borrow().name.to_string()
+        // self.file.as_ref().unwrap().borrow().name.to_string()
+        self.file_name.to_string()
     }
 
     /// 获取字符串字面量
@@ -407,6 +418,12 @@ impl Token {
         inner.line_no
     }
 
+    /// 设置token在输入文件中的行号
+    pub fn set_line_no(&mut self, ln: usize) {
+        let mut inner = self.inner.borrow_mut();
+        inner.line_no = ln;
+    }
+
     /// 是否是eof
     pub fn at_eof(&self) -> bool {
         let inner = self.inner.borrow();
@@ -545,6 +562,24 @@ impl Token {
         let mut inner = self.inner.borrow_mut();
         inner.origin = Some(origin);
     }
+
+    /// 设置文件名
+    pub fn set_file_name(&mut self, name: String) {
+        let mut inner = self.inner.borrow_mut();
+        inner.file_name = name;
+    }
+
+    /// get line number
+    pub fn get_line_delta(&self) -> isize {
+        let inner = self.inner.borrow();
+        inner.line_delta
+    }
+
+    /// set line number
+    pub fn set_line_delta(&mut self, ld: isize) {
+        let mut inner = self.inner.borrow_mut();
+        inner.line_delta = ld;
+    }
 }
 
 impl PartialEq<Self> for Token {
@@ -566,15 +601,36 @@ pub struct File {
     pub(crate) no: usize,
     /// 文件内容
     pub(crate) content: String,
+    /// For #line directive
+    /// 显示名
+    pub(crate) display_name: String,
+    /// line number
+    pub(crate) line_delta: isize,
 }
 
 impl File {
     pub fn new(name: String, no: usize, content: String) -> Self {
-        File { name, no, content }
+        File {
+            display_name: name.to_string(),
+            name,
+            no,
+            content,
+            line_delta: 0,
+        }
     }
 
     pub fn new_link(name: String, no: usize, content: String) -> FileLink {
         Rc::new(RefCell::new(File::new(name, no, content)))
+    }
+
+    /// 设置显示名
+    pub fn set_display_name(&mut self, dn: &str) {
+        self.display_name = dn.to_string();
+    }
+
+    /// 设置行号
+    pub fn set_line_delta(&mut self, ld: isize) {
+        self.line_delta = ld;
     }
 }
 
