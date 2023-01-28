@@ -281,6 +281,11 @@ impl<'a> Preprocessor<'a> {
                 continue;
             }
 
+            if token.is_ppnum() {
+                self.read_line_marker();
+                continue;
+            }
+
             // 匹配#error
             if token.equal("error") {
                 error_token!(token, "error");
