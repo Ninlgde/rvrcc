@@ -946,13 +946,21 @@ impl<'a> Parser<'a> {
         let t = typ.borrow();
         self.skip("{");
 
-        // 项数
+        // 遍历数组
+        let mut first = true;
         let mut i = 0;
         while !self.consume_end() {
-            if i > 0 {
+            if !first {
                 self.skip(",");
             }
-
+            first = false;
+            if self.current_token().equal(".") {
+                let mem = self.struct_designator(init.typ.as_ref().unwrap());
+                i = mem.unwrap().idx;
+                self.designation(&mut init.children[i]);
+                i += 1;
+                continue;
+            }
             if i < t.members.len() as usize {
                 // 正常解析元素
                 self.initializer0(&mut init.children[i]);
@@ -965,18 +973,23 @@ impl<'a> Parser<'a> {
     }
 
     /// struct_initializer2 = initializer ("," initializer)* ","?
-    fn struct_initializer2(&mut self, init: &mut Box<Initializer>) {
+    fn struct_initializer2(&mut self, init: &mut Box<Initializer>, i: usize) {
         let typ = init.typ.as_ref().unwrap().clone();
         let t = typ.borrow();
 
         // 项数
-        let mut i = 0;
+        let mut i = i;
         loop {
             if i >= t.members.len() as usize || self.is_end() {
                 break;
             }
+            let (pos, _) = self.current();
             if i > 0 {
                 self.skip(",");
+            }
+            if self.current_token().equal("[") || self.current_token().equal(".") {
+                self.cursor = pos;
+                return;
             }
             self.initializer0(&mut init.children[i]);
             i += 1;
@@ -1057,6 +1070,12 @@ impl<'a> Parser<'a> {
     ///   int x[5][10] = { [5][8]=1, 2, 3 };
     ///
     /// It sets x[5][8], x[5][9] and x[6][0] to 1, 2 and 3, respectively.
+    ///
+    /// Use `.fieldname` to move the cursor for a struct initializer. E.g.
+    ///
+    ///   struct { int a, b, c; } x = { .c=5 };
+    ///
+    /// The above initializer sets x.c to 5.
     fn array_designator(&mut self, typ: &TypeLink) -> usize {
         let start = self.current_token().clone();
         let i = self.next().const_expr();
@@ -1065,6 +1084,27 @@ impl<'a> Parser<'a> {
         }
         self.skip("]");
         return i as usize;
+    }
+
+    /// struct-designator = "." ident
+    fn struct_designator(&mut self, typ: &TypeLink) -> Option<Box<Member>> {
+        self.skip(".");
+        let token = self.current_token().clone();
+        if !token.is_ident() {
+            error_token!(&token, "expected a field designator");
+        }
+
+        let binding = typ.clone();
+        let members = &binding.borrow().members;
+        for member in members.iter() {
+            if token.equal(&member.name) {
+                self.next();
+                return Some(member.clone());
+            }
+        }
+
+        error_token!(&token, "struct has no such member");
+        None
     }
 
     /// designation = ("[" const-expr "]")* "="? initializer
@@ -1078,6 +1118,18 @@ impl<'a> Parser<'a> {
             self.designation(&mut init.children[i]);
             self.array_initializer2(init, i + 1);
             return;
+        }
+
+        if token.equal(".") && init.typ.as_ref().unwrap().borrow().kind == TypeKind::Struct {
+            let mem = self.struct_designator(init.typ.as_ref().unwrap()).unwrap();
+            self.designation(&mut init.children[mem.idx]);
+            init.expr = None;
+            self.struct_initializer2(init, mem.idx + 1);
+            return;
+        }
+
+        if token.equal(".") {
+            error_token!(&token, "field name not in struct or union initializer");
         }
 
         if self.current_token().equal("=") {
@@ -1194,7 +1246,7 @@ impl<'a> Parser<'a> {
             if i > 0 {
                 self.skip(",");
             }
-            if self.current_token().equal("[") {
+            if self.current_token().equal("[") || self.current_token().equal(".") {
                 self.cursor = pos;
                 return;
             }
@@ -1243,7 +1295,7 @@ impl<'a> Parser<'a> {
             }
             // 如果通过assign 读到的不是struct,则回档,使用struct_initializer2来读
             self.cursor = start_pos;
-            self.struct_initializer2(init);
+            self.struct_initializer2(init, 0);
             return;
         }
 
