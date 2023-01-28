@@ -1112,6 +1112,7 @@ impl<'a> Parser<'a> {
 
     /// struct-designator = "." ident
     fn struct_designator(&mut self, typ: &TypeLink) -> Option<Box<Member>> {
+        let (start, _) = self.current();
         self.skip(".");
         let token = self.current_token().clone();
         if !token.is_ident() {
@@ -1121,6 +1122,19 @@ impl<'a> Parser<'a> {
         let binding = typ.clone();
         let members = &binding.borrow().members;
         for member in members.iter() {
+            // Anonymous struct member
+            if member.typ.as_ref().unwrap().borrow().kind == TypeKind::Struct
+                && member.name.is_empty()
+            {
+                if self
+                    .get_struct_member(member.typ.as_ref().unwrap(), &token)
+                    .is_some()
+                {
+                    self.cursor = start;
+                    return Some(member.clone());
+                }
+            }
+            // Regular struct member
             if token.equal(&member.name) {
                 self.next();
                 return Some(member.clone());
