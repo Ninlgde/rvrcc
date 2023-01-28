@@ -23,6 +23,9 @@ pub struct Initializer<'a> {
     pub(crate) children: Vec<Box<Initializer<'a>>>,
     /// 可调整的，表示需要重新构造
     pub(crate) is_flexible: bool,
+    /// Only one member can be initialized for a union.
+    /// `member` is used to clarify which member is initialized.
+    pub(crate) member: Option<Box<Member>>,
 }
 
 impl<'a> Initializer<'a> {
@@ -33,6 +36,7 @@ impl<'a> Initializer<'a> {
             expr: None,
             children: vec![],
             is_flexible: false,
+            member: None,
         });
 
         let t = typ.borrow();
@@ -68,6 +72,7 @@ impl<'a> Initializer<'a> {
                         expr: None,
                         children: vec![],
                         is_flexible: true,
+                        member: None,
                     });
                 } else {
                     child = Initializer::new(member.typ.as_ref().unwrap().clone(), false);
@@ -220,11 +225,14 @@ pub fn create_lvar_init(
     }
 
     if t.kind == TypeKind::Union {
-        let member = &t.members[0];
+        let mut member = &t.members[0];
+        if init.member.is_some() {
+            member = init.member.as_ref().unwrap();
+        }
         // id存储了成员变量
         let id = InitDesig::new_with_next(desig.clone(), 0, Some(member.clone()));
         return create_lvar_init(
-            init.children[0].clone(),
+            init.children[member.idx].clone(),
             member.typ.as_ref().unwrap().clone(),
             id,
             token.clone(),
@@ -327,10 +335,14 @@ pub fn write_gvar_data(
 
     // 处理联合体
     if t.kind == TypeKind::Union {
+        if init.member.is_none() {
+            return cur;
+        }
+        let member = init.member.as_ref().unwrap();
         return write_gvar_data(
             cur,
-            init.children[0].clone(),
-            t.members[0].typ.as_ref().unwrap(),
+            init.children[member.idx].clone(),
+            member.typ.as_ref().unwrap(),
             chars,
             offset,
         );

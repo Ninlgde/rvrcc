@@ -928,7 +928,31 @@ impl<'a> Parser<'a> {
     /// union_initializer = "{" initializer "}"
     fn union_initializer(&mut self, init: &mut Box<Initializer>) {
         // 联合体只接受第一个成员用来初始化
-        let (_, token) = self.current();
+        // Unlike structs, union initializers take only one initializer,
+        // and that initializes the first union member by default.
+        // You can initialize other member using a designated initializer.
+        let (pos, token) = self.current();
+        if token.equal("{") && self.tokens[pos + 1].equal(".") {
+            let mem = self
+                .next()
+                .struct_designator(init.typ.as_ref().unwrap())
+                .unwrap();
+            let idx = mem.idx;
+            init.member = Some(mem);
+            self.designation(&mut init.children[idx]);
+            self.skip("}");
+            return;
+        }
+        init.member = Some(
+            init.typ
+                .as_ref()
+                .unwrap()
+                .borrow()
+                .members
+                .first()
+                .unwrap()
+                .clone(),
+        );
         if token.equal("{") {
             // 存在括号的情况
             self.next().initializer0(&mut init.children[0]);
@@ -1125,6 +1149,14 @@ impl<'a> Parser<'a> {
             self.designation(&mut init.children[mem.idx]);
             init.expr = None;
             self.struct_initializer2(init, mem.idx + 1);
+            return;
+        }
+
+        if token.equal(".") && init.typ.as_ref().unwrap().borrow().kind == TypeKind::Union {
+            let mem = self.struct_designator(init.typ.as_ref().unwrap()).unwrap();
+            let idx = mem.idx;
+            init.member = Some(mem);
+            self.designation(&mut init.children[idx]);
             return;
         }
 
