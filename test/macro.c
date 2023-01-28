@@ -407,6 +407,9 @@ int main() {
     ASSERT(1, __COUNTER__);
     ASSERT(2, __COUNTER__);
 
+    printf("[248] [GNU] 支持__TIMESTAMP__宏\n");
+    ASSERT(24, strlen(__TIMESTAMP__));
+
     printf("\033[32mOK\033[0m\n");
     return 0;
 }

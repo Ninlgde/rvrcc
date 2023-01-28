@@ -3,8 +3,8 @@ use crate::token::{File, Token};
 use crate::tokenize::tokenize;
 use chrono::{DateTime, Datelike, Timelike, Utc};
 use std::cell::RefCell;
-use std::ptr;
 use std::rc::Rc;
+use std::{fs, ptr};
 
 /// 宏函数形参
 #[derive(Clone)]
@@ -351,6 +351,8 @@ pub fn init_macros() {
     add_builtin("__LINE__", line_macro);
     // 支持__COUNTER__
     add_builtin("__COUNTER__", counter_macro);
+    // 支持__TIMESTAMP__
+    add_builtin("__TIMESTAMP__", timestamp_macro);
 
     // 支持__DATE__和__TIME__
     let now = Utc::now();
@@ -358,14 +360,15 @@ pub fn init_macros() {
     define_macro("__TIME__", &format_time(now));
 }
 
+const MONTH: [&str; 12] = [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+];
+
 /// __DATE__ is expanded to the current date, e.g. "May 17 2020".
 fn format_date(now: DateTime<Utc>) -> String {
-    let mon = vec![
-        "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-    ];
     format!(
         "\"{} {:02} {}\"",
-        mon[now.month0() as usize],
+        MONTH[now.month0() as usize],
         now.day(),
         now.year()
     )
@@ -416,5 +419,32 @@ fn line_macro(input: Vec<Token>) -> Vec<Token> {
     let file = head.get_file().unwrap();
     let line = head.get_line_no() as isize + file.borrow().line_delta;
     let nt = new_num_token(line as i64, &head);
+    vec![nt, Token::new_eof(0, 0)]
+}
+
+/// __TIMESTAMP__ is expanded to a string describing the last
+/// modification time of the current file. E.g.
+/// "Fri Jul 24 01:32:50 2020"
+fn timestamp_macro(input: Vec<Token>) -> Vec<Token> {
+    let head = input.first().unwrap().clone();
+    let file = head.get_file().unwrap();
+    let file_name = file.borrow().name.to_string();
+    let metadate = fs::metadata(file_name);
+    let mut time = "??? ??? ?? ??:??:?? ????".to_string();
+    if metadate.is_ok() {
+        let mtime = metadate.unwrap().modified().unwrap();
+        let datetime: DateTime<Utc> = mtime.into();
+        time = format!(
+            "{:?} {} {:02} {:02}:{:02}:{:02} {}",
+            datetime.weekday(),
+            MONTH[datetime.month0() as usize],
+            datetime.day(),
+            datetime.hour(),
+            datetime.minute(),
+            datetime.second(),
+            datetime.year()
+        );
+    }
+    let nt = new_str_token(time, &head);
     vec![nt, Token::new_eof(0, 0)]
 }
