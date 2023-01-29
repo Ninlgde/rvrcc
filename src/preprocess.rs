@@ -822,6 +822,16 @@ fn find_arg<'a>(args: &'a Vec<MacroArg>, token: &'a Token) -> Option<&'a MacroAr
     None
 }
 
+/// 是否包含__VA_ARGS__
+fn has_varargs(args: &Vec<MacroArg>) -> bool {
+    for arg in args.iter() {
+        if arg.name.eq("__VA_ARGS__") {
+            return arg.tokens.len() > 1;
+        }
+    }
+    false
+}
+
 /// 将宏函数形参替换为指定的实参
 fn subst(processor: &Preprocessor, body: Vec<Token>, args: Vec<MacroArg>) -> Vec<Token> {
     let mut tokens = vec![];
@@ -921,6 +931,23 @@ fn subst(processor: &Preprocessor, body: Vec<Token>, args: Vec<MacroArg>) -> Vec
                 }
             }
             i += 1;
+            continue;
+        }
+
+        // If __VA_ARG__ is empty, __VA_OPT__(x) is expanded to the
+        // empty token list. Otherwise, __VA_OPT__(x) is expanded to x.
+        if token.equal("__VA_OPT__") && body[i + 1].equal("(") {
+            let mut tks = body[i + 2..body.len()].to_vec();
+            let mut processor = Preprocessor::from(processor, &mut tks);
+            let arg = processor.read_macro_arg_one(true);
+            if has_varargs(&args) {
+                for at in arg.tokens {
+                    if !at.at_eof() {
+                        tokens.push(at)
+                    }
+                }
+            }
+            i += 2 + processor.cursor + 1; // skip __VA_OPT__, "(", arg , ")"
             continue;
         }
 
