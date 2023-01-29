@@ -286,6 +286,15 @@ impl<'a> Preprocessor<'a> {
                 continue;
             }
 
+            // 匹配#pragma
+            if token.equal("pragma") {
+                let mut t = token;
+                while !t.at_bol() {
+                    t = self.next().current_token();
+                }
+                continue;
+            }
+
             // 匹配#error
             if token.equal("error") {
                 error_token!(token, "error");
