@@ -3,7 +3,7 @@
 //! program = (typedef | function_definition* | global_variable)*
 //! function_definition = declspec declarator "(" ")" "{" compound_stmt*
 //! declspec = ("void" | "_Bool" | "char" | "short" | "int" | "long"
-//!            | "typedef" | "static" | "extern"
+//!            | "typedef" | "static" | "extern" | "inline"
 //!            | "_Alignas" ("(" typename | const_expr ")")
 //!            | "signed" | "unsigned"
 //!            | struct_declare | union_declare | typedef_name
@@ -326,7 +326,8 @@ impl<'a> Parser<'a> {
             locals,
             body,
             definition,
-            var_attr.is_static,
+            var_attr.is_static || (var_attr.is_inline && !var_attr.is_extern),
+            var_attr.is_inline,
         );
     }
 
@@ -417,7 +418,7 @@ impl<'a> Parser<'a> {
     }
 
     /// declspec = ("void" | "_Bool" | "char" | "short" | "int" | "long"
-    ///            | "typedef" | "static" | "extern"
+    ///            | "typedef" | "static" | "extern" | "inline"
     ///            | "_Alignas" ("(" typename | const_expr ")")
     ///            | "signed" | "unsigned"
     ///            | struct_declare | union_declare | typedef_name
@@ -450,7 +451,11 @@ impl<'a> Parser<'a> {
                 break;
             }
 
-            if token.equal(KW_TYPEDEF) || token.equal(KW_STATIC) || token.equal(KW_EXTERN) {
+            if token.equal(KW_TYPEDEF)
+                || token.equal(KW_STATIC)
+                || token.equal(KW_EXTERN)
+                || token.equal(KW_INLINE)
+            {
                 if attr.is_none() {
                     error_token!(
                         token,
@@ -461,13 +466,18 @@ impl<'a> Parser<'a> {
                     attr.as_mut().unwrap().is_typedef = true;
                 } else if token.equal(KW_STATIC) {
                     attr.as_mut().unwrap().is_static = true;
-                } else {
+                } else if token.equal(KW_EXTERN) {
                     attr.as_mut().unwrap().is_extern = true;
+                } else {
+                    attr.as_mut().unwrap().is_inline = true;
                 }
                 // typedef不应与static/extern一起使用
                 let a = attr.as_ref().unwrap();
-                if a.is_typedef && (a.is_static || a.is_extern) {
-                    error_token!(token, "typedef and static may not be used together");
+                if a.is_typedef && (a.is_static || a.is_extern || a.is_inline) {
+                    error_token!(
+                        token,
+                        "typedef and static/extern/inline may not be used together"
+                    );
                 }
                 self.next();
                 continue;

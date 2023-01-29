@@ -77,10 +77,11 @@ pub const KW_TYPENAME: [&str; KW_TYPENAME_COUNT] = [
     KW_FLOAT,
     KW_DOUBLE,
     KW_TYPEOF,
+    KW_INLINE,
 ];
 
 /// 类型名称数量
-const KW_TYPENAME_COUNT: usize = 26;
+const KW_TYPENAME_COUNT: usize = 27;
 
 /// 关键字: 返回
 pub const KW_RETURN: &str = "return";

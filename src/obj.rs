@@ -59,6 +59,8 @@ pub enum Obj {
         is_static: bool,
         /// 对应的终结符
         token: Option<Token>,
+        /// 内联
+        is_inline: bool,
     },
 }
 
@@ -292,6 +294,7 @@ impl Obj {
         body_: Option<NodeLink>,
         definition: bool,
         is_static_: bool,
+        is_inline_: bool,
     ) {
         match self {
             Self::Func {
@@ -300,6 +303,7 @@ impl Obj {
                 body,
                 is_definition,
                 is_static,
+                is_inline,
                 va_area,
                 ..
             } => {
@@ -308,6 +312,7 @@ impl Obj {
                 *body = body_;
                 *is_definition = definition;
                 *is_static = is_static_;
+                *is_inline = is_inline_;
                 *va_area = va_area_
             }
             _ => panic!("error object!"),
@@ -327,6 +332,7 @@ impl Obj {
             is_static: false,
             va_area: None,
             token: None,
+            is_inline: false,
         }
     }
 }
@@ -392,6 +398,8 @@ pub struct VarAttr {
     pub(crate) is_static: bool,
     /// 是否为外部变量
     pub(crate) is_extern: bool,
+    /// 是否为内联
+    pub(crate) is_inline: bool,
     /// 对齐量
     pub(crate) align: isize,
 }
@@ -402,6 +410,7 @@ impl VarAttr {
             is_typedef: false,
             is_static: false,
             is_extern: false,
+            is_inline: false,
             align: 0,
         }
     }
