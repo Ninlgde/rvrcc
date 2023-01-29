@@ -852,6 +852,24 @@ fn subst(processor: &Preprocessor, body: Vec<Token>, args: Vec<MacroArg>) -> Vec
             continue;
         }
 
+        // [GNU] If __VA_ARG__ is empty, `,##__VA_ARGS__` is expanded
+        // to the empty token list. Otherwise, its expaned to `,` and
+        // __VA_ARGS__.
+        if token.equal(",") && body[i + 1].equal("##") {
+            let arg = find_arg(&args, &body[i + 2]);
+            if arg.is_some() && arg.unwrap().name.eq("__VA_ARGS__") {
+                let arg = arg.unwrap();
+                let first = arg.tokens.first().unwrap();
+                if first.at_eof() {
+                    i += 3;
+                } else {
+                    tokens.push(Token::form(token));
+                    i += 2;
+                }
+                continue;
+            }
+        }
+
         // ##及右边，用于连接终结符
         if token.equal("##") {
             if tokens.len() == 0 {
