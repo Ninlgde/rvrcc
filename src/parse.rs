@@ -85,6 +85,7 @@
 //!         | "sizeof" unary
 //!         | "_Alignof" "(" typename ")"
 //!         | "_Alignof" unary
+//!         | "_Generic" generic_selection
 //!         | "__builtin_types_compatible_p" "(" typename, typename, ")"
 //!         | ident
 //!         | str
@@ -2786,6 +2787,56 @@ impl<'a> Parser<'a> {
         Some(node)
     }
 
+    /// generic_selection = "(" assign "," generic-assoc ("," generic-assoc)* ")"
+    ///
+    /// generic-assoc = type-name ":" assign
+    ///               | "default" ":" assign
+    fn generic_selection(&mut self) -> Option<NodeLink> {
+        let start = self.current_token().clone();
+        self.skip("(");
+        let mut ctrl = self.assign().unwrap();
+        add_type(&mut ctrl);
+
+        let ct = ctrl.typ.as_ref().unwrap().clone();
+        let mut t1 = ct.clone();
+        if ct.borrow().kind == TypeKind::Func {
+            t1 = Type::pointer_to(ct);
+        } else if ct.borrow().kind == TypeKind::Array {
+            t1 = Type::pointer_to(ct.borrow().base.as_ref().unwrap().clone());
+        }
+
+        let mut ret = None;
+
+        while !self.consume(")") {
+            self.skip(",");
+            let token = self.current_token();
+            if token.equal("default") {
+                self.next().skip(":");
+                let node = self.assign();
+                if ret.is_none() {
+                    ret = node;
+                }
+                continue;
+            }
+
+            let t2 = self.typename();
+            self.skip(":");
+            let node = self.assign();
+            if is_compatible(t1.clone(), t2) == 1 {
+                ret = node;
+            }
+        }
+
+        if ret.is_none() {
+            error_token!(
+                &start,
+                "controlling expression type not compatible with any generic association type"
+            )
+        }
+
+        ret
+    }
+
     /// 解析括号、数字、变量
     /// primary = "(" "{" stmt+ "}" ")"
     ///         | "(" expr ")"
@@ -2793,6 +2844,7 @@ impl<'a> Parser<'a> {
     ///         | "sizeof" unary
     ///         | "_Alignof" "(" typename ")"
     ///         | "_Alignof" unary
+    ///         | "_Generic" generic_selection
     ///         | "__builtin_types_compatible_p" "(" typename, typename, ")"
     ///         | ident funcArgs?
     ///         | str
@@ -2852,6 +2904,11 @@ impl<'a> Parser<'a> {
             let nt = self.tokens[pos].clone();
             let align = node.unwrap().get_type().as_ref().unwrap().borrow().align as i64;
             return Some(Node::new_unsigned_long(align, nt));
+        }
+
+        // _Generic
+        if token.equal("_Generic") {
+            return self.next().generic_selection();
         }
 
         // "__builtin_types_compatible_p" "(" typeName, typeName, ")"
