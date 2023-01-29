@@ -201,7 +201,7 @@ impl Type {
 
     /// 创建一个返回值类型为`return_type`,形参列表为`params`的函数类型
     pub fn func_type(return_type: TypeLink, params: Vec<TypeLink>, is_variadic: bool) -> TypeLink {
-        let mut typ = Self::new(TypeKind::Func, 8, 8);
+        let mut typ = Self::new(TypeKind::Func, 1, 1);
         typ.return_type = Some(return_type);
         typ.params = params;
         typ.is_variadic = is_variadic;
