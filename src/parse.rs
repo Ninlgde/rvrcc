@@ -85,6 +85,7 @@
 //!         | "sizeof" unary
 //!         | "_Alignof" "(" typename ")"
 //!         | "_Alignof" unary
+//!         | "__builtin_types_compatible_p" "(" typename, typename, ")"
 //!         | ident
 //!         | str
 //!         | num
@@ -92,7 +93,7 @@
 //! abstract_declarator = pointers ("(" abstract_declarator ")")? type_suffix
 //! func_call = (assign ("," assign)*)? ")"
 
-use crate::ctype::{add_type, Type, TypeKind, TypeLink};
+use crate::ctype::{add_type, is_compatible, Type, TypeKind, TypeLink};
 use crate::initializer::{create_lvar_init, write_gvar_data, InitDesig, Initializer, Relocation};
 use crate::keywords::{
     KW_ALIGNAS, KW_ALIGNOF, KW_AUTO, KW_BOOL, KW_BREAK, KW_CASE, KW_CHAR, KW_CONST, KW_CONTINUE,
@@ -2223,7 +2224,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    /// cast = "(" typeName ")" cast | unary
+    /// cast = "(" typename ")" cast | unary
     fn cast(&mut self) -> Option<NodeLink> {
         let (pos, token) = self.current();
         let next = self.get_token(pos + 1);
@@ -2792,6 +2793,7 @@ impl<'a> Parser<'a> {
     ///         | "sizeof" unary
     ///         | "_Alignof" "(" typename ")"
     ///         | "_Alignof" unary
+    ///         | "__builtin_types_compatible_p" "(" typename, typename, ")"
     ///         | ident funcArgs?
     ///         | str
     ///         | num
@@ -2850,6 +2852,16 @@ impl<'a> Parser<'a> {
             let nt = self.tokens[pos].clone();
             let align = node.unwrap().get_type().as_ref().unwrap().borrow().align as i64;
             return Some(Node::new_unsigned_long(align, nt));
+        }
+
+        // "__builtin_types_compatible_p" "(" typeName, typeName, ")"
+        if token.equal("__builtin_types_compatible_p") {
+            self.next().skip("(");
+            let t1 = self.typename();
+            self.skip(",");
+            let t2 = self.typename();
+            self.skip(")");
+            return Some(Node::new_num(is_compatible(t1, t2), nt));
         }
 
         // ident

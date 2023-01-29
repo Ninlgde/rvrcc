@@ -77,6 +77,8 @@ pub struct Type {
     pub(crate) fs_reg1ty: Option<TypeLink>,
     /// 浮点结构体的对应寄存器
     pub(crate) fs_reg2ty: Option<TypeLink>,
+    /// 类型兼容性检查
+    pub(crate) origin: Option<TypeLink>,
 }
 
 impl Type {
@@ -99,6 +101,7 @@ impl Type {
             is_flexible: false,
             fs_reg1ty: None,
             fs_reg2ty: None,
+            origin: None,
         }
     }
 
@@ -365,6 +368,7 @@ impl Type {
             is_flexible: other.borrow().is_flexible,
             fs_reg1ty: other.borrow().fs_reg1ty.clone(),
             fs_reg2ty: other.borrow().fs_reg2ty.clone(),
+            origin: Some(other.clone()),
         }))
     }
 
@@ -636,4 +640,77 @@ fn add_type_option(node: Option<&mut NodeLink>) {
     if node.is_some() {
         add_type(node.unwrap());
     }
+}
+
+pub fn is_compatible(t1: TypeLink, t2: TypeLink) -> i64 {
+    if Rc::ptr_eq(&t1, &t2) {
+        return 1;
+    }
+
+    let tb1 = t1.borrow();
+    let tb2 = t2.borrow();
+    if tb1.origin.is_some() {
+        return is_compatible(tb1.origin.as_ref().unwrap().clone(), t2.clone());
+    }
+
+    if tb2.origin.is_some() {
+        return is_compatible(t1.clone(), tb2.origin.as_ref().unwrap().clone());
+    }
+
+    if tb1.kind != tb2.kind {
+        return 0;
+    }
+
+    return match tb1.kind {
+        TypeKind::Char | TypeKind::Short | TypeKind::Int | TypeKind::Long => {
+            if tb1.is_unsigned == tb2.is_unsigned {
+                1
+            } else {
+                0
+            }
+        }
+        TypeKind::Float | TypeKind::Double | TypeKind::Void => 1,
+        TypeKind::Ptr => is_compatible(
+            tb1.base.as_ref().unwrap().clone(),
+            tb2.base.as_ref().unwrap().clone(),
+        ),
+        TypeKind::Func => {
+            if is_compatible(
+                tb1.return_type.as_ref().unwrap().clone(),
+                tb2.return_type.as_ref().unwrap().clone(),
+            ) == 0
+            {
+                return 0;
+            }
+            if tb1.is_variadic != tb2.is_variadic {
+                return 0;
+            }
+            let p1 = &tb1.params;
+            let p2 = &tb2.params;
+            if p1.len() != p2.len() {
+                return 0;
+            }
+            for i in 0..p1.len() {
+                if is_compatible(p1[i].clone(), p2[i].clone()) == 0 {
+                    return 0;
+                }
+            }
+            1
+        }
+        TypeKind::Array => {
+            if is_compatible(
+                tb1.base.as_ref().unwrap().clone(),
+                tb2.base.as_ref().unwrap().clone(),
+            ) == 0
+            {
+                return 0;
+            }
+            if tb1.len < 0 && tb2.len < 0 && tb1.len != tb2.len {
+                1
+            } else {
+                0
+            }
+        }
+        _ => 0,
+    };
 }
