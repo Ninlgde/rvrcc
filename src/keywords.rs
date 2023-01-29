@@ -42,10 +42,12 @@ pub const KEYWORDS: [&str; KW_COUNT] = [
     KW_FLOAT,
     KW_DOUBLE,
     KW_TYPEOF,
+    KW_ASM,
+    KW_INLINE,
 ];
 
 /// 关键字数量
-const KW_COUNT: usize = 40;
+const KW_COUNT: usize = 42;
 
 /// 类型名称列表
 pub const KW_TYPENAME: [&str; KW_TYPENAME_COUNT] = [
@@ -160,3 +162,7 @@ pub const KW_FLOAT: &str = "float";
 pub const KW_DOUBLE: &str = "double";
 /// 关键字: typeof
 pub const KW_TYPEOF: &str = "typeof";
+/// 关键字: asm
+pub const KW_ASM: &str = "asm";
+/// 关键字: inline
+pub const KW_INLINE: &str = "inline";

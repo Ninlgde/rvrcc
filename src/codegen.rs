@@ -720,6 +720,9 @@ impl<'a> Generator<'a> {
                 writeln!("  # 跳转到.L.return.{}段", self.current_function_name);
                 writeln!("  j .L.return.{}", self.current_function_name);
             }
+            NodeKind::Asm => {
+                writeln!("  {}", node.asm_str);
+            }
             _ => {
                 error_token!(&node.token, "invalid statement")
             }

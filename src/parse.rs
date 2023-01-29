@@ -40,11 +40,13 @@
 //!        | "for" "(" exprStmt expr? ";" expr? ")" stmt
 //!        | "while" "(" expr ")" stmt
 //!        | "do" stmt "while" "(" expr ")" ";"
+//!        | asm_stmt
 //!        | "goto" ident ";"
 //!        | "break" ";"
 //!        | ident ":" stmt
 //!        | "{" compound_stmt
 //!        | expr_stmt
+//! asm_stmt = "asm" ("volatile" | "inline")* "(" string_literal ")"
 //! expr_stmt = expr? ";"
 //! expr = assign ("," expr)?
 //! assign = conditional (assign_op assign)?
@@ -97,11 +99,11 @@
 use crate::ctype::{add_type, is_compatible, Type, TypeKind, TypeLink};
 use crate::initializer::{create_lvar_init, write_gvar_data, InitDesig, Initializer, Relocation};
 use crate::keywords::{
-    KW_ALIGNAS, KW_ALIGNOF, KW_AUTO, KW_BOOL, KW_BREAK, KW_CASE, KW_CHAR, KW_CONST, KW_CONTINUE,
-    KW_DEFAULT, KW_DO, KW_DOUBLE, KW_ELSE, KW_ENUM, KW_EXTERN, KW_FLOAT, KW_FOR, KW_GOTO, KW_IF,
-    KW_INT, KW_LONG, KW_NORETURN, KW_REGISTER, KW_RESTRICT, KW_RETURN, KW_SHORT, KW_SIGNED,
-    KW_SIZEOF, KW_STATIC, KW_STRUCT, KW_SWITCH, KW_TYPEDEF, KW_TYPEOF, KW_UNION, KW_UNSIGNED,
-    KW_VOID, KW_VOLATILE, KW_WHILE, KW___RESTRICT, KW___RESTRICT__,
+    KW_ALIGNAS, KW_ALIGNOF, KW_ASM, KW_AUTO, KW_BOOL, KW_BREAK, KW_CASE, KW_CHAR, KW_CONST,
+    KW_CONTINUE, KW_DEFAULT, KW_DO, KW_DOUBLE, KW_ELSE, KW_ENUM, KW_EXTERN, KW_FLOAT, KW_FOR,
+    KW_GOTO, KW_IF, KW_INLINE, KW_INT, KW_LONG, KW_NORETURN, KW_REGISTER, KW_RESTRICT, KW_RETURN,
+    KW_SHORT, KW_SIGNED, KW_SIZEOF, KW_STATIC, KW_STRUCT, KW_SWITCH, KW_TYPEDEF, KW_TYPEOF,
+    KW_UNION, KW_UNSIGNED, KW_VOID, KW_VOLATILE, KW_WHILE, KW___RESTRICT, KW___RESTRICT__,
 };
 use crate::node::{add_with_type, eval, sub_with_type, LabelInfo, Node, NodeKind, NodeLink};
 use crate::obj::{Member, Obj, ObjLink, Scope, VarAttr, VarScope};
@@ -1441,6 +1443,29 @@ impl<'a> Parser<'a> {
         }
     }
 
+    /// asm_stmt = "asm" ("volatile" | "inline")* "(" string_literal ")"
+    fn asm_stmt(&mut self) -> Option<NodeLink> {
+        let mut node = Node::new(NodeKind::Asm, self.current_token().clone());
+        self.next();
+
+        let mut token = self.current_token().clone();
+        while token.equal(KW_VOLATILE) || token.equal(KW_INLINE) {
+            token = self.next().current_token().clone();
+        }
+        self.skip("(");
+        let token = self.current_token();
+        if !token.is_string() {
+            error_token!(token, "expected string literal");
+        }
+        let (_, t) = token.get_string();
+        if t.borrow().base.as_ref().unwrap().borrow().kind != TypeKind::Char {
+            error_token!(token, "expected string literal");
+        }
+        node.asm_str = token.get_string_literal();
+        self.next().skip(")");
+        Some(node)
+    }
+
     /// 解析语句
     /// stmt = "return" expr? ";"
     ///        | "if" "(" expr ")" stmt ("else" stmt)?
@@ -1450,6 +1475,7 @@ impl<'a> Parser<'a> {
     ///        | "for" "(" exprStmt expr? ";" expr? ")" stmt
     ///        | "while" "(" expr ")" stmt
     ///        | "do" stmt "while" "(" expr ")" ";"
+    ///        | asm_stmt
     ///        | "goto" ident ";"
     ///        | "break" ";"
     ///        | "continue" ";"
@@ -1701,6 +1727,10 @@ impl<'a> Parser<'a> {
             self.skip(")");
             self.skip(";");
             return Some(node);
+        }
+
+        if token.equal(KW_ASM) {
+            return self.asm_stmt();
         }
 
         // "goto" ident ";"

@@ -96,6 +96,8 @@ pub enum NodeKind {
     Cast,
     /// 栈中变量清零
     MemZero,
+    /// "asm"汇编
+    Asm,
 }
 
 /// box for node
@@ -155,6 +157,8 @@ pub struct Node {
     pub(crate) case_next: Vec<NodeLink>,
     /// switch的default部分
     pub(crate) default_case: Option<NodeLink>,
+    /// "asm" 字符串字面量
+    pub(crate) asm_str: String,
 }
 
 impl Node {
@@ -184,6 +188,7 @@ impl Node {
             continue_label: None,
             case_next: Vec::new(),
             default_case: None,
+            asm_str: "".to_string(),
         })
     }
 
