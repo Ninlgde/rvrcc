@@ -20,6 +20,8 @@ pub struct MacroArg {
     pub(crate) name: String,
     /// 对应的终结符链表
     pub(crate) tokens: Vec<Token>,
+    /// 是否为可变参数
+    pub(crate) is_va_arg: bool,
 }
 
 impl MacroArg {
@@ -48,7 +50,7 @@ struct MacroInner {
     /// 宏处理函数
     handler: Option<MacroHandlerFn>,
     /// 是否为可变参数的
-    is_variadic: bool,
+    va_args_name: String,
 }
 
 impl MacroInner {
@@ -61,7 +63,7 @@ impl MacroInner {
             deleted,
             is_obj_like,
             handler: None,
-            is_variadic: false,
+            va_args_name: "".to_string(),
         }
     }
 }
@@ -148,15 +150,15 @@ impl Macro {
     }
 
     /// 宏是否为可变参数
-    pub fn get_variadic(&self) -> bool {
+    pub fn get_va_args_name(&self) -> String {
         let inner = self.inner.borrow();
-        inner.is_variadic
+        inner.va_args_name.to_string()
     }
 
     /// 设置宏为可变
-    pub fn set_variadic(&mut self, variadic: bool) {
+    pub fn set_va_args_name(&mut self, name: String) {
         let mut inner = self.inner.borrow_mut();
-        inner.is_variadic = variadic;
+        inner.va_args_name = name;
     }
 }
 

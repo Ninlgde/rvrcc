@@ -602,7 +602,7 @@ impl<'a> Preprocessor<'a> {
 
         // 处理宏函数，并连接到Tok之后
         // 读取宏函数实参，这里是宏函数的隐藏集
-        let args = self.read_macro_args(&macro_.get_params(), macro_.get_variadic());
+        let args = self.read_macro_args(&macro_.get_params(), &macro_.get_va_args_name());
         // 这里返回的是右括号，这里是宏参数的隐藏集
         let r_paren = self.current_token().clone();
         // 宏函数间可能具有不同的隐藏集，新的终结符就不知道应该使用哪个隐藏集。
@@ -638,13 +638,13 @@ impl<'a> Preprocessor<'a> {
         // 判断是宏变量还是宏函数，括号前没有空格则为宏函数
         if !token.has_space() && token.equal("(") {
             // 构造形参
-            let mut is_variadic = false;
-            let params = self.next().read_macro_params(&mut is_variadic);
+            let mut va_args_name = "".to_string();
+            let params = self.next().read_macro_params(&mut va_args_name);
             let body = self.copy_line();
             // 增加宏函数
             let mut macro_ = self.add_macro(&name, false, body);
             macro_.set_params(params);
-            macro_.set_variadic(is_variadic);
+            macro_.set_va_args_name(va_args_name);
         } else {
             // 增加宏变量
             let body = self.copy_line();
@@ -653,17 +653,17 @@ impl<'a> Preprocessor<'a> {
     }
 
     /// 读取宏形参
-    fn read_macro_params(&mut self, is_variadic: &mut bool) -> Vec<MacroParam> {
+    fn read_macro_params(&mut self, va_args_name: &mut String) -> Vec<MacroParam> {
         let mut params = vec![];
 
         while !self.current_token().equal(")") {
             if params.len() > 0 {
                 self.skip(",");
             }
-            let token = self.current_token();
+            let (pos, token) = self.current();
             // 处理可变参数
             if token.equal("...") {
-                *is_variadic = true;
+                *va_args_name = "__VA_ARGS__".to_string();
                 // "..."应为最后一个参数
                 self.next().skip(")");
                 return params;
@@ -671,6 +671,11 @@ impl<'a> Preprocessor<'a> {
             // 如果不是标识符报错
             if !token.is_ident() {
                 error_token!(token, "expected an identifier");
+            }
+            if self.tokens[pos + 1].equal("...") {
+                *va_args_name = token.get_name();
+                self.next().next().skip(")");
+                return params;
             }
             // 创建macro param
             let param = MacroParam {
@@ -717,11 +722,12 @@ impl<'a> Preprocessor<'a> {
         MacroArg {
             name: "".to_string(),
             tokens,
+            is_va_arg: false,
         }
     }
 
     /// 读取宏实参
-    fn read_macro_args(&mut self, params: &Vec<MacroParam>, is_variadic: bool) -> Vec<MacroArg> {
+    fn read_macro_args(&mut self, params: &Vec<MacroParam>, va_args_name: &str) -> Vec<MacroArg> {
         let start = self.current_token().clone();
         self.next().next();
 
@@ -739,7 +745,7 @@ impl<'a> Preprocessor<'a> {
         }
 
         // 剩余未匹配的实参，如果为可变参数
-        if is_variadic {
+        if va_args_name.len() != 0 {
             let token = self.current_token();
             let mut arg;
             // 剩余实参为空
@@ -747,6 +753,7 @@ impl<'a> Preprocessor<'a> {
                 arg = MacroArg {
                     name: "".to_string(),
                     tokens: vec![Token::new_eof(0, 0)],
+                    is_va_arg: false,
                 };
             } else {
                 // 处理对应可变参数的实参
@@ -756,7 +763,8 @@ impl<'a> Preprocessor<'a> {
                 }
                 arg = self.read_macro_arg_one(true);
             }
-            arg.name = "__VA_ARGS__".to_string();
+            arg.name = va_args_name.to_string();
+            arg.is_va_arg = true;
             args.push(arg);
         } else if args.len() < params.len() {
             error_token!(&start, "too many arguments");
@@ -866,7 +874,7 @@ fn subst(processor: &Preprocessor, body: Vec<Token>, args: Vec<MacroArg>) -> Vec
         // __VA_ARGS__.
         if token.equal(",") && body[i + 1].equal("##") {
             let arg = find_arg(&args, &body[i + 2]);
-            if arg.is_some() && arg.unwrap().name.eq("__VA_ARGS__") {
+            if arg.is_some() && arg.unwrap().is_va_arg {
                 let arg = arg.unwrap();
                 let first = arg.tokens.first().unwrap();
                 if first.at_eof() {
