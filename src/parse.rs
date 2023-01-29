@@ -7,7 +7,7 @@
 //!            | "_Alignas" ("(" typename | const_expr ")")
 //!            | "signed" | "unsigned"
 //!            | struct_declare | union_declare | typedef_name
-//!            | enum_specifier)+
+//!            | enum_specifier |  | typeof_specifier
 //!            | "const" | "volatile" | "auto" | "register" | "restrict"
 //!            | "__restrict" | "__restrict__" | "_Noreturn")+
 //! enum_specifier = ident? "{" enum_list? "}"
@@ -98,8 +98,8 @@ use crate::keywords::{
     KW_ALIGNAS, KW_ALIGNOF, KW_AUTO, KW_BOOL, KW_BREAK, KW_CASE, KW_CHAR, KW_CONST, KW_CONTINUE,
     KW_DEFAULT, KW_DO, KW_DOUBLE, KW_ELSE, KW_ENUM, KW_EXTERN, KW_FLOAT, KW_FOR, KW_GOTO, KW_IF,
     KW_INT, KW_LONG, KW_NORETURN, KW_REGISTER, KW_RESTRICT, KW_RETURN, KW_SHORT, KW_SIGNED,
-    KW_SIZEOF, KW_STATIC, KW_STRUCT, KW_SWITCH, KW_TYPEDEF, KW_UNION, KW_UNSIGNED, KW_VOID,
-    KW_VOLATILE, KW_WHILE, KW___RESTRICT, KW___RESTRICT__,
+    KW_SIZEOF, KW_STATIC, KW_STRUCT, KW_SWITCH, KW_TYPEDEF, KW_TYPEOF, KW_UNION, KW_UNSIGNED,
+    KW_VOID, KW_VOLATILE, KW_WHILE, KW___RESTRICT, KW___RESTRICT__,
 };
 use crate::node::{add_with_type, eval, sub_with_type, LabelInfo, Node, NodeKind, NodeLink};
 use crate::obj::{Member, Obj, ObjLink, Scope, VarAttr, VarScope};
@@ -417,7 +417,7 @@ impl<'a> Parser<'a> {
     ///            | "_Alignas" ("(" typename | const_expr ")")
     ///            | "signed" | "unsigned"
     ///            | struct_declare | union_declare | typedef_name
-    ///            | enum_specifier)+
+    ///            | enum_specifier | typeof_specifier
     ///            | "const" | "volatile" | "auto" | "register" | "restrict"
     ///            | "__restrict" | "__restrict__" | "_Noreturn")+
     /// declarator specifier
@@ -505,6 +505,7 @@ impl<'a> Parser<'a> {
             if token.equal(KW_STRUCT)
                 || token.equal(KW_UNION)
                 || token.equal(KW_ENUM)
+                || token.equal(KW_TYPEOF)
                 || typ2.is_some()
             {
                 if counter > 0 {
@@ -516,6 +517,8 @@ impl<'a> Parser<'a> {
                     typ = self.next().union_declare();
                 } else if token.equal(KW_ENUM) {
                     typ = self.next().enum_specifier();
+                } else if token.equal(KW_TYPEOF) {
+                    typ = self.next().typeof_specifier();
                 } else {
                     typ = typ2.unwrap();
                     self.next();
@@ -2387,6 +2390,23 @@ impl<'a> Parser<'a> {
             self.push_tag_scope(tag_name, typ.clone())
         }
 
+        typ
+    }
+
+    /// typeof-specifier = "(" (expr | typename) ")"
+    fn typeof_specifier(&mut self) -> TypeLink {
+        self.skip("(");
+
+        let token = self.current_token();
+        let typ;
+        if self.is_typename(token) {
+            typ = self.typename();
+        } else {
+            let mut expr = self.expr();
+            add_type(expr.as_mut().unwrap());
+            typ = expr.as_ref().unwrap().typ.as_ref().unwrap().clone();
+        }
+        self.skip(")");
         typ
     }
 
