@@ -48,7 +48,7 @@
 //! expr_stmt = expr? ";"
 //! expr = assign ("," expr)?
 //! assign = conditional (assign_op assign)?
-//! conditional = log_or ("?" expr ":" conditional)?
+//! conditional = log_or ("?" expr? ":" conditional)?
 //! log_or = log_and ("||" log_and)*
 //! log_and = bit_or ("&&" bit_or)*
 //! bit_or = bit_xor ("|" bit_xor)*
@@ -1967,15 +1967,31 @@ impl<'a> Parser<'a> {
         Some(node)
     }
 
-    /// conditional = log_or ("?" expr ":" conditional)?
+    /// conditional = log_or ("?" expr? ":" conditional)?
     fn conditional(&mut self) -> Option<NodeLink> {
         // log_or
-        let cond = self.log_or().unwrap();
+        let mut cond = self.log_or().unwrap();
 
-        let (_, token) = self.current();
+        let (pos, token) = self.current();
+        let token = token.clone();
         // "?"
         if !token.equal("?") {
             return Some(cond);
+        }
+
+        // ":"
+        if self.tokens[pos + 1].equal(":") {
+            // [GNU] Compile `a ?: b` as `tmp = a, tmp ? tmp : b`.
+            add_type(&mut cond);
+            let ct = cond.typ.as_ref().unwrap().clone();
+            let var = self.new_lvar("".to_string(), ct).unwrap();
+            let var = Node::new_var(var.clone(), token.clone());
+            let lhs = Node::new_binary(NodeKind::Assign, var.clone(), cond, token.clone());
+            let mut rhs = Node::new(NodeKind::Cond, token.clone());
+            rhs.cond = Some(var.clone());
+            rhs.then = Some(var.clone());
+            rhs.els = self.next().next().conditional();
+            return Some(Node::new_binary(NodeKind::Comma, lhs, rhs, token.clone()));
         }
 
         // expr ":" conditional
