@@ -134,6 +134,8 @@ pub(crate) struct Parser<'a> {
     scopes: Vec<Scope>,
     // 当前正在解析的function
     cur_func: Option<ObjLink>,
+    // 当前正在解析的function的引用列表
+    cur_func_refs: Vec<String>,
     /// goto标签列表
     gotos: Vec<Rc<RefCell<LabelInfo>>>,
     /// 标签列表
@@ -173,6 +175,7 @@ impl<'a> Parser<'a> {
             unique_idx: 0,
             scopes: vec![Scope::new()],
             cur_func: None,
+            cur_func_refs: vec![],
             gotos: Vec::new(),
             labels: Vec::new(),
             brk_label: String::new(),
@@ -205,6 +208,10 @@ impl<'a> Parser<'a> {
             }
 
             self.global_variable(base_type, va);
+        }
+
+        for obj in self.globals.iter() {
+            self.make_live(obj, true);
         }
 
         self.globals.to_vec()
@@ -329,6 +336,44 @@ impl<'a> Parser<'a> {
             var_attr.is_static || (var_attr.is_inline && !var_attr.is_extern),
             var_attr.is_inline,
         );
+        for cur_func_ref in self.cur_func_refs.iter() {
+            function.push_refs(cur_func_ref.to_string());
+        }
+        self.cur_func_refs.clear();
+    }
+
+    /// 使方法活跃
+    /// 因为是递归调用并且传递了refcell,导致借用的时候会出`BorrowMutError`
+    /// 所以里面把借用和可变借用分开了,并各自用{}包含,将其作用于降到最低
+    fn make_live(&self, obj: &ObjLink, check_root: bool) {
+        {
+            let var = obj.borrow();
+            if check_root && !var.is_root() {
+                return;
+            }
+            if !var.is_func() || var.is_live() {
+                return;
+            }
+        }
+        {
+            let mut var = obj.borrow_mut();
+            var.make_live();
+        }
+        for rf in obj.borrow().get_refs() {
+            let func = self.find_func(rf);
+            if func.is_some() {
+                self.make_live(func.as_ref().unwrap(), false);
+            }
+        }
+    }
+
+    /// 通过名称，查找一个函数
+    fn find_func(&self, name: &String) -> Option<ObjLink> {
+        let scope = self.scopes.last().unwrap();
+        if let Some(var) = scope.get_var(name) {
+            return Some(var.clone().borrow().var.as_ref().unwrap().clone());
+        }
+        return None;
     }
 
     /// 处理goto和标签
@@ -2991,7 +3036,20 @@ impl<'a> Parser<'a> {
                 let enum_type = &vsb.enum_type;
                 let enum_val = &vsb.enum_val;
                 if var.is_some() {
-                    node = Node::new_var(var.as_ref().unwrap().clone(), nt);
+                    let var = var.as_ref().unwrap();
+                    let mut vb = var.borrow_mut();
+                    if vb.is_func() {
+                        if self.cur_func.is_some() {
+                            // 不知道 cur_func 倍哪里借用了,放到cur_func_refs里最后再添加到cur_func里去
+                            // let cf = self.cur_func.as_mut().unwrap();
+                            // let mut cfb = cf.borrow_mut();
+                            // cfb.push_refs(vb.get_name().to_string());
+                            self.cur_func_refs.push(vb.get_name().to_string());
+                        } else {
+                            vb.set_root(true);
+                        }
+                    }
+                    node = Node::new_var(var.clone(), nt);
                     return Some(node);
                 }
                 if enum_type.is_some() {

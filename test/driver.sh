@@ -43,7 +43,7 @@ $rvrcc --help 2>&1 | grep -q -E "rv(r)*cc"
 check --help
 
 # -S -q应该是会直接打断进程所以先grep一下,再grep-q不打印结果
-echo 'int main() {}' | $rvrcc -S -o- - | grep 'main:' | grep -q 'main'
+echo 'int main() {}' | $rvrcc -S -o- - | grep -q 'main'
 check -S
 
 # 默认输出的文件
@@ -156,6 +156,43 @@ check inline
 echo 'extern inline void foo() {}' > $tmp/inline1.c
 echo 'int foo(); int main() { foo(); }' > $tmp/inline2.c
 $rvrcc -o /dev/null $tmp/inline1.c $tmp/inline2.c
+check inline
+
+# [261] 如果没被引用不生成静态内联函数
+echo 'static inline void f1() {}' | $rvrcc -o- -S - | grep -v -q f1:
+check inline
+
+echo 'static inline void f1() {} void foo() { f1(); }' | $rvrcc -o- -S - | grep -q f1:
+check inline
+
+echo 'static inline void f1() {} static inline void f2() { f1(); } void foo() { f1(); }' | $rvrcc -o- -S - | grep -q f1:
+check inline
+
+echo 'static inline void f1() {} static inline void f2() { f1(); } void foo() { f1(); }' | $rvrcc -o- -S - | grep -v -q f2:
+check inline
+
+echo 'static inline void f1() {} static inline void f2() { f1(); } void foo() { f2(); }' | $rvrcc -o- -S - | grep -q f1:
+check inline
+
+echo 'static inline void f1() {} static inline void f2() { f1(); } void foo() { f2(); }' | $rvrcc -o- -S - | grep -q f2:
+check inline
+
+echo 'static inline void f2(); static inline void f1() { f2(); } static inline void f2() { f1(); } void foo() {}' | $rvrcc -o- -S - | grep -v -q f1:
+check inline
+
+echo 'static inline void f2(); static inline void f1() { f2(); } static inline void f2() { f1(); } void foo() {}' | $rvrcc -o- -S - | grep -v -q f2:
+check inline
+
+echo 'static inline void f2(); static inline void f1() { f2(); } static inline void f2() { f1(); } void foo() { f1(); }' | $rvrcc -o- -S - | grep -q f1:
+check inline
+
+echo 'static inline void f2(); static inline void f1() { f2(); } static inline void f2() { f1(); } void foo() { f1(); }' | $rvrcc -o- -S - | grep -q f2:
+check inline
+
+echo 'static inline void f2(); static inline void f1() { f2(); } static inline void f2() { f1(); } void foo() { f2(); }' | $rvrcc -o- -S - | grep -q f1:
+check inline
+
+echo 'static inline void f2(); static inline void f1() { f2(); } static inline void f2() { f1(); } void foo() { f2(); }' | $rvrcc -o- -S - | grep -q f2:
 check inline
 
 echo OK

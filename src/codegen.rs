@@ -302,12 +302,20 @@ impl<'a> Generator<'a> {
                     stack_size,
                     is_definition,
                     is_static,
+                    is_live,
                     va_area,
                     ..
                 } => {
                     if !is_definition {
                         continue;
                     }
+
+                    // No code is emitted for "static inline" functions
+                    // if no one is referencing them.
+                    if !is_live {
+                        continue;
+                    }
+
                     if *is_static {
                         writeln!("\n  # 定义局部{}函数", name);
                         writeln!("  .local {}", name);

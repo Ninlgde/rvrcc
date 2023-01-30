@@ -61,6 +61,13 @@ pub enum Obj {
         token: Option<Token>,
         /// 内联
         is_inline: bool,
+        /// 静态内联函数
+        /// 是否活跃
+        is_live: bool,
+        /// 是否是根
+        is_root: bool,
+        /// 引用列表
+        refs: Vec<String>,
     },
 }
 
@@ -285,6 +292,60 @@ impl Obj {
         }
     }
 
+    /// 增加引用
+    pub fn push_refs(&mut self, rf: String) {
+        match self {
+            Obj::Func { refs, .. } => {
+                refs.push(rf);
+            }
+            _ => {}
+        }
+    }
+
+    /// 设置root
+    pub fn set_root(&mut self, root: bool) {
+        match self {
+            Obj::Func { is_root, .. } => {
+                *is_root = root;
+            }
+            _ => {}
+        }
+    }
+
+    /// 是否未根函数
+    pub fn is_root(&self) -> bool {
+        match self {
+            Obj::Func { is_root, .. } => *is_root,
+            _ => false,
+        }
+    }
+
+    /// 是否活跃
+    pub fn is_live(&self) -> bool {
+        match self {
+            Obj::Func { is_live, .. } => *is_live,
+            _ => false,
+        }
+    }
+
+    /// 设置活跃
+    pub fn make_live(&mut self) {
+        match self {
+            Obj::Func { is_live, .. } => {
+                *is_live = true;
+            }
+            _ => {}
+        }
+    }
+
+    /// 获取引用列表
+    pub fn get_refs(&self) -> &Vec<String> {
+        match self {
+            Obj::Func { refs, .. } => refs,
+            _ => panic!("error object"),
+        }
+    }
+
     /// 函数对象设置相关信息
     pub fn set_function(
         &mut self,
@@ -304,6 +365,7 @@ impl Obj {
                 is_definition,
                 is_static,
                 is_inline,
+                is_root,
                 va_area,
                 ..
             } => {
@@ -313,6 +375,7 @@ impl Obj {
                 *is_definition = definition;
                 *is_static = is_static_;
                 *is_inline = is_inline_;
+                *is_root = !(is_static_ && is_inline_);
                 *va_area = va_area_
             }
             _ => panic!("error object!"),
@@ -333,6 +396,9 @@ impl Obj {
             va_area: None,
             token: None,
             is_inline: false,
+            is_live: false,
+            is_root: false,
+            refs: vec![],
         }
     }
 }
