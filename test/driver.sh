@@ -7,7 +7,7 @@ RISCV=/Users/malikma/Desktop/source/opt/riscv_linux
 RUN="spike --isa=rv64gc $RISCV/riscv64-unknown-linux-gnu/bin/pk"
 
 # 创建一个临时文件夹，XXXXXX会被替换为随机字符串
-tmp=$(mktemp -d /tmp/rvcc-test-XXXXXX)
+tmp=$(mktemp -d /tmp/rvrcc-test-XXXXXX)
 # 清理工作
 # 在接收到 中断（ctrl+c），终止，挂起（ssh掉线，用户退出），退出 信号时
 # 执行rm命令，删除掉新建的临时文件夹
@@ -194,5 +194,15 @@ check inline
 
 echo 'static inline void f2(); static inline void f1() { f2(); } static inline void f2() { f1(); } void foo() { f2(); }' | $rvrcc -o- -S - | grep -q f2:
 check inline
+
+# -idirafter
+# [263] 支持-idirafter选项
+mkdir -p $tmp/dir1 $tmp/dir2
+echo foo > $tmp/dir1/idirafter
+echo bar > $tmp/dir2/idirafter
+echo "#include \"idirafter\"" | $rvrcc -I$tmp/dir1 -I$tmp/dir2 -E - | grep foo
+check -idirafter
+echo "#include \"idirafter\"" | $rvrcc -idirafter $tmp/dir1 -I$tmp/dir2 -E - | grep bar
+check -idirafter
 
 echo OK

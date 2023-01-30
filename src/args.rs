@@ -48,7 +48,7 @@ impl Args {
 
     /// 判断需要一个参数的选项，是否具有一个参数
     fn take_arg(arg: &str) -> bool {
-        let args = vec!["-o", "-I"];
+        let args = vec!["-o", "-I", "-idirafter"];
         for a in args {
             if arg.eq(a) {
                 return true;
@@ -74,6 +74,8 @@ impl Args {
         let mut output = "";
 
         let mut result = Args::new();
+
+        let mut idirafter = vec![];
 
         let mut i = 1;
         while i < args.len() {
@@ -184,6 +186,13 @@ impl Args {
                 continue;
             }
 
+            // 解析-idirafter
+            if arg.eq("-idirafter") {
+                idirafter.push(args[i + 1].to_string());
+                i += 2;
+                continue;
+            }
+
             // 忽略多个选项
             if arg.starts_with("-O")
                 || arg.starts_with("-W")
@@ -215,6 +224,8 @@ impl Args {
         if result.inputs.len() == 0 {
             panic!("no input files")
         }
+
+        result.include_path.append(&mut idirafter);
 
         result.opt_o = output.to_string();
         result
