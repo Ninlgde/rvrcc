@@ -244,7 +244,22 @@ impl<'a> Generator<'a> {
                     if var.get_type().borrow().align == 0 {
                         panic!("Align can not be 0!");
                     }
-                    writeln!("  .align {}", simple_log2(var.get_align()));
+                    // 数组超过16字节时，对齐值至少为16字节
+                    let mut align = var.get_align();
+                    if var.get_type().borrow().kind == TypeKind::Array
+                        && var.get_type().borrow().size >= 16
+                    {
+                        align = cmp::max(16, var.get_align());
+                    }
+                    writeln!("  .align {}", simple_log2(align));
+
+                    // 为试探性的全局变量生成指示
+                    if var.is_tentative() {
+                        let ts = var.get_type().borrow().size;
+                        writeln!("  .comm {}, {}, {}", var.get_name(), ts, align);
+                        continue;
+                    }
+
                     // 判断是否有初始值
                     if init_data.is_some() {
                         writeln!("\n  # 数据段标签");
@@ -263,11 +278,10 @@ impl<'a> Generator<'a> {
                                     pos += 8;
                                 } else {
                                     // 打印出字符串的内容，包括转义字符
-                                    writeln!("  # 字符串字面量");
                                     let i = chars[pos as usize];
                                     let c = i as u8 as char;
                                     if c.is_ascii() && !c.is_ascii_control() {
-                                        writeln!("  .byte {}\t# {}", i, c);
+                                        writeln!("  .byte {}\t# 字符：{}", i, c);
                                     } else {
                                         writeln!("  .byte {}", i);
                                     }
@@ -1005,8 +1019,8 @@ impl<'a> Generator<'a> {
                 // 此处获取到栈传递参数的数量
                 let stack = self.push_args(&node);
                 self.gen_expr(node.lhs.as_ref().unwrap());
-                // 将a0的值存入t0
-                writeln!("  mv t0, a0");
+                // 将a0的值存入t5
+                writeln!("  mv t5, a0");
 
                 // 反向弹栈，a0->参数1，a1->参数2……
                 let mut gp = 0;
@@ -1103,7 +1117,7 @@ impl<'a> Generator<'a> {
 
                 // 偶数深度，sp已经对齐16字节
                 writeln!("  # 调用函数");
-                writeln!("  jalr t0");
+                writeln!("  jalr t5");
 
                 // 回收为栈传递的变量开辟的栈空间
                 if stack > 0 {
@@ -1360,38 +1374,47 @@ impl<'a> Generator<'a> {
             // 变量
             let var = &node.var;
             let var = &*var.as_ref().unwrap().borrow();
-            match var {
-                Obj::Var {
-                    is_local,
-                    offset,
-                    name,
-                    ..
-                } => {
-                    if *is_local {
-                        // 偏移量是相对于fp的
-                        writeln!("  # 获取局部变量{}的栈内地址为{}(fp)", name, offset);
-                        writeln!("  li t0, {}", offset);
-                        writeln!("  add a0, fp, t0");
-                    } else {
-                        let typ = node.typ.as_ref().unwrap();
-                        if typ.borrow().kind == TypeKind::Func {
-                            writeln!("  # 获取函数{}的地址", name);
-                        } else {
-                            writeln!("  # 获取全局变量{}的地址", name);
-                        }
-                        writeln!("  la a0, {}", name);
-                    }
-                }
-                Obj::Func { name, .. } => {
-                    let typ = node.typ.as_ref().unwrap();
-                    if typ.borrow().kind == TypeKind::Func {
-                        writeln!("  # 获取函数{}的地址", name);
-                    } else {
-                        writeln!("  # 获取全局变量{}的地址", name);
-                    }
-                    writeln!("  la a0, {}", name);
-                }
+            let typ = node.typ.as_ref().unwrap();
+            // 局部变量
+            if var.is_local() {
+                // 偏移量是相对于fp的
+                writeln!(
+                    "  # 获取局部变量{}的栈内地址为{}(fp)",
+                    var.get_name(),
+                    var.get_offset()
+                );
+                writeln!("  li t0, {}", var.get_offset());
+                writeln!("  add a0, fp, t0");
+                return;
             }
+
+            // 函数
+            if typ.borrow().kind == TypeKind::Func {
+                if var.is_definition() {
+                    // 定义的函数
+                    writeln!("  # 获取函数{}的地址", var.get_name());
+                    writeln!("  la a0, {}", var.get_name());
+                } else {
+                    // 外部函数
+                    let c = self.count();
+                    writeln!("  # 获取外部函数的绝对地址");
+                    writeln!(".Lpcrel_hi{}:", c);
+                    // 高20位地址，存到a0中
+                    writeln!("  auipc a0, %got_pcrel_hi({})", var.get_name());
+                    // 低12位地址，加到a0中
+                    writeln!("  ld a0, %pcrel_lo(.Lpcrel_hi{})(a0)", c);
+                }
+                return;
+            }
+
+            // 全局变量
+            let c = self.count();
+            writeln!("  # 获取全局变量的绝对地址");
+            writeln!(".Lpcrel_hi{}:", c);
+            // 高20位地址，存到a0中
+            writeln!("  auipc a0, %got_pcrel_hi({})", var.get_name());
+            // 低12位地址，加到a0中
+            writeln!("  ld a0, %pcrel_lo(.Lpcrel_hi{})(a0)", c);
         } else if node.kind == NodeKind::DeRef {
             // 解引用*
             self.gen_expr(node.lhs.as_ref().unwrap());

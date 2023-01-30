@@ -22,10 +22,13 @@ pub enum Obj {
         typ: TypeLink,
         /// 是 局部或全局 变量
         is_local: bool,
-        /// 全局变量
-        init_data: Option<Vec<i8>>,
         /// 是否为文件域内的
         is_static: bool,
+        /// 全局变量
+        /// 是否为试探性的变量
+        is_tentative: bool,
+        /// 用于初始化的数据
+        init_data: Option<Vec<i8>>,
         /// 指向其他全局变量的指针
         relocation: *mut Relocation,
         /// 是否为函数定义
@@ -215,6 +218,7 @@ impl Obj {
             align,
             token: None,
             is_half_by_stack: false,
+            is_tentative: false,
         }
     }
 
@@ -289,6 +293,22 @@ impl Obj {
         match self {
             Self::Var { align, .. } => *align,
             _ => 0,
+        }
+    }
+
+    /// 获取全局变量是否为试探性的
+    pub fn is_tentative(&self) -> bool {
+        match self {
+            Self::Var { is_tentative, .. } => *is_tentative,
+            _ => false,
+        }
+    }
+
+    /// 设置全局变量为试探性的
+    pub fn set_tentative(&mut self, tentative: bool) {
+        match self {
+            Self::Var { is_tentative, .. } => *is_tentative = tentative,
+            _ => {}
         }
     }
 

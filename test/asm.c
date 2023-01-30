@@ -23,7 +23,7 @@ static inline char *asm_fn5(void) {
 
 int main() {
     printf("[259] 支持asm语句\n");
-    ASSERT(50, asm_fn1());
+    ASSERT(52, asm_fn1() + 2);
     ASSERT(55, asm_fn2());
     ASSERT(50, asm_fn3());
 

@@ -214,7 +214,48 @@ impl<'a> Parser<'a> {
             self.make_live(obj, true);
         }
 
+        // 删除冗余的试探性定义
+        self.scan_globals();
+
         self.globals.to_vec()
+    }
+
+    /// 删除冗余的试探性定义
+    fn scan_globals(&mut self) {
+        // 新的全局变量的链表
+        let mut ng = vec![];
+
+        // 遍历全局变量，删除冗余的试探性定义
+        for obj in self.globals.iter() {
+            // 不是试探性定义，直接加入到新链表中
+            if !obj.borrow().is_tentative() {
+                ng.push(obj.clone());
+                continue;
+            }
+
+            // 查找其他具有定义的同名标志符
+            // 从头遍历
+            let mut var2 = None;
+            for obj2 in self.globals.iter() {
+                let eq = Rc::ptr_eq(obj, obj2);
+                let is_definition = obj2.borrow().is_definition();
+                let name_eq = obj.borrow().get_name().eq(obj2.borrow().get_name());
+                // 判断 不是同一个变量，变量具有定义，二者同名
+                if !eq && is_definition && name_eq {
+                    var2 = Some(obj2.clone());
+                    break;
+                }
+            }
+
+            // 如果Var2为空，说明需要生成代码，加入到新链表中
+            // 如果Var2不为空，说明存在定义，那么就不需要生成试探性定义
+            if var2.is_none() {
+                ng.push(obj.clone());
+            }
+        }
+
+        // 替换为新的全局变量链表
+        self.globals = ng;
     }
 
     /// 全局变量
@@ -247,6 +288,9 @@ impl<'a> Parser<'a> {
             let (_, token) = self.current();
             if token.equal("=") {
                 self.next().gvar_initializer(var.unwrap());
+            } else if !var_attr.is_extern {
+                // 没有初始化器的全局变量设为试探性的
+                var.as_mut().unwrap().borrow_mut().set_tentative(true);
             }
         }
     }

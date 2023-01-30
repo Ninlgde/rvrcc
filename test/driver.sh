@@ -200,9 +200,9 @@ check inline
 mkdir -p $tmp/dir1 $tmp/dir2
 echo foo > $tmp/dir1/idirafter
 echo bar > $tmp/dir2/idirafter
-echo "#include \"idirafter\"" | $rvrcc -I$tmp/dir1 -I$tmp/dir2 -E - | grep foo
+echo "#include \"idirafter\"" | $rvrcc -I$tmp/dir1 -I$tmp/dir2 -E - | grep -q foo
 check -idirafter
-echo "#include \"idirafter\"" | $rvrcc -idirafter $tmp/dir1 -I$tmp/dir2 -E - | grep bar
+echo "#include \"idirafter\"" | $rvrcc -idirafter $tmp/dir1 -I$tmp/dir2 -E - | grep -q bar
 check -idirafter
 
 echo OK
