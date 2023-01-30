@@ -234,6 +234,7 @@ impl<'a> Generator<'a> {
                     name,
                     typ,
                     init_data,
+                    is_tls,
                     ..
                 } => {
                     if var.is_static() {
@@ -264,9 +265,19 @@ impl<'a> Generator<'a> {
                     }
 
                     // 判断是否有初始值
+                    // .data 或 .tdata 段
                     if init_data.is_some() {
-                        writeln!("\n  # 数据段标签");
-                        writeln!("  .data");
+                        if *is_tls {
+                            writeln!("\n  # TLS数据段标签");
+                            // a：可加载执行
+                            // w：可写
+                            // T：线程局部的
+                            // progbits：包含程序数据
+                            writeln!("  .section .tdata,\"awT\",@progbits");
+                        } else {
+                            writeln!("\n  # 数据段标签");
+                            writeln!("  .data");
+                        }
                         writeln!("{}:", name);
                         let mut rel = var.get_relocation();
                         let mut pos = 0;
@@ -296,8 +307,15 @@ impl<'a> Generator<'a> {
                     }
 
                     // bss段未给数据分配空间，只记录数据所需空间的大小
-                    writeln!("  # 未初始化的全局变量");
-                    writeln!("  .bss");
+                    // .bss 或 .tbss 段
+                    if *is_tls {
+                        // nobits：不含数据
+                        writeln!("\n  # TLS未初始化的全局变量");
+                        writeln!("  .section .tbss,\"awT\",@nobits");
+                    } else {
+                        writeln!("  # 未初始化的全局变量");
+                        writeln!("  .bss");
+                    }
                     writeln!("{}:", name);
                     writeln!("  # 全局变量零填充{}位", typ.borrow().size);
                     writeln!("  .zero {}", typ.borrow().size);
@@ -1388,6 +1406,14 @@ impl<'a> Generator<'a> {
                 );
                 writeln!("  li t0, {}", var.get_offset());
                 writeln!("  add a0, fp, t0");
+                return;
+            }
+
+            if var.is_tls() {
+                // 计算TLS高20位地址
+                writeln!("  lui a0, %tprel_hi({})", var.get_name());
+                // 计算TLS低12位地址
+                writeln!("  addi a0, a0, %tprel_lo({})", var.get_name());
                 return;
             }
 

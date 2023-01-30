@@ -4,6 +4,7 @@
 //! function_definition = declspec declarator "(" ")" "{" compound_stmt*
 //! declspec = ("void" | "_Bool" | "char" | "short" | "int" | "long"
 //!            | "typedef" | "static" | "extern" | "inline"
+//!            | "_Thread_local" | "__thread"
 //!            | "_Alignas" ("(" typename | const_expr ")")
 //!            | "signed" | "unsigned"
 //!            | struct_declare | union_declare | typedef_name
@@ -102,8 +103,9 @@ use crate::keywords::{
     KW_ALIGNAS, KW_ALIGNOF, KW_ASM, KW_AUTO, KW_BOOL, KW_BREAK, KW_CASE, KW_CHAR, KW_CONST,
     KW_CONTINUE, KW_DEFAULT, KW_DO, KW_DOUBLE, KW_ELSE, KW_ENUM, KW_EXTERN, KW_FLOAT, KW_FOR,
     KW_GOTO, KW_IF, KW_INLINE, KW_INT, KW_LONG, KW_NORETURN, KW_REGISTER, KW_RESTRICT, KW_RETURN,
-    KW_SHORT, KW_SIGNED, KW_SIZEOF, KW_STATIC, KW_STRUCT, KW_SWITCH, KW_TYPEDEF, KW_TYPEOF,
-    KW_UNION, KW_UNSIGNED, KW_VOID, KW_VOLATILE, KW_WHILE, KW___RESTRICT, KW___RESTRICT__,
+    KW_SHORT, KW_SIGNED, KW_SIZEOF, KW_STATIC, KW_STRUCT, KW_SWITCH, KW_THREAD, KW_THREAD_LOCAL,
+    KW_TYPEDEF, KW_TYPEOF, KW_UNION, KW_UNSIGNED, KW_VOID, KW_VOLATILE, KW_WHILE, KW___RESTRICT,
+    KW___RESTRICT__,
 };
 use crate::node::{add_with_type, eval, sub_with_type, LabelInfo, Node, NodeKind, NodeLink};
 use crate::obj::{Member, Obj, ObjLink, Scope, VarAttr, VarScope};
@@ -280,6 +282,7 @@ impl<'a> Parser<'a> {
                 let mut var_mut = var.as_mut().unwrap().borrow_mut();
                 var_mut.set_definition(!var_attr.is_extern);
                 var_mut.set_static(var_attr.is_static);
+                var_mut.set_tls(var_attr.is_tls);
             }
             // 若有设置，则覆盖全局变量的对齐值
             if var_attr.align != 0 {
@@ -288,7 +291,7 @@ impl<'a> Parser<'a> {
             let (_, token) = self.current();
             if token.equal("=") {
                 self.next().gvar_initializer(var.unwrap());
-            } else if !var_attr.is_extern {
+            } else if !var_attr.is_extern && !var_attr.is_tls {
                 // 没有初始化器的全局变量设为试探性的
                 var.as_mut().unwrap().borrow_mut().set_tentative(true);
             }
@@ -508,6 +511,7 @@ impl<'a> Parser<'a> {
 
     /// declspec = ("void" | "_Bool" | "char" | "short" | "int" | "long"
     ///            | "typedef" | "static" | "extern" | "inline"
+    ///            | "_Thread_local" | "__thread"
     ///            | "_Alignas" ("(" typename | const_expr ")")
     ///            | "signed" | "unsigned"
     ///            | struct_declare | union_declare | typedef_name
@@ -544,6 +548,8 @@ impl<'a> Parser<'a> {
                 || token.equal(KW_STATIC)
                 || token.equal(KW_EXTERN)
                 || token.equal(KW_INLINE)
+                || token.equal(KW_THREAD_LOCAL)
+                || token.equal(KW_THREAD)
             {
                 if attr.is_none() {
                     error_token!(
@@ -557,15 +563,17 @@ impl<'a> Parser<'a> {
                     attr.as_mut().unwrap().is_static = true;
                 } else if token.equal(KW_EXTERN) {
                     attr.as_mut().unwrap().is_extern = true;
-                } else {
+                } else if token.equal(KW_INLINE) {
                     attr.as_mut().unwrap().is_inline = true;
+                } else {
+                    attr.as_mut().unwrap().is_tls = true;
                 }
-                // typedef不应与static/extern一起使用
+                // typedef不应与static/extern/inline/__thread/_Thread_local一起使用
                 let a = attr.as_ref().unwrap();
                 if a.is_typedef && (a.is_static || a.is_extern || a.is_inline) {
                     error_token!(
                         token,
-                        "typedef and static/extern/inline may not be used together"
+                        "typedef and static/extern/inline/__thread/_Thread_local may not be used together"
                     );
                 }
                 self.next();

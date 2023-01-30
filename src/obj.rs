@@ -27,6 +27,8 @@ pub enum Obj {
         /// 全局变量
         /// 是否为试探性的变量
         is_tentative: bool,
+        /// 是否为线程局部存储，Thread Local Storage
+        is_tls: bool,
         /// 用于初始化的数据
         init_data: Option<Vec<i8>>,
         /// 指向其他全局变量的指针
@@ -190,6 +192,22 @@ impl Obj {
         }
     }
 
+    /// 是否为 thread local
+    pub fn is_tls(&self) -> bool {
+        match self {
+            Self::Var { is_tls, .. } => *is_tls,
+            _ => false,
+        }
+    }
+
+    /// 修改 thread local
+    pub fn set_tls(&mut self, tls: bool) {
+        match self {
+            Self::Var { is_tls, .. } => *is_tls = tls,
+            _ => {}
+        }
+    }
+
     /// 是否是本地变量
     pub fn is_local(&self) -> bool {
         match self {
@@ -219,6 +237,7 @@ impl Obj {
             token: None,
             is_half_by_stack: false,
             is_tentative: false,
+            is_tls: false,
         }
     }
 
@@ -486,6 +505,8 @@ pub struct VarAttr {
     pub(crate) is_extern: bool,
     /// 是否为内联
     pub(crate) is_inline: bool,
+    /// 是否为线程局部存储，Thread Local Storage
+    pub(crate) is_tls: bool,
     /// 对齐量
     pub(crate) align: isize,
 }
@@ -497,6 +518,7 @@ impl VarAttr {
             is_static: false,
             is_extern: false,
             is_inline: false,
+            is_tls: false,
             align: 0,
         }
     }

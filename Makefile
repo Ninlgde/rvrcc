@@ -29,8 +29,8 @@ rvrcc:
 
 # 测试标签，运行测试
 test/%.exe: rvrcc test/%.c
-	./target/release/rvrcc -Iinclude -Itest -c -o test/$*.o test/$*.c
-	$(CC) -static -o $@ test/$*.o -xc test/common
+	./target/release/rvrcc -Iinclude -Itest -I$(RISCV)/sysroot/usr/include -c -o test/$*.o test/$*.c
+	$(CC) -pthread -static -o $@ test/$*.o -xc test/common
 
 test/%: test/%.exe
 	echo "\033[34m"test/$*.exe"\033[0m"; $(RUN) test/$*.exe

@@ -44,10 +44,12 @@ pub const KEYWORDS: [&str; KW_COUNT] = [
     KW_TYPEOF,
     KW_ASM,
     KW_INLINE,
+    KW_THREAD_LOCAL,
+    KW_THREAD,
 ];
 
 /// 关键字数量
-const KW_COUNT: usize = 42;
+const KW_COUNT: usize = 44;
 
 /// 类型名称列表
 pub const KW_TYPENAME: [&str; KW_TYPENAME_COUNT] = [
@@ -78,10 +80,12 @@ pub const KW_TYPENAME: [&str; KW_TYPENAME_COUNT] = [
     KW_DOUBLE,
     KW_TYPEOF,
     KW_INLINE,
+    KW_THREAD_LOCAL,
+    KW_THREAD,
 ];
 
 /// 类型名称数量
-const KW_TYPENAME_COUNT: usize = 27;
+const KW_TYPENAME_COUNT: usize = 29;
 
 /// 关键字: 返回
 pub const KW_RETURN: &str = "return";
@@ -167,3 +171,7 @@ pub const KW_TYPEOF: &str = "typeof";
 pub const KW_ASM: &str = "asm";
 /// 关键字: inline
 pub const KW_INLINE: &str = "inline";
+/// 关键字: _Thread_local
+pub const KW_THREAD_LOCAL: &str = "_Thread_local";
+/// 关键字: __thread
+pub const KW_THREAD: &str = "__thread";
