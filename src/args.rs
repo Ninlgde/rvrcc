@@ -27,6 +27,8 @@ pub struct Args {
     pub opt_e_cap: bool,
     /// 引入路径区
     pub include_path: Vec<String>,
+    /// 标记是否生成common块
+    pub opt_f_common: bool,
 }
 
 impl Args {
@@ -43,6 +45,7 @@ impl Args {
             opt_c: false,
             opt_e_cap: false,
             include_path: vec![],
+            opt_f_common: true,
         }
     }
 
@@ -116,6 +119,20 @@ impl Args {
             // 解析-S
             if arg.eq("-S") {
                 result.opt_s_cap = true;
+                i += 1;
+                continue;
+            }
+
+            // 解析-fcommon
+            if arg.eq("-fcommon") {
+                result.opt_f_common = true;
+                i += 1;
+                continue;
+            }
+
+            // 解析-fno-common
+            if arg.eq("-fno-common") {
+                result.opt_f_common = false;
                 i += 1;
                 continue;
             }

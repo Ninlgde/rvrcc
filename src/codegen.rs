@@ -3,16 +3,16 @@
 use crate::ctype::{cal_flo_st_mems_ty, TypeKind, TypeLink};
 use crate::node::{NodeKind, NodeLink};
 use crate::obj::{Obj, ObjLink};
-use crate::{align_to, error_token, write_file, FP_MAX, GP_MAX, INPUTS, OUTPUT};
+use crate::{align_to, error_token, write_file, Args, FP_MAX, GP_MAX, INPUTS, OUTPUT};
 use std::io::Write;
 use std::{cmp, fmt};
 
 /// 汇编代码生成到文件
-pub fn codegen(program: &mut Vec<ObjLink>, write_file: &'static mut dyn Write) {
+pub fn codegen(program: &mut Vec<ObjLink>, args: &Args, write_file: &'static mut dyn Write) {
     unsafe {
         OUTPUT = Some(write_file);
     }
-    let mut generator = Generator::new(program);
+    let mut generator = Generator::new(program, args);
     generator.generate();
 }
 
@@ -44,6 +44,8 @@ macro_rules! write {
 struct Generator<'a> {
     /// ast
     program: &'a mut Vec<ObjLink>,
+    /// args
+    args: &'a Args,
     /// 当前生成的方法名
     current_function_name: String,
     /// 当前生成的方法
@@ -57,9 +59,10 @@ struct Generator<'a> {
 }
 
 impl<'a> Generator<'a> {
-    pub fn new(program: &'a mut Vec<ObjLink>) -> Self {
+    pub fn new(program: &'a mut Vec<ObjLink>, args: &'a Args) -> Self {
         Generator {
             program,
+            args,
             current_function_name: "".to_string(),
             current_function: None,
             depth: 0,
@@ -254,7 +257,7 @@ impl<'a> Generator<'a> {
                     writeln!("  .align {}", simple_log2(align));
 
                     // 为试探性的全局变量生成指示
-                    if var.is_tentative() {
+                    if self.args.opt_f_common && var.is_tentative() {
                         let ts = var.get_type().borrow().size;
                         writeln!("  .comm {}, {}, {}", var.get_name(), ts, align);
                         continue;

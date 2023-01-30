@@ -10,7 +10,7 @@ use crate::{
 };
 
 /// 预处理器入口函数
-pub fn preprocess(tokens: &mut Vec<Token>, include_path: Vec<String>) -> Vec<Token> {
+pub fn preprocess(tokens: &mut Vec<Token>, include_path: &Vec<String>) -> Vec<Token> {
     // 处理宏和指示
     let mut processor = Preprocessor::new(tokens, include_path);
     let mut tokens = processor.process();
@@ -37,7 +37,7 @@ struct Preprocessor<'a> {
     /// 宏变量栈
     macros: Vec<Macro>,
     /// 引入路径区
-    include_path: Vec<String>,
+    include_path: &'a Vec<String>,
 }
 
 impl TokenVecOps for Preprocessor<'_> {
@@ -59,7 +59,7 @@ impl TokenVecOps for Preprocessor<'_> {
 
 impl<'a> Preprocessor<'a> {
     /// 构造预处理器
-    fn new(tokens: &'a mut Vec<Token>, include_path: Vec<String>) -> Self {
+    fn new(tokens: &'a mut Vec<Token>, include_path: &'a Vec<String>) -> Self {
         Self {
             tokens,
             cursor: 0,
@@ -78,7 +78,7 @@ impl<'a> Preprocessor<'a> {
             result: vec![],
             cond_incls: processor.cond_incls.to_vec(),
             macros: processor.macros.to_vec(),
-            include_path: processor.include_path.to_vec(),
+            include_path: processor.include_path,
         }
     }
 
@@ -777,7 +777,7 @@ impl<'a> Preprocessor<'a> {
     fn read_line_marker(&mut self) {
         let start = self.current_token().clone();
         let mut tokens = self.copy_line();
-        let tokens = preprocess(&mut tokens, vec![]);
+        let tokens = preprocess(&mut tokens, &vec![]);
         if tokens.len() < 2 {
             error_token!(&start, "invalid line marker");
         }

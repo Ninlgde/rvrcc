@@ -166,7 +166,7 @@ fn cc1(args: Args) {
     }
 
     // 预处理
-    let tokens = preprocess(&mut tokens, args.include_path);
+    let tokens = preprocess(&mut tokens, &args.include_path);
 
     if args.opt_e_cap {
         // 打开输出文件
@@ -183,7 +183,7 @@ fn cc1(args: Args) {
     // 根据ast,向输出文件中写入相关汇编
     unsafe {
         // 输出汇编到缓冲区中
-        codegen(&mut program, &mut BUF);
+        codegen(&mut program, &args, &mut BUF);
 
         // 从缓冲区中写入到文件中
         file.write(BUF.as_ref()).expect("write failed");
