@@ -3167,10 +3167,18 @@ impl<'a> Parser<'a> {
             self.skip(")");
             // sizeof 可变长度数组的大小
             if typ.borrow().kind == TypeKind::VLA {
-                return Some(Node::new_var(
-                    typ.borrow().vla_size.as_ref().unwrap().clone(),
-                    nt,
-                ));
+                // 对于变量的sizeof操作
+                if typ.borrow().vla_size.is_some() {
+                    return Some(Node::new_var(
+                        typ.borrow().vla_size.as_ref().unwrap().clone(),
+                        nt,
+                    ));
+                }
+
+                let lhs = self.compute_vla_size(typ.clone(), &nt).unwrap();
+                let rhs =
+                    Node::new_var(typ.borrow().vla_size.as_ref().unwrap().clone(), nt.clone());
+                return Some(Node::new_binary(NodeKind::Comma, lhs, rhs, nt));
             }
             return Some(Node::new_unsigned_long(typ.borrow().size as i64, nt));
         }
