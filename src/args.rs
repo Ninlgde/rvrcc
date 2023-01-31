@@ -287,6 +287,11 @@ impl Args {
             panic!("no input files")
         }
 
+        // -E隐式包含输入是C语言的宏
+        if result.opt_e_cap {
+            result.opt_x = FileType::C;
+        }
+
         result.include_path.append(&mut idirafter);
 
         result.opt_o = output.to_string();
