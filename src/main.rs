@@ -13,7 +13,7 @@
 use rvrcc::{
     append_tokens, codegen, dirname, file_exists, find_file, init_macros, open_file_for_write,
     parse, parse_args, preprocess, print_tokens, replace_extn, search_include_paths, tokenize_file,
-    Args, TempFile, TempFileCleaner, Token, BASE_FILE,
+    Args, FileType, TempFile, TempFileCleaner, Token, BASE_FILE,
 };
 use std::env;
 use std::io::Write;
@@ -60,15 +60,18 @@ fn main() {
             replace_extn(input, ".o")
         };
 
+        // 获取输入文件的类型
+        let ft = FileType::get_file_type(&args.opt_x, input);
+
         // 处理.o文件
-        if input.ends_with(".o") {
+        if ft == FileType::Obj {
             // 存入链接器选项中
             ld_args.push(input.to_string());
             continue;
         }
 
         // 处理.s文件
-        if input.ends_with(".s") {
+        if ft == FileType::Asm {
             // 如果没有指定-S，那么需要进行汇编
             if !args.opt_s_cap {
                 assemble(
@@ -82,9 +85,10 @@ fn main() {
         }
 
         // 处理.c文件
-        if !input.ends_with(".c") && !input.eq("-") {
-            panic!("unknown file extension: {}", input);
-        }
+        // if ft != FileType::C && !input.eq("-") {
+        //     panic!("unknown file extension: {}", input);
+        // }
+        assert!(ft == FileType::C);
 
         // 只进行解析
         if args.opt_e_cap {

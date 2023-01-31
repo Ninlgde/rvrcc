@@ -26,6 +26,7 @@ use utils::*;
 use crate::token::FileLink;
 pub use args::parse_args;
 pub use args::Args;
+pub use args::FileType;
 pub use args::TempFile;
 pub use args::TempFileCleaner;
 pub use cmacro::define_macro;

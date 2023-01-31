@@ -43,7 +43,7 @@ $rvrcc --help 2>&1 | grep -q -E "rv(r)*cc"
 check --help
 
 # -S -q应该是会直接打断进程所以先grep一下,再grep-q不打印结果
-echo 'int main() {}' | $rvrcc -S -o- - | grep -q 'main'
+echo 'int main() {}' | $rvrcc -S -o- -xc - | grep -q 'main'
 check -S
 
 # 默认输出的文件
@@ -75,7 +75,7 @@ check 'multiple input files'
 # [157] 无-c时调用ld
 # 调用链接器
 #rm -f $tmp/foo
-#echo 'int main() { return 0; }' | $rvrcc -o $tmp/foo -
+#echo 'int main() { return 0; }' | $rvrcc -o $tmp/foo -xc -
 #if [ "$RISCV" = "" ];then
 #  $tmp/foo
 #else
@@ -105,11 +105,11 @@ check a.out
 # -E
 # [162] 支持-E选项
 echo foo > $tmp/out
-echo "#include \"$tmp/out\"" | $rvrcc -E - | grep -q foo
+echo "#include \"$tmp/out\"" | $rvrcc -E -xc - | grep -q foo
 check -E
 
 echo foo > $tmp/out1
-echo "#include \"$tmp/out1\"" | $rvrcc -E -o $tmp/out2 -
+echo "#include \"$tmp/out1\"" | $rvrcc -E -o $tmp/out2 -xc -
 cat $tmp/out2 | grep -q foo
 check '-E and -o'
 
@@ -117,21 +117,21 @@ check '-E and -o'
 # -I
 mkdir $tmp/dir
 echo foo > $tmp/dir/i-option-test
-echo "#include \"i-option-test\"" | $rvrcc -I$tmp/dir -E - | grep -q foo
+echo "#include \"i-option-test\"" | $rvrcc -I$tmp/dir -E -xc - | grep -q foo
 check -I
 
 # [208] 支持-D选项
 # -D
-echo foo | $rvrcc -Dfoo -E - | grep -q 1
+echo foo | $rvrcc -Dfoo -E -xc - | grep -q 1
 check -D
 
 # -D
-echo foo | $rvrcc -Dfoo=bar -E - | grep -q bar
+echo foo | $rvrcc -Dfoo=bar -E -xc - | grep -q bar
 check -D
 
 # [209] 支持-U选项
 # -U
-echo foo | $rvrcc -Dfoo=bar -Ufoo -E - | grep -q foo
+echo foo | $rvrcc -Dfoo=bar -Ufoo -E -xc - | grep -q foo
 check -U
 
 # [216] 忽略多个链接器选项
@@ -142,7 +142,7 @@ check 'ignored options'
 
 # BOM marker
 # [238] 跳过UTF-8 BOM标记
-printf '\xef\xbb\xbfxyz\n' | $rvrcc -E -o- - | grep -q '^xyz'
+printf '\xef\xbb\xbfxyz\n' | $rvrcc -E -o- -xc - | grep -q '^xyz'
 check 'BOM marker'
 
 # Inline functions
@@ -159,40 +159,40 @@ $rvrcc -o /dev/null $tmp/inline1.c $tmp/inline2.c
 check inline
 
 # [261] 如果没被引用不生成静态内联函数
-echo 'static inline void f1() {}' | $rvrcc -o- -S - | grep -v -q f1:
+echo 'static inline void f1() {}' | $rvrcc -o- -S -xc - | grep -v -q f1:
 check inline
 
-echo 'static inline void f1() {} void foo() { f1(); }' | $rvrcc -o- -S - | grep -q f1:
+echo 'static inline void f1() {} void foo() { f1(); }' | $rvrcc -o- -S -xc - | grep -q f1:
 check inline
 
-echo 'static inline void f1() {} static inline void f2() { f1(); } void foo() { f1(); }' | $rvrcc -o- -S - | grep -q f1:
+echo 'static inline void f1() {} static inline void f2() { f1(); } void foo() { f1(); }' | $rvrcc -o- -S -xc - | grep -q f1:
 check inline
 
-echo 'static inline void f1() {} static inline void f2() { f1(); } void foo() { f1(); }' | $rvrcc -o- -S - | grep -v -q f2:
+echo 'static inline void f1() {} static inline void f2() { f1(); } void foo() { f1(); }' | $rvrcc -o- -S -xc - | grep -v -q f2:
 check inline
 
-echo 'static inline void f1() {} static inline void f2() { f1(); } void foo() { f2(); }' | $rvrcc -o- -S - | grep -q f1:
+echo 'static inline void f1() {} static inline void f2() { f1(); } void foo() { f2(); }' | $rvrcc -o- -S -xc - | grep -q f1:
 check inline
 
-echo 'static inline void f1() {} static inline void f2() { f1(); } void foo() { f2(); }' | $rvrcc -o- -S - | grep -q f2:
+echo 'static inline void f1() {} static inline void f2() { f1(); } void foo() { f2(); }' | $rvrcc -o- -S -xc - | grep -q f2:
 check inline
 
-echo 'static inline void f2(); static inline void f1() { f2(); } static inline void f2() { f1(); } void foo() {}' | $rvrcc -o- -S - | grep -v -q f1:
+echo 'static inline void f2(); static inline void f1() { f2(); } static inline void f2() { f1(); } void foo() {}' | $rvrcc -o- -S -xc - | grep -v -q f1:
 check inline
 
-echo 'static inline void f2(); static inline void f1() { f2(); } static inline void f2() { f1(); } void foo() {}' | $rvrcc -o- -S - | grep -v -q f2:
+echo 'static inline void f2(); static inline void f1() { f2(); } static inline void f2() { f1(); } void foo() {}' | $rvrcc -o- -S -xc - | grep -v -q f2:
 check inline
 
-echo 'static inline void f2(); static inline void f1() { f2(); } static inline void f2() { f1(); } void foo() { f1(); }' | $rvrcc -o- -S - | grep -q f1:
+echo 'static inline void f2(); static inline void f1() { f2(); } static inline void f2() { f1(); } void foo() { f1(); }' | $rvrcc -o- -S -xc - | grep -q f1:
 check inline
 
-echo 'static inline void f2(); static inline void f1() { f2(); } static inline void f2() { f1(); } void foo() { f1(); }' | $rvrcc -o- -S - | grep -q f2:
+echo 'static inline void f2(); static inline void f1() { f2(); } static inline void f2() { f1(); } void foo() { f1(); }' | $rvrcc -o- -S -xc - | grep -q f2:
 check inline
 
-echo 'static inline void f2(); static inline void f1() { f2(); } static inline void f2() { f1(); } void foo() { f2(); }' | $rvrcc -o- -S - | grep -q f1:
+echo 'static inline void f2(); static inline void f1() { f2(); } static inline void f2() { f1(); } void foo() { f2(); }' | $rvrcc -o- -S -xc - | grep -q f1:
 check inline
 
-echo 'static inline void f2(); static inline void f1() { f2(); } static inline void f2() { f1(); } void foo() { f2(); }' | $rvrcc -o- -S - | grep -q f2:
+echo 'static inline void f2(); static inline void f1() { f2(); } static inline void f2() { f1(); } void foo() { f2(); }' | $rvrcc -o- -S -xc - | grep -q f2:
 check inline
 
 # -idirafter
@@ -200,29 +200,40 @@ check inline
 mkdir -p $tmp/dir1 $tmp/dir2
 echo foo > $tmp/dir1/idirafter
 echo bar > $tmp/dir2/idirafter
-echo "#include \"idirafter\"" | $rvrcc -I$tmp/dir1 -I$tmp/dir2 -E - | grep -q foo
+echo "#include \"idirafter\"" | $rvrcc -I$tmp/dir1 -I$tmp/dir2 -E -xc - | grep -q foo
 check -idirafter
-echo "#include \"idirafter\"" | $rvrcc -idirafter $tmp/dir1 -I$tmp/dir2 -E - | grep -q bar
+echo "#include \"idirafter\"" | $rvrcc -idirafter $tmp/dir1 -I$tmp/dir2 -E -xc - | grep -q bar
 check -idirafter
 
 # [266] 支持-fcommon和-fno-common选项
 # -fcommon
-echo 'int foo;' | $rvrcc -S -o- - | grep -q '\.comm foo'
+echo 'int foo;' | $rvrcc -S -o- -xc - | grep -q '\.comm foo'
 check '-fcommon (default)'
 
-echo 'int foo;' | $rvrcc -fcommon -S -o- - | grep -q '\.comm foo'
+echo 'int foo;' | $rvrcc -fcommon -S -o- -xc - | grep -q '\.comm foo'
 check '-fcommon'
 
 # -fno-common
-echo 'int foo;' | $rvrcc -fno-common -S -o- - | grep -q '^foo:'
+echo 'int foo;' | $rvrcc -fno-common -S -o- -xc - | grep -q '^foo:'
 check '-fno-common'
 
 # [268] 支持-include选项
 # -include
 echo foo > $tmp/out.h
-echo bar | $rvrcc -I$RISCV/sysroot/usr/include/ -include $tmp/out.h -E -o- - | grep -q -z 'foo\s*bar'
+echo bar | $rvrcc -I$RISCV/sysroot/usr/include/ -include $tmp/out.h -E -o- -xc - | grep -q -z 'foo\s*bar'
 check -include
-echo NULL | $rvrcc -I$RISCV/sysroot/usr/include/ -Iinclude -include stdio.h -E -o- - | grep -q 0
+echo NULL | $rvrcc -I$RISCV/sysroot/usr/include/ -Iinclude -include stdio.h -E -o- -xc - | grep -q 0
 check -include
+
+# [269] 支持-x选项
+# -x
+echo 'int x;' | $rvrcc -c -xc -o $tmp/foo.o -
+check -xc
+echo 'x:' | $rvrcc -c -x assembler -o $tmp/foo.o -
+check '-x assembler'
+
+echo 'int x;' > $tmp/foo.c
+$rvrcc -c -x assembler -x none -o $tmp/foo.o $tmp/foo.c
+check '-x none'
 
 echo OK

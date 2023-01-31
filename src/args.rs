@@ -31,6 +31,8 @@ pub struct Args {
     pub opt_f_common: bool,
     /// -include所引入的文件
     pub opt_inlcude: Vec<String>,
+    /// -x选项
+    pub opt_x: FileType,
 }
 
 impl Args {
@@ -49,18 +51,36 @@ impl Args {
             include_path: vec![],
             opt_f_common: true,
             opt_inlcude: vec![],
+            opt_x: FileType::None,
         }
     }
 
     /// 判断需要一个参数的选项，是否具有一个参数
     fn take_arg(arg: &str) -> bool {
-        let args = vec!["-o", "-I", "-idirafter", "-include"];
+        let args = vec!["-o", "-I", "-idirafter", "-include", "-x"];
         for a in args {
             if arg.eq(a) {
                 return true;
             }
         }
         return false;
+    }
+
+    /// 解析-x选项
+    fn parse_optx(x: &str) -> FileType {
+        // -xc，解析为C语言源代码
+        if x.eq("c") {
+            return FileType::C;
+        }
+        // -xassembler，解析为汇编源代码
+        if x.eq("assembler") {
+            return FileType::Asm;
+        }
+        // -xnone，解析为空类型
+        if x.eq("none") {
+            return FileType::None;
+        }
+        panic!("<command line>: unknown argument for -x: {}", x);
     }
 
     fn parse(args: Vec<String>) -> Self {
@@ -196,6 +216,21 @@ impl Args {
             if arg.eq("-include") {
                 result.opt_inlcude.push(args[i + 1].to_string());
                 i += 2;
+                continue;
+            }
+
+            // 解析-x
+            if arg.eq("-x") {
+                result.opt_x = Self::parse_optx(args[i + 1].as_str());
+                i += 2;
+                continue;
+            }
+
+            // 解析-xxxx
+            if arg.starts_with("-x") {
+                let optx = &arg[2..];
+                result.opt_x = Self::parse_optx(optx);
+                i += 1;
                 continue;
             }
 
@@ -336,5 +371,44 @@ impl Drop for TempFileCleaner {
                 remove_file(&temp.path).unwrap();
             }
         }
+    }
+}
+
+/// 输入源文件类型
+#[derive(Clone, PartialEq, Eq)]
+pub enum FileType {
+    /// 空类型
+    None,
+    /// C语言源代码类型
+    C,
+    /// 汇编代码类型
+    Asm,
+    /// 可重定位文件类型
+    Obj,
+}
+
+impl FileType {
+    /// 获取文件的类型
+    pub fn get_file_type(optx: &FileType, filename: &str) -> FileType {
+        // 以.o结尾的文件，解析为空重定位文件类型
+        if filename.ends_with(".o") {
+            return FileType::Obj;
+        }
+
+        // 若-x指定了不为空的类型，使用该类型
+        if !FileType::None.eq(optx) {
+            return optx.clone();
+        }
+
+        // 以.c结尾的文件，解析为C语言源代码类型
+        if filename.ends_with(".c") {
+            return FileType::C;
+        }
+        // 以.s结尾的文件，解析为汇编类型
+        if filename.ends_with(".s") {
+            return FileType::Asm;
+        }
+
+        panic!("<command line>: unknown file extension: {}", filename);
     }
 }
