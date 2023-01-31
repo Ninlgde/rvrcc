@@ -658,3 +658,50 @@ pub fn sub_with_type(mut lhs: NodeLink, mut rhs: NodeLink, nt: Token) -> Option<
     error_token!(&nt, "invalid operands");
     return None;
 }
+
+pub fn is_const_expr(node: &mut NodeLink) -> bool {
+    add_type(node);
+
+    return match node.kind {
+        NodeKind::Add
+        | NodeKind::Sub
+        | NodeKind::Mul
+        | NodeKind::Div
+        | NodeKind::BitAnd
+        | NodeKind::BitOr
+        | NodeKind::BitXor
+        | NodeKind::Shl
+        | NodeKind::Shr
+        | NodeKind::Eq
+        | NodeKind::Ne
+        | NodeKind::Lt
+        | NodeKind::Le
+        | NodeKind::LogAnd
+        | NodeKind::LogOr => {
+            // 左部右部 都为常量表达式时 为真
+            is_const_expr(node.lhs.as_mut().unwrap()) && is_const_expr(node.rhs.as_mut().unwrap())
+        }
+        NodeKind::Cond => {
+            // 条件不为常量表达式时 为假
+            if !is_const_expr(node.cond.as_mut().unwrap()) {
+                return false;
+            }
+            // 条件为常量表达式时，判断相应分支语句是否为真
+            if eval(node.cond.as_mut().unwrap()) != 0 {
+                is_const_expr(node.then.as_mut().unwrap())
+            } else {
+                is_const_expr(node.els.as_mut().unwrap())
+            }
+        }
+        // 判断逗号最右表达式是否为 常量表达式
+        NodeKind::Comma => is_const_expr(node.rhs.as_mut().unwrap()),
+        // 判断左部是否为常量表达式
+        NodeKind::Neg | NodeKind::Not | NodeKind::BitNot | NodeKind::Cast => {
+            is_const_expr(node.lhs.as_mut().unwrap())
+        }
+        // 数字恒为常量表达式
+        NodeKind::Num => true,
+        // 其他情况默认为假
+        _ => false,
+    };
+}

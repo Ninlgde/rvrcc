@@ -107,7 +107,9 @@ use crate::keywords::{
     KW_TYPEDEF, KW_TYPEOF, KW_UNION, KW_UNSIGNED, KW_VOID, KW_VOLATILE, KW_WHILE, KW___RESTRICT,
     KW___RESTRICT__,
 };
-use crate::node::{add_with_type, eval, sub_with_type, LabelInfo, Node, NodeKind, NodeLink};
+use crate::node::{
+    add_with_type, eval, is_const_expr, sub_with_type, LabelInfo, Node, NodeKind, NodeLink,
+};
 use crate::obj::{Member, Obj, ObjLink, Scope, VarAttr, VarScope};
 use crate::token::{Token, TokenVecOps};
 use crate::{align_down, align_to, error_token, vec_u8_into_i8};
@@ -148,6 +150,8 @@ pub(crate) struct Parser<'a> {
     ctn_label: String,
     /// 当前的switch节点
     cur_switch: Option<NodeLink>,
+    /// 内建的Alloca函数
+    builtin_alloca: Option<ObjLink>,
 }
 
 impl TokenVecOps for Parser<'_> {
@@ -183,6 +187,7 @@ impl<'a> Parser<'a> {
             brk_label: String::new(),
             ctn_label: String::new(),
             cur_switch: None,
+            builtin_alloca: None,
         }
     }
 
@@ -238,6 +243,7 @@ impl<'a> Parser<'a> {
             let mut var_mut = builtin_alloca.as_mut().unwrap().borrow_mut();
             var_mut.set_definition(false);
         }
+        self.builtin_alloca = builtin_alloca;
     }
 
     /// 删除冗余的试探性定义
@@ -856,10 +862,14 @@ impl<'a> Parser<'a> {
         }
 
         // 有数组维数的情况
-        let size = self.const_expr();
+        let mut expr = self.conditional();
         self.skip("]");
         base_type = self.type_suffix(base_type);
-        Type::array_of(base_type, size as isize)
+
+        if base_type.borrow().kind == TypeKind::VLA || !is_const_expr(expr.as_mut().unwrap()) {
+            return Type::vla_of(base_type, expr.unwrap());
+        }
+        Type::array_of(base_type, eval(expr.as_mut().unwrap()) as isize)
     }
 
     /// func_params = (param ("," param)* ("," "...")?)? ")"
@@ -1026,6 +1036,45 @@ impl<'a> Parser<'a> {
                 continue;
             }
 
+            // 生成代码计算VLA的大小
+            // 在此生成是因为，即使Ty不是VLA，但也可能是一个指向VLA的指针
+            let token = self.current_token().clone();
+            let node = Node::new_unary(
+                NodeKind::ExprStmt,
+                self.compute_vla_size(typ.clone(), &token).unwrap(),
+                token.clone(),
+            );
+            nodes.push(node);
+
+            // 处理可变长度数组
+            if typ.borrow().kind == TypeKind::VLA {
+                if token.equal("=") {
+                    error_token!(&token, "variable-sized object may not be initialized")
+                }
+
+                // VLA被改写为alloca()调用
+                // 例如：`int X[N]`被改写为`Tmp = N, X = alloca(Tmp)`
+
+                // x
+                let name = typ.borrow().get_name().to_string();
+                let nvar = self.new_lvar(name, typ.clone()).unwrap();
+                // X的类型名
+                let token = &typ.borrow().name;
+                // X = alloca(Tmp)，VLASize对应N
+                let lhs = Node::new_var(nvar, token.clone());
+                let rhs = self
+                    .new_alloca(Node::new_var(
+                        typ.borrow().vla_size.as_ref().unwrap().clone(),
+                        token.clone(),
+                    ))
+                    .unwrap();
+                let expr = Node::new_binary(NodeKind::Assign, lhs, rhs, token.clone());
+
+                // 存放在表达式语句中
+                nodes.push(Node::new_unary(NodeKind::ExprStmt, expr, token.clone()));
+                continue;
+            }
+
             let name = typ.borrow().get_name().to_string();
             let nvar = self.new_lvar(name, typ).unwrap();
             // 读取是否存在变量的对齐值
@@ -1062,6 +1111,71 @@ impl<'a> Parser<'a> {
         self.next();
 
         Some(node)
+    }
+
+    /// 根据相应Sz，新建一个Alloca函数
+    fn new_alloca(&mut self, mut sz: NodeLink) -> Option<NodeLink> {
+        add_type(&mut sz);
+        let token = &sz.token;
+        let mut node = Node::new_unary(
+            NodeKind::FuncCall,
+            Node::new_var(self.builtin_alloca.as_ref().unwrap().clone(), token.clone()),
+            token.clone(),
+        );
+        let ba_binding = self.builtin_alloca.as_ref().unwrap().borrow();
+        let typ = ba_binding.get_type();
+        node.func_type = Some(typ.clone());
+        node.typ = typ.borrow().return_type.clone();
+        node.args = vec![sz];
+
+        Some(node)
+    }
+
+    /// 生成代码计算VLA的大小
+    fn compute_vla_size(&mut self, base_type: TypeLink, token: &Token) -> Option<NodeLink> {
+        // 空表达式
+        let mut node = Node::new(NodeKind::NullExpr, token.clone());
+
+        if base_type.borrow().base.is_some() {
+            let base = base_type.borrow().base.as_ref().unwrap().clone();
+            let rhs = self.compute_vla_size(base, token).unwrap();
+            node = Node::new_binary(NodeKind::Comma, node, rhs, token.clone());
+        }
+
+        // 如果都不是VLA，则返回空表达式
+        if base_type.borrow().kind != TypeKind::VLA {
+            return Some(node);
+        }
+
+        let base_size;
+        let base = base_type.borrow().base.as_ref().unwrap().clone();
+        if base.borrow().kind == TypeKind::VLA {
+            // 指向的是VLA
+            base_size = Node::new_var(
+                base.borrow().vla_size.as_ref().unwrap().clone(),
+                token.clone(),
+            );
+        } else {
+            // 本身是VLA
+            base_size = Node::new_num(base.borrow().size as i64, token.clone());
+        }
+
+        let vla_size = self
+            .new_lvar("".to_string(), Type::new_unsigned_long())
+            .unwrap();
+        base_type.borrow_mut().vla_size = Some(vla_size.clone());
+        // VLASize=VLALen*BaseSz，VLA大小=基类个数*基类大小
+        let lhs = Node::new_var(vla_size, token.clone());
+        let rhs = Node::new_binary(
+            NodeKind::Mul,
+            base_type.borrow().vla_len.as_ref().unwrap().clone(),
+            base_size,
+            token.clone(),
+        );
+
+        let expr = Node::new_binary(NodeKind::Assign, lhs, rhs, token.clone());
+
+        Some(Node::new_binary(NodeKind::Comma, node, expr, token.clone()))
     }
 
     /// union_initializer = "{" initializer "}"
@@ -1945,9 +2059,7 @@ impl<'a> Parser<'a> {
     /// 解析常量表达式
     pub(crate) fn const_expr(&mut self) -> i64 {
         // 进行常量表达式的构造
-        let mut node = self.conditional().unwrap();
-
-        return eval(&mut node);
+        return eval(self.conditional().as_mut().unwrap());
     }
 
     /// 解析表达式
@@ -3051,10 +3163,15 @@ impl<'a> Parser<'a> {
         // "sizeof" "(" typename ")"
         let next_next = self.get_token(pos + 2);
         if token.equal(KW_SIZEOF) && next.equal("(") && self.is_typename(next_next) {
-            self.next().next();
-            let typ = self.typename();
+            let typ = self.next().next().typename();
             self.skip(")");
-            // self.cursor = pos;
+            // sizeof 可变长度数组的大小
+            if typ.borrow().kind == TypeKind::VLA {
+                return Some(Node::new_var(
+                    typ.borrow().vla_size.as_ref().unwrap().clone(),
+                    nt,
+                ));
+            }
             return Some(Node::new_unsigned_long(typ.borrow().size as i64, nt));
         }
 
@@ -3062,6 +3179,14 @@ impl<'a> Parser<'a> {
         if token.equal(KW_SIZEOF) {
             let mut node = self.next().unary();
             add_type(node.as_mut().unwrap());
+            let typ = &node.as_ref().unwrap().typ;
+            let typ = typ.as_ref().unwrap();
+            if typ.borrow().kind == TypeKind::VLA {
+                return Some(Node::new_var(
+                    typ.borrow().vla_size.as_ref().unwrap().clone(),
+                    nt,
+                ));
+            }
             let size = node.unwrap().get_type().as_ref().unwrap().borrow().size as i64;
             return Some(Node::new_unsigned_long(size, nt));
         }

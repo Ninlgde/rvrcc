@@ -1,7 +1,7 @@
 //! C语言的类型实现
 
 use crate::node::{Node, NodeKind, NodeLink};
-use crate::obj::Member;
+use crate::obj::{Member, ObjLink};
 use crate::token::Token;
 use crate::{error_token, FP_MAX, GP_MAX};
 use std::cell::RefCell;
@@ -34,6 +34,8 @@ pub enum TypeKind {
     Func,
     /// 数组
     Array,
+    /// 可变长度数组，Variable Length Array
+    VLA,
     /// 结构体
     Struct,
     /// 联合体
@@ -79,6 +81,10 @@ pub struct Type {
     pub(crate) fs_reg2ty: Option<TypeLink>,
     /// 类型兼容性检查
     pub(crate) origin: Option<TypeLink>,
+    /// VLA数组长度, 元素总个数
+    pub(crate) vla_len: Option<NodeLink>,
+    /// VLA大小, sizeof返回的值
+    pub(crate) vla_size: Option<ObjLink>,
 }
 
 impl Type {
@@ -102,6 +108,8 @@ impl Type {
             fs_reg1ty: None,
             fs_reg2ty: None,
             origin: None,
+            vla_len: None,
+            vla_size: None,
         }
     }
 
@@ -214,12 +222,21 @@ impl Type {
         Rc::new(RefCell::new(typ))
     }
 
+    /// 创建一个长度为`len`的`base`类型的数组
     pub fn array_of0(base: TypeLink, len: isize) -> Type {
         let size = base.borrow().size * len;
         let mut typ = Self::new(TypeKind::Array, size, base.borrow().align);
         typ.base = Some(base);
         typ.len = len;
         typ
+    }
+
+    /// 构造可变长数组类型
+    pub fn vla_of(base: TypeLink, expr: NodeLink) -> TypeLink {
+        let mut typ = Self::new(TypeKind::VLA, 8, 8);
+        typ.base = Some(base);
+        typ.vla_len = Some(expr);
+        Rc::new(RefCell::new(typ))
     }
 
     /// 创建一个union/struct类型
@@ -265,7 +282,7 @@ impl Type {
 
     /// 是否含有基础类型
     pub fn has_base(&self) -> bool {
-        self.kind == TypeKind::Ptr || self.kind == TypeKind::Array
+        self.base.is_some()
     }
 
     /// 获取type的名称字符串
@@ -369,6 +386,8 @@ impl Type {
             fs_reg1ty: other.borrow().fs_reg1ty.clone(),
             fs_reg2ty: other.borrow().fs_reg2ty.clone(),
             origin: Some(other.clone()),
+            vla_len: other.borrow().vla_len.clone(),
+            vla_size: other.borrow().vla_size.clone(),
         }))
     }
 
