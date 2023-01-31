@@ -1061,7 +1061,7 @@ impl<'a> Parser<'a> {
                 // X的类型名
                 let token = &typ.borrow().name;
                 // X = alloca(Tmp)，VLASize对应N
-                let lhs = Node::new_var(nvar, token.clone());
+                let lhs = Node::new_vla_ptr(nvar, token.clone());
                 let rhs = self
                     .new_alloca(Node::new_var(
                         typ.borrow().vla_size.as_ref().unwrap().clone(),

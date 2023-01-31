@@ -90,6 +90,8 @@ pub enum NodeKind {
     StmtExpr,
     /// 变量
     Var,
+    /// VLA指派器
+    VLAPtr,
     /// 数字
     Num,
     /// 类型转换
@@ -232,6 +234,13 @@ impl Node {
     /// 创建一个var类型的节点
     pub fn new_var(val: ObjLink, token: Token) -> NodeLink {
         let mut node = Self::new(NodeKind::Var, token);
+        node.var = Some(val);
+        node
+    }
+
+    /// 创建一个vla ptr类型的节点
+    pub fn new_vla_ptr(val: ObjLink, token: Token) -> NodeLink {
+        let mut node = Self::new(NodeKind::VLAPtr, token);
         node.var = Some(val);
         node
     }
@@ -612,6 +621,19 @@ pub fn add_with_type(mut lhs: NodeLink, mut rhs: NodeLink, nt: Token) -> Option<
         n_lhs = lhs;
         n_rhs = rhs;
         size = lhs_t.borrow().get_base_size() as i64;
+    }
+
+    // VLA + num
+    // 指针加法，需要num×VLASize操作
+    let lhs_t = n_lhs.get_type().as_ref().unwrap().clone();
+    let lbt = lhs_t.borrow().get_base_type();
+    if lbt.is_some() {
+        let lbt = lbt.unwrap();
+        if lbt.borrow().kind == TypeKind::VLA {
+            let vn = Node::new_var(lbt.borrow().vla_size.as_ref().unwrap().clone(), nt.clone());
+            let f_rhs = Node::new_binary(NodeKind::Mul, n_rhs, vn, nt.clone());
+            return Some(Node::new_binary(NodeKind::Add, n_lhs, f_rhs, nt));
+        }
     }
 
     // ptr + num

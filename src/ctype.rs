@@ -583,7 +583,7 @@ pub fn add_type(node: &mut NodeLink) {
             node.typ = node.lhs.as_ref().unwrap().typ.clone();
         }
         // 将节点类型设为 变量的类型
-        NodeKind::Var => {
+        NodeKind::Var | NodeKind::VLAPtr => {
             let var = &*node.var.as_ref().unwrap().clone();
             let vt = var.borrow().get_type().clone();
             node.typ = Some(vt.clone());

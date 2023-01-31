@@ -1419,7 +1419,14 @@ impl<'a> Generator<'a> {
             // 变量
             let var = &node.var;
             let var = &*var.as_ref().unwrap().borrow();
-            let typ = node.typ.as_ref().unwrap();
+            // VLA可变长度数组是局部变量
+            if var.get_type().borrow().kind == TypeKind::VLA {
+                writeln!("  # 为VLA生成局部变量");
+                writeln!("  li t0, {}", var.get_offset());
+                writeln!("  add t0, t0, fp");
+                writeln!("  ld a0, 0(t0)");
+                return;
+            }
             // 局部变量
             if var.is_local() {
                 // 偏移量是相对于fp的
@@ -1441,6 +1448,7 @@ impl<'a> Generator<'a> {
                 return;
             }
 
+            let typ = node.typ.as_ref().unwrap();
             // 函数
             if typ.borrow().kind == TypeKind::Func {
                 if var.is_definition() {
@@ -1468,13 +1476,16 @@ impl<'a> Generator<'a> {
             writeln!("  auipc a0, %got_pcrel_hi({})", var.get_name());
             // 低12位地址，加到a0中
             writeln!("  ld a0, %pcrel_lo(.Lpcrel_hi{})(a0)", c);
+            return;
         } else if node.kind == NodeKind::DeRef {
             // 解引用*
             self.gen_expr(node.lhs.as_ref().unwrap());
+            return;
         } else if node.kind == NodeKind::Comma {
             // 逗号
             self.gen_expr(node.lhs.as_ref().unwrap());
             self.gen_addr(node.rhs.as_ref().unwrap());
+            return;
         } else if node.kind == NodeKind::Member {
             // 逗号
             self.gen_addr(node.lhs.as_ref().unwrap());
@@ -1482,14 +1493,23 @@ impl<'a> Generator<'a> {
             let offset = node.member.as_ref().unwrap().offset;
             writeln!("  li t0, {}", offset);
             writeln!("  add a0, a0, t0");
+            return;
         } else if node.kind == NodeKind::FuncCall {
             // 如果存在返回值缓冲区
             if node.ret_buf.is_some() {
                 self.gen_expr(node);
+                return;
             }
-        } else {
-            error_token!(&node.get_token(), "not an lvalue")
+        } else if node.kind == NodeKind::VLAPtr {
+            // VLA的指针
+            let var = &node.var;
+            let var = &*var.as_ref().unwrap().borrow();
+            writeln!("  # 生成VLA的指针");
+            writeln!("  li t0, {}", var.get_offset());
+            writeln!("  add a0, t0, fp");
+            return;
         }
+        error_token!(&node.get_token(), "not an lvalue")
     }
 
     /// 将函数实参计算后压入栈中
@@ -1940,6 +1960,7 @@ impl<'a> Generator<'a> {
             || typ.borrow().kind == TypeKind::Struct
             || typ.borrow().kind == TypeKind::Union
             || typ.borrow().kind == TypeKind::Func
+            || typ.borrow().kind == TypeKind::VLA
         {
             return;
         } else if typ.borrow().kind == TypeKind::Float {
