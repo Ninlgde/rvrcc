@@ -217,4 +217,12 @@ check '-fcommon'
 echo 'int foo;' | $rvrcc -fno-common -S -o- - | grep -q '^foo:'
 check '-fno-common'
 
+# [268] 支持-include选项
+# -include
+echo foo > $tmp/out.h
+echo bar | $rvrcc -I$RISCV/sysroot/usr/include/ -include $tmp/out.h -E -o- - | grep -q -z 'foo\s*bar'
+check -include
+echo NULL | $rvrcc -I$RISCV/sysroot/usr/include/ -Iinclude -include stdio.h -E -o- - | grep -q 0
+check -include
+
 echo OK

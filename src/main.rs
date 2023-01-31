@@ -11,9 +11,9 @@
 //! ld链接为可执行文件
 
 use rvrcc::{
-    codegen, dirname, file_exists, find_file, init_macros, open_file_for_write, parse, parse_args,
-    preprocess, print_tokens, replace_extn, tokenize_file, Args, TempFile, TempFileCleaner,
-    BASE_FILE,
+    append_tokens, codegen, dirname, file_exists, find_file, init_macros, open_file_for_write,
+    parse, parse_args, preprocess, print_tokens, replace_extn, search_include_paths, tokenize_file,
+    Args, TempFile, TempFileCleaner, Token, BASE_FILE,
 };
 use std::env;
 use std::io::Write;
@@ -154,19 +154,45 @@ fn main() {
     }
 }
 
+// 解析文件，生成终结符流
+fn must_tokenize_file(path: &String) -> Vec<Token> {
+    let tokens = tokenize_file(path);
+    // 终结符流生成失败，对应文件报错
+    if tokens.len() == 0 {
+        panic!("{}: got error", path)
+    }
+    tokens
+}
+
 fn cc1(args: Args) {
     // tokenize 输入文件
     unsafe {
         BASE_FILE = args.base.to_string();
     }
-    let mut tokens = tokenize_file(args.base.to_string());
-    // 终结符流生成失败，对应文件报错
-    if tokens.len() == 0 {
-        panic!("{}: got error", args.base)
+
+    let mut all_tokens = vec![];
+    for incl in args.opt_inlcude.iter() {
+        let path;
+        if file_exists(incl) {
+            // 如果文件存在，则直接使用路径
+            path = incl.to_string();
+        } else {
+            // 否则搜索引入路径区
+            path = search_include_paths(&args.include_path, incl);
+            if path.is_empty() {
+                panic!("-include: cannot find include file {}", incl);
+            }
+        }
+        // 解析文件，生成终结符流
+        let tokens = must_tokenize_file(&path);
+        all_tokens = append_tokens(all_tokens, tokens);
     }
 
+    let tokens = must_tokenize_file(&args.base);
+    all_tokens = append_tokens(all_tokens, tokens);
+
     // 预处理
-    let tokens = preprocess(&mut tokens, &args.include_path);
+    let tokens = preprocess(&mut all_tokens, &args.include_path);
 
     if args.opt_e_cap {
         // 打开输出文件

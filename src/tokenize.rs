@@ -10,8 +10,8 @@ use crate::{
 
 static mut FILE_NO: usize = 0;
 /// 对文件的终结符解析
-pub fn tokenize_file(path: String) -> Vec<Token> {
-    let content = read_file(&path);
+pub fn tokenize_file(path: &String) -> Vec<Token> {
+    let content = read_file(path);
     if content.eq("") {
         return Vec::new();
     }
@@ -22,7 +22,7 @@ pub fn tokenize_file(path: String) -> Vec<Token> {
     // 文件编号
     let file_no = unsafe { FILE_NO };
     // 文件路径，文件编号从1开始，文件内容
-    let file = File::new_link(path, file_no + 1, content);
+    let file = File::new_link(path.to_string(), file_no + 1, content);
     unsafe {
         INPUTS.push(file.clone());
         FILE_NO += 1;

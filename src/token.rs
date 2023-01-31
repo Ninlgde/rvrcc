@@ -472,6 +472,7 @@ impl Token {
         inner.at_bol && self.equal("#")
     }
 
+    /// 是否保护空格
     pub fn has_space(&self) -> bool {
         let inner = self.inner.borrow();
         inner.has_space

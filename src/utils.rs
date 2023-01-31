@@ -133,6 +133,23 @@ pub fn file_exists(file: &str) -> bool {
     Path::new(file).exists()
 }
 
+/// 搜索引入路径区
+pub fn search_include_paths(include_path: &Vec<String>, filename: &String) -> String {
+    if filename.starts_with("/") {
+        return filename.to_string();
+    }
+
+    // 从引入路径区查找文件
+    for incl in include_path.iter() {
+        let path = format!("{}/{}", incl, filename);
+        if file_exists(&path) {
+            return path;
+        }
+    }
+    // 啥也没找到,直接返回吧
+    "".to_string()
+}
+
 /// vec[u8] to vec[i8]
 pub fn vec_u8_into_i8(v: Vec<u8>) -> Vec<i8> {
     // ideally we'd use Vec::into_raw_parts, but it's unstable,
@@ -421,4 +438,24 @@ pub fn skip_utf8_bom(input: String) -> String {
         return String::from_utf8_lossy(&chars[3..chars.len()]).to_string();
     }
     return input;
+}
+
+/// 合并两个token数组
+pub fn append_tokens(tks1: Vec<Token>, mut tks2: Vec<Token>) -> Vec<Token> {
+    // Tok1为空时直接返回Tok2
+    if tks1.len() == 0 || tks1.first().as_ref().unwrap().at_eof() {
+        return tks2;
+    }
+
+    let mut tks = vec![];
+    for tk in tks1.iter() {
+        if tk.at_eof() {
+            // 到eof停止
+            break;
+        }
+        tks.push(tk.clone());
+    }
+
+    tks.append(&mut tks2);
+    tks
 }

@@ -33,13 +33,16 @@ pub use cmacro::init_macros;
 pub use codegen::codegen;
 pub use parse::parse;
 pub use preprocess::preprocess;
+pub use token::Token;
 pub use tokenize::tokenize_file;
+pub use utils::append_tokens;
 pub use utils::dirname;
 pub use utils::file_exists;
 pub use utils::find_file;
 pub use utils::open_file_for_write;
 pub use utils::print_tokens;
 pub use utils::replace_extn;
+pub use utils::search_include_paths;
 pub use utils::write_file;
 
 /// 输入(stdin or file)

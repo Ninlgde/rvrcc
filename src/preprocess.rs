@@ -6,7 +6,8 @@ use crate::parse::Parser;
 use crate::token::{File, Token, TokenVecOps};
 use crate::tokenize::{convert_pp_tokens, tokenize};
 use crate::{
-    dirname, error_token, file_exists, join_adjacent_string_literals, tokenize_file, warn_token,
+    dirname, error_token, file_exists, join_adjacent_string_literals, search_include_paths,
+    tokenize_file, warn_token,
 };
 
 /// 预处理器入口函数
@@ -142,14 +143,17 @@ impl<'a> Preprocessor<'a> {
                     let dir = dirname(start.get_file_name());
                     let path = format!("{}/{}", dir, filename);
                     if file_exists(&path) {
-                        self.include_file(path.to_string(), &start);
+                        self.include_file(&path, &start);
                         continue;
                     }
                 }
 
                 // 直接引入文件
-                let path = self.search_include_paths(filename.to_string());
-                self.include_file(path, &start);
+                let mut path = self.search_include_paths(&filename);
+                if path.is_empty() {
+                    path = filename;
+                }
+                self.include_file(&path, &start);
                 continue;
             }
 
@@ -309,30 +313,18 @@ impl<'a> Preprocessor<'a> {
     }
 
     /// 引入文件
-    fn include_file(&mut self, path: String, file_token: &Token) {
+    fn include_file(&mut self, path: &String, file_token: &Token) {
         // 词法分析文件
-        let include_tokens = tokenize_file(path.to_string());
+        let include_tokens = tokenize_file(path);
         if include_tokens.len() <= 1 {
-            error_token!(file_token, "{}: cannot open file", &path);
+            error_token!(file_token, "{}: cannot open file", path);
         }
         self.append_tokens(include_tokens);
     }
 
     // 搜索引入路径区
-    fn search_include_paths(&self, filename: String) -> String {
-        if filename.starts_with("/") {
-            return filename;
-        }
-
-        // 从引入路径区查找文件
-        for incl in self.include_path.iter() {
-            let path = format!("{}/{}", incl, filename);
-            if file_exists(&path) {
-                return path;
-            }
-        }
-        // 啥也没找到,直接返回吧
-        filename
+    fn search_include_paths(&self, filename: &String) -> String {
+        search_include_paths(self.include_path, filename)
     }
 
     /// 检查结束

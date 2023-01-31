@@ -29,6 +29,8 @@ pub struct Args {
     pub include_path: Vec<String>,
     /// 标记是否生成common块
     pub opt_f_common: bool,
+    /// -include所引入的文件
+    pub opt_inlcude: Vec<String>,
 }
 
 impl Args {
@@ -46,12 +48,13 @@ impl Args {
             opt_e_cap: false,
             include_path: vec![],
             opt_f_common: true,
+            opt_inlcude: vec![],
         }
     }
 
     /// 判断需要一个参数的选项，是否具有一个参数
     fn take_arg(arg: &str) -> bool {
-        let args = vec!["-o", "-I", "-idirafter"];
+        let args = vec!["-o", "-I", "-idirafter", "-include"];
         for a in args {
             if arg.eq(a) {
                 return true;
@@ -189,17 +192,24 @@ impl Args {
                 continue;
             }
 
+            // 解析-include
+            if arg.eq("-include") {
+                result.opt_inlcude.push(args[i + 1].to_string());
+                i += 2;
+                continue;
+            }
+
             // 解析-cc1-input
             if arg.eq("-cc1-input") {
                 result.base = args[i + 1].to_string();
-                i += 1;
+                i += 2;
                 continue;
             }
 
             // 解析-cc1-output
             if arg.eq("-cc1-output") {
                 result.output_file = args[i + 1].to_string();
-                i += 1;
+                i += 2;
                 continue;
             }
 
