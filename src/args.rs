@@ -234,6 +234,13 @@ impl Args {
                 continue;
             }
 
+            // 解析-l
+            if arg.starts_with("-l") {
+                result.inputs.push(arg.to_string());
+                i += 1;
+                continue;
+            }
+
             // 解析-cc1-input
             if arg.eq("-cc1-input") {
                 result.base = args[i + 1].to_string();

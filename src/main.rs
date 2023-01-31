@@ -51,6 +51,12 @@ fn main() {
     let mut ld_args = vec![];
 
     for input in args.inputs.iter() {
+        // 链接时搜索指定的库文件
+        if input.starts_with("-l") {
+            ld_args.push(input.to_string());
+            continue;
+        }
+
         let output = if !args.opt_o.eq("") {
             args.opt_o.to_string()
         } else if args.opt_s_cap {
