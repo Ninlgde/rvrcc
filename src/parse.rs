@@ -187,8 +187,10 @@ impl<'a> Parser<'a> {
     }
 
     /// 语法解析入口函数
-    /// program = function_definition*
+    /// program = (typedef | function_definition* | global_variable)*
     pub fn parse(&mut self) -> Vec<ObjLink> {
+        self.declare_builtin_functions();
+        self.globals = vec![];
         // "{"
         loop {
             let (_, token) = self.current();
@@ -220,6 +222,22 @@ impl<'a> Parser<'a> {
         self.scan_globals();
 
         self.globals.to_vec()
+    }
+
+    /// 声明内建函数
+    fn declare_builtin_functions(&mut self) {
+        // 处理alloca函数
+        let rt = Type::pointer_to(Type::new_void());
+        let params = vec![Type::new_int()];
+        let typ = Type::func_type(rt, params, false);
+        let name = "alloca";
+        let builtin_alloca = Obj::new_gvar(name.to_string(), typ);
+        let mut builtin_alloca = self.new_gvar(name.to_string(), builtin_alloca);
+        {
+            // 包起来防止重复borrow_mut
+            let mut var_mut = builtin_alloca.as_mut().unwrap().borrow_mut();
+            var_mut.set_definition(false);
+        }
     }
 
     /// 删除冗余的试探性定义
@@ -319,6 +337,7 @@ impl<'a> Parser<'a> {
         let mut locals = vec![];
         let mut body = None;
         let mut va_area = None;
+        let mut alloca_bottom = None;
 
         if !self.consume(";") {
             self.cur_func = gvar.clone(); // 指向当前正值解析的方法
@@ -343,6 +362,11 @@ impl<'a> Parser<'a> {
                     Type::array_of(Type::new_char(), 0),
                 );
             }
+
+            alloca_bottom = self.new_lvar(
+                "__alloca_size__".to_string(),
+                Type::pointer_to(Type::new_char()),
+            );
 
             self.skip("{");
 
@@ -377,6 +401,7 @@ impl<'a> Parser<'a> {
         function.set_function(
             params,
             va_area,
+            alloca_bottom,
             locals,
             body,
             definition,

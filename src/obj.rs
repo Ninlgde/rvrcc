@@ -56,6 +56,8 @@ pub enum Obj {
         locals: Vec<ObjLink>,
         /// 可变参数区域
         va_area: Option<ObjLink>,
+        /// Alloca区域底部
+        alloca_bottom: Option<ObjLink>,
         /// 栈大小
         stack_size: isize,
         /// 是否为函数定义
@@ -385,11 +387,19 @@ impl Obj {
         }
     }
 
+    pub fn get_alloca_bottom(&self) -> Option<ObjLink> {
+        match self {
+            Obj::Func { alloca_bottom, .. } => Some(alloca_bottom.as_ref().unwrap().clone()),
+            _ => None,
+        }
+    }
+
     /// 函数对象设置相关信息
     pub fn set_function(
         &mut self,
         params_: Vec<ObjLink>,
         va_area_: Option<ObjLink>,
+        alloca_bottom_: Option<ObjLink>,
         locals_: Vec<ObjLink>,
         body_: Option<NodeLink>,
         definition: bool,
@@ -406,6 +416,7 @@ impl Obj {
                 is_inline,
                 is_root,
                 va_area,
+                alloca_bottom,
                 ..
             } => {
                 *params = params_;
@@ -415,7 +426,8 @@ impl Obj {
                 *is_static = is_static_;
                 *is_inline = is_inline_;
                 *is_root = !(is_static_ && is_inline_);
-                *va_area = va_area_
+                *va_area = va_area_;
+                *alloca_bottom = alloca_bottom_;
             }
             _ => panic!("error object!"),
         }
@@ -438,6 +450,7 @@ impl Obj {
             is_live: false,
             is_root: false,
             refs: vec![],
+            alloca_bottom: None,
         }
     }
 }

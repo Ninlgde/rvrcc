@@ -339,6 +339,7 @@ impl<'a> Generator<'a> {
                     is_static,
                     is_live,
                     va_area,
+                    alloca_bottom,
                     ..
                 } => {
                     if !is_definition {
@@ -420,6 +421,12 @@ impl<'a> Generator<'a> {
                     writeln!("  # sp腾出StackSize大小的栈空间");
                     writeln!("  li t0, -{}", stack_size);
                     writeln!("  add sp, sp, t0");
+                    // Alloca函数
+                    writeln!("  # 将当前的sp值，存入到Alloca区域的底部");
+                    let offset = alloca_bottom.as_ref().unwrap().borrow().get_offset();
+                    writeln!("  li t0, {}", offset);
+                    writeln!("  add t0, t0, fp");
+                    writeln!("  sd sp, 0(t0)");
 
                     // 正常传递的形参
                     // 记录整型寄存器，浮点寄存器使用的数量
@@ -437,17 +444,16 @@ impl<'a> Generator<'a> {
                         // 正常传递的形参
                         match typ.kind {
                             TypeKind::Struct | TypeKind::Union => {
+                                writeln!("  # 对寄存器传递的结构体进行压栈");
                                 let fs_reg1ty = typ.fs_reg1ty.as_ref().unwrap();
                                 let fs_reg2ty = typ.fs_reg2ty.as_ref().unwrap();
                                 // 对寄存器传递的参数进行压栈
                                 if fs_reg1ty.borrow().is_float() || fs_reg2ty.borrow().is_float() {
+                                    writeln!("  # 浮点结构体的第一部分进行压栈");
                                     // 浮点寄存器的第一部分
-                                    if fs_reg1ty.borrow().kind == TypeKind::Float {
-                                        self.store_float(fp, offset, 4);
-                                        fp += 1;
-                                    }
-                                    if fs_reg1ty.borrow().kind == TypeKind::Double {
-                                        self.store_float(fp, offset, 8);
+                                    let size1 = fs_reg1ty.borrow().size;
+                                    if fs_reg1ty.borrow().is_float() {
+                                        self.store_float(fp, offset, size1);
                                         fp += 1;
                                     }
                                     if fs_reg1ty.borrow().is_int() {
@@ -457,15 +463,15 @@ impl<'a> Generator<'a> {
 
                                     // 浮点寄存器的第二部分
                                     if fs_reg2ty.borrow().kind != TypeKind::Void {
-                                        let off2 = fs_reg2ty.borrow().size;
-                                        if fs_reg2ty.borrow().kind == TypeKind::Float
-                                            || fs_reg2ty.borrow().kind == TypeKind::Double
-                                        {
-                                            self.store_float(fp, offset + off2, off2);
+                                        writeln!("  # 浮点结构体的第二部分进行压栈");
+                                        let size2 = fs_reg2ty.borrow().size;
+                                        let off2 = cmp::max(size1, size2);
+                                        if fs_reg2ty.borrow().is_float() {
+                                            self.store_float(fp, offset + off2, size2);
                                             fp += 1;
                                         }
                                         if fs_reg2ty.borrow().is_int() {
-                                            self.store_general(gp, offset + off2, off2);
+                                            self.store_general(gp, offset + off2, size2);
                                             gp += 1;
                                         }
                                     }
@@ -813,7 +819,7 @@ impl<'a> Generator<'a> {
                 // 计算左部的表达式
                 self.gen_expr(node.lhs.as_ref().unwrap());
 
-                let typ = node.lhs.as_ref().unwrap().typ.as_ref().unwrap().clone();
+                let typ = node.typ.as_ref().unwrap();
                 let typ = typ.borrow();
                 match typ.kind {
                     TypeKind::Float => {
@@ -827,7 +833,11 @@ impl<'a> Generator<'a> {
                     _ => {
                         // neg a0, a0是sub a0, x0, a0的别名, 即a0=0-a0
                         writeln!("  # 对a0值进行取反");
-                        writeln!("  neg a0, a0");
+                        if typ.size <= 4 {
+                            writeln!("  negw a0, a0");
+                        } else {
+                            writeln!("  neg a0, a0");
+                        }
                     }
                 }
                 return;
@@ -1036,6 +1046,20 @@ impl<'a> Generator<'a> {
                 return;
             }
             NodeKind::FuncCall => {
+                // 对alloca函数进行处理
+                let lhs = node.lhs.as_ref().unwrap();
+                if lhs.kind == NodeKind::Var {
+                    let var = lhs.var.as_ref().unwrap();
+                    if var.borrow().get_name().eq("alloca") {
+                        // 解析alloca函数的参数，确定开辟空间的字节数
+                        self.gen_expr(node.args.first().as_ref().unwrap());
+                        // 将需要的字节数存入t1
+                        writeln!("  mv t1, a0");
+                        // 生成Alloca函数汇编
+                        self.builtin_alloca();
+                        return;
+                    }
+                }
                 // 计算所有参数的值，正向压栈
                 // 此处获取到栈传递参数的数量
                 let stack = self.push_args(&node);
@@ -2064,6 +2088,94 @@ impl<'a> Generator<'a> {
         }
     }
 
+    /// 开辟Alloca空间
+    fn builtin_alloca(&mut self) {
+        let alloca_bottom = self
+            .current_function
+            .as_ref()
+            .unwrap()
+            .borrow()
+            .get_alloca_bottom();
+        let offset = alloca_bottom.as_ref().unwrap().borrow().get_offset();
+        // 对齐需要的空间t1到16字节
+        //
+        // 加上15，然后去除最低位的十六进制数
+        writeln!("  addi t1, t1, 15");
+        writeln!("  andi t1, t1, -16");
+
+        // 注意t2与t1大小不定，仅为示例
+        // ----------------------------- 旧sp（AllocaBottom所存的sp）
+        // - - - - - - - - - - - - - - -
+        //  需要在此开辟大小为t1的Alloca区域
+        // - - - - - - - - - - - - - - -
+        //            ↑
+        //    t2（旧sp和新sp间的距离）
+        //            ↓
+        // ----------------------------- 新sp ← sp
+
+        // 根据t1的值，提升临时区域
+        //
+        // 加载 旧sp 到t2中
+        writeln!("  li t0, {}", offset);
+        writeln!("  add t0, fp, t0");
+        writeln!("  ld t2, 0(t0)");
+        // t2=旧sp-新sp，将二者的距离存入t2
+        writeln!("  sub t2, t2, sp");
+
+        // 保存 新sp 存入a0
+        writeln!("  mv a0, sp");
+        // 新sp 开辟（减去）所需要的空间数，结果存入 sp
+        // 并将 新sp开辟空间后的栈顶 同时存入t3
+        writeln!("  sub sp, sp, t1");
+        writeln!("  mv t3, sp");
+
+        // 注意t2与t1大小不定，仅为示例
+        // ----------------------------- 旧sp（AllocaBottom所存的sp）
+        //              ↑
+        //      t2（旧sp和新sp间的距离）
+        //              ↓
+        // ----------------------------- 新sp  ← a0
+        //              ↑
+        //     t1（Alloca所需要的空间数）
+        //              ↓
+        // ----------------------------- 新新sp ← sp,t3
+
+        // 将 新sp内（底部和顶部间的）数据，复制到 新sp的顶部之上
+        writeln!("1:");
+        // t2为0时跳转到标签2，结束复制
+        writeln!("beqz t2, 2f");
+        // 将 新sp底部 内容复制到 新sp顶部之上
+        writeln!("  lb t0, 0(a0)");
+        writeln!("  sb t0, 0(t3)");
+        writeln!("  addi a0, a0, 1");
+        writeln!("  addi t3, t3, 1");
+        writeln!("  addi t2, t2, -1");
+        writeln!("  j 1b");
+        writeln!("2:");
+
+        // 注意t2与t1大小不定，仅为示例
+        // ------------------------------ 旧sp   a0
+        //             ↑                         ↓
+        //       t1（Alloca区域）
+        //             ↓
+        // ------------------------------ 新sp ← a0
+        //             ↑
+        //  t2（旧sp和新sp间的内容，复制到此）
+        //             ↓
+        // ------------------------------ 新新sp ← sp
+
+        // 移动alloca_bottom指针
+        //
+        // 加载 旧sp 到 a0
+        writeln!("  li t0, {}", offset);
+        writeln!("  add t0, fp, t0");
+        writeln!("  ld a0, 0(t0)");
+        // 旧sp 减去开辟的空间 t1
+        writeln!("  sub a0, a0, t1");
+        // 存储a0到alloca底部地址
+        writeln!("sd a0, 0(t0)");
+    }
+
     /// 代码段计数
     fn count(&mut self) -> u32 {
         self.counter += 1;
@@ -2105,7 +2217,8 @@ const F4I1: Option<&str> =
 const F4I2: Option<&str> =
     Some("  # f32转换为i16类型\n  fcvt.w.s a0, fa0, rtz\n  slli a0, a0, 48\n  srai a0, a0, 48\n");
 /// f32 -> i32
-const F4I4: Option<&str> = Some("  # f32转换为i32类型\n  fcvt.w.s a0, fa0, rtz");
+const F4I4: Option<&str> =
+    Some("  # f32转换为i32类型\n  fcvt.w.s a0, fa0, rtz\n  slli a0, a0, 32\n  srai a0, a0, 32");
 /// f32 -> i64
 const F4I8: Option<&str> = Some("  # f32转换为i64类型\n  fcvt.l.s a0, fa0, rtz");
 // 无符号整型转换为无符号浮点数

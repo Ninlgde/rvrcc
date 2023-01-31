@@ -316,6 +316,8 @@ int struct_type_7_2_test_2(StTy7_2 x) { return x.a; }
 // 掺杂浮点的结构体（成员数==2）
 int struct_type_8_1_test_2(StTy8_1 x, int n) {switch(n){case 0: return x.a; case 1: return x.b; default: return -1; }}
 int struct_type_8_2_test_2(StTy8_2 x, int n) {switch(n){case 0: return x.a; case 1: return x.b; default: return -1; }}
+int struct_type_8_3_test_2(StTy8_3 x, int n) {switch(n){case 0: return x.a; case 1: return x.b; default: return -1; }}
+int struct_type_8_4_test_2(StTy8_4 x, int n) {switch(n){case 0: return x.a; case 1: return x.b; default: return -1; }}
 
 // [201] 支持结构体形参
 int struct_test14(Ty4 x, int n) {switch (n) {case 0:return x.a;case 1:return x.b;case 2:return x.c;default:return x.d;}}
@@ -870,6 +872,12 @@ int main() {
 
     ASSERT(10, ({StTy8_2 x={10,20.88}; struct_type_8_2_test_2(x,0);}));
     ASSERT(20, ({StTy8_2 x={10,20.88}; struct_type_8_2_test_2(x,1);}));
+
+    ASSERT(10, ({StTy8_3 x={10.88,20.88}; struct_type_8_3_test_2(x,0);}));
+    ASSERT(20, ({StTy8_3 x={10.88,20.88}; struct_type_8_3_test_2(x,1);}));
+
+    ASSERT(10, ({StTy8_4 x={10,20.88}; struct_type_8_4_test_2(x,0);}));
+    ASSERT(20, ({StTy8_4 x={10,20.88}; struct_type_8_4_test_2(x,1);}));
 
     printf("[201] 栈传递两个寄存器的结构体（整体）\n");
     ASSERT(10, ({StTy9_1 x={10,20}; struct_type_9_1_test(0,1,2,3,4,5,6,7,x,0);}));
