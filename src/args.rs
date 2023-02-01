@@ -33,6 +33,8 @@ pub struct Args {
     pub opt_inlcude: Vec<String>,
     /// -x选项
     pub opt_x: FileType,
+    /// 链接器额外参数
+    pub ld_extra_args: Vec<String>,
 }
 
 impl Args {
@@ -52,6 +54,7 @@ impl Args {
             opt_f_common: true,
             opt_inlcude: vec![],
             opt_x: FileType::None,
+            ld_extra_args: vec![],
         }
     }
 
@@ -237,6 +240,12 @@ impl Args {
             // 解析-l
             if arg.starts_with("-l") {
                 result.inputs.push(arg.to_string());
+                i += 1;
+                continue;
+            }
+
+            if arg.eq("-s") {
+                result.ld_extra_args.push("-s".to_string());
                 i += 1;
                 continue;
             }

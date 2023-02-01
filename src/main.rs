@@ -160,7 +160,12 @@ fn main() {
         } else {
             args.output_file.as_str()
         };
-        run_linker(ld_args, out.to_string(), args.opt_hash_hash_hash);
+        run_linker(
+            ld_args,
+            out.to_string(),
+            args.ld_extra_args,
+            args.opt_hash_hash_hash,
+        );
     }
 }
 
@@ -297,7 +302,7 @@ fn assemble(input: String, output: String, print_debug: bool) {
 }
 
 /// 使用ld来link目标文件到可执行文件
-fn run_linker(inputs: Vec<String>, output: String, print_debug: bool) {
+fn run_linker(inputs: Vec<String>, output: String, extra: Vec<String>, print_debug: bool) {
     // 需要传递ld子进程的参数
     let mut arr = vec![];
 
@@ -342,6 +347,11 @@ fn run_linker(inputs: Vec<String>, output: String, print_debug: bool) {
     ));
     arr.push(format!("-L{}/sysroot/usr/lib", RISCV_HOME));
     arr.push(format!("-L{}/sysroot/lib", RISCV_HOME));
+
+    // 链接器额外参数存入到链接器参数中
+    for ea in extra.iter() {
+        arr.push(ea.to_string());
+    }
 
     // 输入文件，存入到链接器参数中
     for input in inputs.iter() {
