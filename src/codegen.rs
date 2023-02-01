@@ -255,11 +255,10 @@ impl<'a> Generator<'a> {
                     {
                         align = cmp::max(16, var.get_align());
                     }
-                    writeln!("  .align {}", simple_log2(align));
+                    let ts = var.get_type().borrow().size;
 
                     // 为试探性的全局变量生成指示
                     if self.args.opt_f_common && var.is_tentative() {
-                        let ts = var.get_type().borrow().size;
                         writeln!("  .comm {}, {}, {}", var.get_name(), ts, align);
                         continue;
                     }
@@ -278,6 +277,10 @@ impl<'a> Generator<'a> {
                             writeln!("\n  # 数据段标签");
                             writeln!("  .data");
                         }
+
+                        writeln!("  .type {}, @object", name);
+                        writeln!("  .size {}, {}", name, ts);
+                        writeln!("  .align {}", simple_log2(align));
                         writeln!("{}:", name);
                         let mut rel = var.get_relocation();
                         let mut pos = 0;
@@ -316,6 +319,7 @@ impl<'a> Generator<'a> {
                         writeln!("  # 未初始化的全局变量");
                         writeln!("  .bss");
                     }
+                    writeln!("  .align {}", simple_log2(align));
                     writeln!("{}:", name);
                     writeln!("  # 全局变量零填充{}位", typ.borrow().size);
                     writeln!("  .zero {}", typ.borrow().size);
@@ -364,6 +368,7 @@ impl<'a> Generator<'a> {
                     writeln!("  .text");
                     writeln!("# ====={}段开始===============", name);
                     writeln!("# {}段标签", name);
+                    writeln!("  .type {}, @function", name);
                     writeln!("{}:", name);
                     self.current_function_name = name.to_string();
                     self.current_function = Some(func.clone());
