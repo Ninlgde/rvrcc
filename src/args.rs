@@ -406,21 +406,32 @@ pub enum FileType {
     Asm,
     /// 可重定位文件类型
     Obj,
+    /// 静态库文件类型
+    Ar,
+    /// 动态库文件类型
+    Dso,
 }
 
 impl FileType {
     /// 获取文件的类型
     pub fn get_file_type(optx: &FileType, filename: &str) -> FileType {
-        // 以.o结尾的文件，解析为空重定位文件类型
-        if filename.ends_with(".o") {
-            return FileType::Obj;
-        }
-
         // 若-x指定了不为空的类型，使用该类型
         if !FileType::None.eq(optx) {
             return optx.clone();
         }
 
+        // 以.a结尾的文件，解析为静态库文件类型
+        if filename.ends_with(".a") {
+            return FileType::Ar;
+        }
+        // 以.so结尾的文件，解析为动态库文件类型
+        if filename.ends_with(".so") {
+            return FileType::Dso;
+        }
+        // 以.o结尾的文件，解析为空重定位文件类型
+        if filename.ends_with(".o") {
+            return FileType::Obj;
+        }
         // 以.c结尾的文件，解析为C语言源代码类型
         if filename.ends_with(".c") {
             return FileType::C;

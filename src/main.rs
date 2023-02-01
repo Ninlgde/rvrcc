@@ -69,8 +69,8 @@ fn main() {
         // 获取输入文件的类型
         let ft = FileType::get_file_type(&args.opt_x, input);
 
-        // 处理.o文件
-        if ft == FileType::Obj {
+        // 处理.o或.a或.so文件
+        if ft == FileType::Obj || ft == FileType::Ar || ft == FileType::Dso {
             // 存入链接器选项中
             ld_args.push(input.to_string());
             continue;
