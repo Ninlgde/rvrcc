@@ -1355,14 +1355,39 @@ impl<'a> Parser<'a> {
     ///   struct { int a, b, c; } x = { .c=5 };
     ///
     /// The above initializer sets x.c to 5.
-    fn array_designator(&mut self, typ: &TypeLink) -> usize {
-        let start = self.current_token().clone();
-        let i = self.next().const_expr();
-        if i >= typ.borrow().len as i64 {
-            error_token!(&start, "array designator index exceeds array bounds");
+    fn array_designator(&mut self, typ: &TypeLink, begin: &mut i64, end: &mut i64) {
+        *begin = self.next().const_expr();
+        let array_len = typ.borrow().len as i64;
+        if *begin >= array_len {
+            error_token!(
+                self.current_token(),
+                "array designator index exceeds array bounds"
+            );
+        }
+
+        // 匹配...后面的索引值
+        if self.current_token().equal("...") {
+            // ...后面的索引值
+            *end = self.next().const_expr();
+            if *end >= array_len {
+                error_token!(
+                    self.current_token(),
+                    "array designator index exceeds array bounds"
+                );
+            }
+            if *end < *begin {
+                error_token!(
+                    self.current_token(),
+                    "array designator range [{}, {}] is empty",
+                    *begin,
+                    *end
+                );
+            }
+        } else {
+            // 没有...的情况
+            *end = *begin;
         }
         self.skip("]");
-        return i as usize;
     }
 
     /// struct-designator = "." ident
@@ -1407,9 +1432,16 @@ impl<'a> Parser<'a> {
             if init.typ.as_ref().unwrap().borrow().kind != TypeKind::Array {
                 error_token!(&token, "array index in non-array initializer");
             }
-            let i = self.array_designator(init.typ.as_ref().unwrap());
-            self.designation(&mut init.children[i]);
-            self.array_initializer2(init, i + 1);
+            let mut begin = 0;
+            let mut end = 0;
+            self.array_designator(init.typ.as_ref().unwrap(), &mut begin, &mut end);
+            let (pos, _) = self.current();
+            // 遍历范围内的值，进行递归指派
+            for i in begin..end + 1 {
+                self.cursor = pos;
+                self.designation(&mut init.children[i as usize]);
+            }
+            self.array_initializer2(init, begin as usize + 1);
             return;
         }
 
@@ -1507,9 +1539,15 @@ impl<'a> Parser<'a> {
             }
             first = false;
             if self.current_token().equal("[") {
-                i = self.array_designator(init.typ.as_ref().unwrap());
-                self.designation(&mut init.children[i]);
-                i += 1;
+                let mut begin = 0;
+                let mut end = 0;
+                self.array_designator(init.typ.as_ref().unwrap(), &mut begin, &mut end);
+                let (pos, _) = self.current();
+                for j in begin..end + 1 {
+                    self.cursor = pos;
+                    self.designation(&mut init.children[j as usize]);
+                }
+                i = end as usize + 1;
                 continue;
             }
             if i < t.len as usize {
