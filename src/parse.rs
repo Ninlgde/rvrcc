@@ -36,7 +36,7 @@
 //! stmt = "return" expr? ";"
 //!        | "if" "(" expr ")" stmt ("else" stmt)?
 //!        | "switch" "(" expr ")" stmt
-//!        | "case" const_expr ":" stmt
+//!        | "case" const_expr ("..." const_expr)? ":" stmt
 //!        | "default" ":" stmt
 //!        | "for" "(" exprStmt expr? ";" expr? ")" stmt
 //!        | "while" "(" expr ")" stmt
@@ -1718,7 +1718,7 @@ impl<'a> Parser<'a> {
     /// stmt = "return" expr? ";"
     ///        | "if" "(" expr ")" stmt ("else" stmt)?
     ///        | "switch" "(" expr ")" stmt
-    ///        | "case" const_expr ":" stmt
+    ///        | "case" const_expr ("..." const_expr)? ":" stmt
     ///        | "default" ":" stmt
     ///        | "for" "(" exprStmt expr? ";" expr? ")" stmt
     ///        | "while" "(" expr ")" stmt
@@ -1797,13 +1797,26 @@ impl<'a> Parser<'a> {
 
             let mut node = Node::new(NodeKind::Case, nt.clone());
             // case后面的数值
-            let val = self.next().const_expr();
+            let begin = self.next().const_expr();
+            // ...后面的数值
+            let end;
+            if self.current_token().equal("...") {
+                end = self.next().const_expr();
+                if end < begin {
+                    error_token!(self.current_token(), "empty case range specified");
+                }
+            } else {
+                // 不存在...
+                end = begin;
+            }
+
             self.skip(":");
             node.continue_label = Some(self.new_unique_name());
             // case中的语句
             node.lhs = Some(self.stmt().unwrap());
             // case对应的数值
-            node.val = val;
+            node.case_begin = begin;
+            node.case_end = end;
 
             // 将Nd存入CurrentSwitch的CaseNext
             self.cur_switch

@@ -155,10 +155,14 @@ pub struct Node {
     pub(crate) break_label: Option<String>,
     /// "continue" 标签 switch/case 时是case的label
     pub(crate) continue_label: Option<String>,
-    /// switch和case
+    /// switch语句
     pub(crate) case_next: Vec<NodeLink>,
     /// switch的default部分
     pub(crate) default_case: Option<NodeLink>,
+    /// case后面的数值
+    pub(crate) case_begin: i64,
+    /// case ...后面的数值
+    pub(crate) case_end: i64,
     /// "asm" 字符串字面量
     pub(crate) asm_str: String,
 }
@@ -190,6 +194,8 @@ impl Node {
             continue_label: None,
             case_next: Vec::new(),
             default_case: None,
+            case_begin: 0,
+            case_end: 0,
             asm_str: "".to_string(),
         })
     }

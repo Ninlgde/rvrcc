@@ -811,8 +811,24 @@ impl<'a> Generator<'a> {
 
                 writeln!("  # 遍历跳转到值等于a0的case标签");
                 for case in node.case_next.iter() {
-                    writeln!("  li t0, {}", case.val as i32);
-                    writeln!("  beq a0, t0, {}", case.continue_label.as_ref().unwrap());
+                    let begin = case.case_begin;
+                    let end = case.case_end;
+                    if begin == end {
+                        writeln!("  li t0, {}", begin as i32);
+                        writeln!("  beq a0, t0, {}", case.continue_label.as_ref().unwrap());
+                        continue;
+                    }
+
+                    writeln!("  # 处理case范围值：{}...{}", begin, end,);
+                    // a0为当前switch中的值
+                    writeln!("  mv t1, a0");
+                    writeln!("  li t0, {}", begin);
+                    // t1存储了a0-Begin的值
+                    writeln!("  sub t1, t1, t0");
+                    // t2存储了End-Begin的值
+                    writeln!("  li t2, {}", end - begin);
+                    // 如果0<=t1<=t2，那么就说明在范围内
+                    writeln!("  bleu t1, t2, {}", case.continue_label.as_ref().unwrap());
                 }
 
                 if node.default_case.is_some() {
