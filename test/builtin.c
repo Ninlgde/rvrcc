@@ -29,6 +29,6 @@ int main() {
 
     ASSERT(1, ({ struct {int a; int b;} x; __builtin_types_compatible_p(typeof(x.a), typeof(x.b)); }));
 
-    printf("OK\n");
+    printf("\033[32mOK\033[0m\n");
     return 0;
 }

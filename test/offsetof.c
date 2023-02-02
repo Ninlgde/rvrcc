@@ -16,6 +16,6 @@ int main() {
     ASSERT(8, offsetof(T, c));
     ASSERT(16, offsetof(T, d));
 
-    printf("OK\n");
+    printf("\033[32mOK\033[0m\n");
     return 0;
 }

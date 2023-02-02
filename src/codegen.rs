@@ -56,6 +56,9 @@ struct Generator<'a> {
     counter: u32,
     /// 大结构体的深度
     bsdepth: usize,
+    /// 我们将fs0～fs11两两组对形成6个寄存器对
+    /// 用于long double类型的存储，每次+2
+    ldsp: isize,
 }
 
 impl<'a> Generator<'a> {
@@ -68,6 +71,7 @@ impl<'a> Generator<'a> {
             depth: 0,
             counter: 0,
             bsdepth: 0,
+            ldsp: 0,
         }
     }
 
@@ -126,9 +130,10 @@ impl<'a> Generator<'a> {
                                 let fs_reg2ty = tys[1].clone();
                                 // 计算浮点结构体所使用的寄存器
                                 // 这里一定寄存器可用，所以不判定是否超过寄存器最大值
-                                if fs_reg1ty.borrow().is_float() || fs_reg2ty.borrow().is_float() {
+                                if fs_reg1ty.borrow().is_sfloat() || fs_reg2ty.borrow().is_sfloat()
+                                {
                                     for reg in tys.iter() {
-                                        if reg.borrow().is_float() {
+                                        if reg.borrow().is_sfloat() {
                                             fp += 1;
                                         }
                                         if reg.borrow().is_int() {
@@ -167,6 +172,23 @@ impl<'a> Generator<'a> {
                                     continue;
                                 }
                             }
+                            TypeKind::LongDouble => {
+                                if gp == GP_MAX - 1 {
+                                    writeln!(
+                                        " #  GP{}传递一半浮点变量{}，另一半栈传递",
+                                        gp,
+                                        var.get_name(),
+                                    );
+                                    var.set_is_half_by_stack(true);
+                                    gp += 1;
+                                } else {
+                                    if gp < GP_MAX - 1 {
+                                        writeln!(" #  GP{}传递浮点变量{}", gp, var.get_name());
+                                        gp += 2;
+                                        continue;
+                                    }
+                                }
+                            }
                             _ => {
                                 if gp < GP_MAX {
                                     writeln!(" #  GP{}传递整型变量{}", gp, var.get_name());
@@ -201,7 +223,7 @@ impl<'a> Generator<'a> {
                                 continue;
                             }
                             let t = v.get_type().borrow();
-                            let align = if t.kind == TypeKind::Array && t.size > 16 {
+                            let align = if t.kind == TypeKind::Array && t.size >= 16 {
                                 cmp::max(16, v.get_align())
                             } else {
                                 v.get_align()
@@ -316,7 +338,7 @@ impl<'a> Generator<'a> {
                         writeln!("\n  # TLS未初始化的全局变量");
                         writeln!("  .section .tbss,\"awT\",@nobits");
                     } else {
-                        writeln!("  # 未初始化的全局变量");
+                        writeln!("\n  # 未初始化的全局变量");
                         writeln!("  .bss");
                     }
                     writeln!("  .align {}", simple_log2(align));
@@ -399,17 +421,61 @@ impl<'a> Generator<'a> {
                         // 可变参数函数，非可变的参数使用寄存器
                         for param in params.iter().rev() {
                             let pt = param.borrow().get_type().clone();
-                            if pt.borrow().is_float() && fps < FP_MAX {
-                                // 可变参数函数中的浮点参数
-                                fps += 1;
-                            } else if gps < GP_MAX {
-                                // 可变参数函数中的整型参数
-                                gps += 1;
+                            let typ = pt.borrow();
+                            match typ.kind {
+                                // 对寄存器传递的参数
+                                TypeKind::Struct | TypeKind::Union => {
+                                    let fs_reg1ty = typ.fs_reg1ty.as_ref().unwrap();
+                                    let fs_reg2ty = typ.fs_reg2ty.as_ref().unwrap();
+                                    if fs_reg1ty.borrow().is_sfloat()
+                                        || fs_reg2ty.borrow().is_sfloat()
+                                    {
+                                        // 浮点结构体的第一部分
+                                        if fs_reg1ty.borrow().is_sfloat() {
+                                            fps += 1;
+                                        } else {
+                                            gps += 1;
+                                        }
+                                        // 浮点结构体的第二部分
+                                        if fs_reg2ty.borrow().kind != TypeKind::Void {
+                                            if fs_reg2ty.borrow().is_sfloat() {
+                                                fps += 1;
+                                            } else {
+                                                gps += 1;
+                                            }
+                                        }
+                                    }
+
+                                    // 小于8字节的结构体、大于16字节的结构体
+                                    // 一半寄存器，一半栈传递的结构体
+                                    if typ.size < 8
+                                        || typ.size > 16
+                                        || param.borrow().get_is_half_by_stack()
+                                    {
+                                        gps += 1;
+                                    } else {
+                                        gps += 2;
+                                    }
+                                }
+                                TypeKind::Float | TypeKind::Double => {
+                                    // 可变参数函数中的浮点参数
+                                    if fps < FP_MAX {
+                                        fps += 1;
+                                    } else {
+                                        gps += 1;
+                                    }
+                                }
+                                _ => {
+                                    // 可变参数函数中的整型参数
+                                    gps += 1;
+                                }
                             }
                         }
-                        va_size = (8 - gps) * 8;
-                        writeln!("  # VaArea的区域，大小为{}", va_size);
-                        writeln!("  addi sp, sp, -{}", va_size);
+                        if gps < GP_MAX {
+                            va_size = (8 - gps) * 8;
+                            writeln!("  # VaArea的区域，大小为{}", va_size);
+                            writeln!("  addi sp, sp, -{}", va_size);
+                        }
                     }
                     // 将ra寄存器压栈,保存ra的值
                     writeln!("  # 将ra寄存器压栈,保存ra的值");
@@ -421,6 +487,11 @@ impl<'a> Generator<'a> {
                     // 将sp写入fp
                     writeln!("  # 将sp的值写入fp");
                     writeln!("  mv fp, sp");
+
+                    writeln!("  # 保存所有的fs0~fs11寄存器");
+                    for i in 0..12 {
+                        writeln!("  fsgnj.d ft{}, fs{}, fs{}", i, i, i);
+                    }
 
                     // 偏移量为实际变量所用的栈大小
                     writeln!("  # sp腾出StackSize大小的栈空间");
@@ -453,16 +524,17 @@ impl<'a> Generator<'a> {
                                 let fs_reg1ty = typ.fs_reg1ty.as_ref().unwrap();
                                 let fs_reg2ty = typ.fs_reg2ty.as_ref().unwrap();
                                 // 对寄存器传递的参数进行压栈
-                                if fs_reg1ty.borrow().is_float() || fs_reg2ty.borrow().is_float() {
+                                if fs_reg1ty.borrow().is_sfloat() || fs_reg2ty.borrow().is_sfloat()
+                                {
                                     writeln!("  # 浮点结构体的第一部分进行压栈");
                                     // 浮点寄存器的第一部分
                                     let size1 = fs_reg1ty.borrow().size;
-                                    if fs_reg1ty.borrow().is_float() {
+                                    if fs_reg1ty.borrow().is_sfloat() {
                                         self.store_float(fp, offset, size1);
                                         fp += 1;
                                     }
                                     if fs_reg1ty.borrow().is_int() {
-                                        self.store_general(gp, offset, cmp::min(8, ts));
+                                        self.store_general(gp, offset, cmp::min(8, size1));
                                         gp += 1;
                                     }
 
@@ -471,11 +543,10 @@ impl<'a> Generator<'a> {
                                         writeln!("  # 浮点结构体的第二部分进行压栈");
                                         let size2 = fs_reg2ty.borrow().size;
                                         let off2 = cmp::max(size1, size2);
-                                        if fs_reg2ty.borrow().is_float() {
+                                        if fs_reg2ty.borrow().is_sfloat() {
                                             self.store_float(fp, offset + off2, size2);
                                             fp += 1;
-                                        }
-                                        if fs_reg2ty.borrow().is_int() {
+                                        } else {
                                             self.store_general(gp, offset + off2, size2);
                                             gp += 1;
                                         }
@@ -484,11 +555,13 @@ impl<'a> Generator<'a> {
                                     // 大于16字节的结构体参数，通过访问它的地址，
                                     // 将原来位置的结构体复制到栈中
                                     if ts > 16 {
+                                        writeln!("  # 大于16字节的结构体进行压栈");
                                         self.store_struct(gp, offset, ts);
                                         gp += 1;
                                     } else {
                                         // 一半寄存器，一半栈传递的结构体
                                         if var.get_is_half_by_stack() {
+                                            writeln!("  # 一半寄存器、一半栈传递结构体进行压栈");
                                             self.store_general(gp, offset, 8);
                                             gp += 1;
                                             // 拷贝栈传递的一半结构体到当前栈中
@@ -529,6 +602,34 @@ impl<'a> Generator<'a> {
                                     );
                                     self.store_general(gp, offset, ts);
                                     gp += 1;
+                                }
+                            }
+                            TypeKind::LongDouble => {
+                                if var.get_is_half_by_stack() {
+                                    writeln!(
+                                        "  # 将LD形参{}的第一部分a{}的值压栈",
+                                        var.get_name(),
+                                        gp
+                                    );
+                                    writeln!("  ld t0, 16(fp)");
+                                    writeln!("  sd t0, {}(fp)", offset + 8);
+                                } else {
+                                    if gp < GP_MAX - 1 {
+                                        writeln!(
+                                            "  # 将LD形参{}的第一部分a{}的值压栈",
+                                            var.get_name(),
+                                            gp
+                                        );
+                                        self.store_general(gp, offset, 8);
+                                        gp += 1;
+                                        writeln!(
+                                            "  # 将LD形参{}的第二部分a{}的值压栈",
+                                            var.get_name(),
+                                            gp
+                                        );
+                                        self.store_general(gp, offset + 8, 8);
+                                        gp += 1;
+                                    }
                                 }
                             }
                             _ => {
@@ -572,6 +673,12 @@ impl<'a> Generator<'a> {
                     writeln!("# ====={}段结束===============", name);
                     writeln!("# return段标签");
                     writeln!(".L.return.{}:", name);
+
+                    writeln!("  # 恢复所有的fs0~fs11寄存器");
+                    for i in 0..12 {
+                        writeln!("  fsgnj.d fs{}, ft{}, ft{}", i, i, i);
+                    }
+
                     // 将fp的值改写回sp
                     writeln!("  # 将fp的值写回sp");
                     writeln!("  mv sp, fp");
@@ -583,7 +690,7 @@ impl<'a> Generator<'a> {
                     writeln!("  ld ra, 8(sp)");
                     writeln!("  addi sp, sp, 16");
                     // 归还可变参数寄存器压栈的那一部分
-                    if va_area.is_some() {
+                    if va_area.is_some() && va_size > 0 {
                         writeln!("  # 归还VaArea的区域，大小为{}", va_size);
                         writeln!("  addi sp, sp, {}", va_size);
                     }
@@ -650,7 +757,7 @@ impl<'a> Generator<'a> {
                 let c: u32 = self.count();
                 let brk = node.break_label.as_ref().unwrap();
                 let ctn = node.continue_label.as_ref().unwrap();
-                writeln!("\n# =====do while语句语句{}===============", c);
+                writeln!("\n# =====do while语句{}============", c);
                 writeln!("\n# begin语句{}", c);
                 writeln!(".L.begin.{}:", c);
                 // 生成循环体语句
@@ -768,6 +875,10 @@ impl<'a> Generator<'a> {
                             self.copy_struct_mem();
                         }
                     }
+                    if typ.borrow().kind == TypeKind::LongDouble {
+                        writeln!("  # LD类型作为返回值时，需要将LD栈顶元素拷贝到a0，a1中");
+                        self.pop_long_double(0);
+                    }
                 }
                 // 无条件跳转语句，跳转到.L.return段
                 // j offset是 jal x0, offset的别名指令
@@ -813,6 +924,17 @@ impl<'a> Generator<'a> {
                         node.fval
                     );
                     writeln!("  fmv.d.x fa0, a0");
+                } else if typ.kind == TypeKind::LongDouble {
+                    writeln!("  # 【注意】此处存在f80->f64的精度丢失！！！");
+                    writeln!("  # 将long double类型的{0:.6}值，压入LD栈中", node.fval);
+                    writeln!(
+                        "  li a0, {}  # double {1:.6}",
+                        node.fval.to_bits(),
+                        node.fval
+                    );
+                    writeln!("  fmv.d.x fa0, a0");
+                    writeln!("  call __extenddftf2@plt");
+                    self.push_long_double();
                 } else {
                     writeln!("  # 将{}加载到a0中", node.val);
                     writeln!("  li a0, {}", node.val);
@@ -834,6 +956,12 @@ impl<'a> Generator<'a> {
                     TypeKind::Double => {
                         writeln!("  # 对double类型的fa0值进行取反");
                         writeln!("  fneg.d fa0, fa0");
+                    }
+                    TypeKind::LongDouble => {
+                        writeln!("  # 对long double类型的LD栈顶值进行取反");
+                        writeln!("  li t0, -1");
+                        writeln!("  slli t0, t0, 63");
+                        writeln!("  xor a{}, a{}, t0", self.ldsp + 1, self.ldsp + 1);
                     }
                     _ => {
                         // neg a0, a0是sub a0, x0, a0的别名, 即a0=0-a0
@@ -1083,22 +1211,38 @@ impl<'a> Generator<'a> {
                     gp += 1;
                 }
 
+                // 读取函数形参中的参数类型
                 let func_type = node.func_type.as_ref().unwrap().clone();
                 let params = &func_type.borrow().params;
                 for arg in node.args.iter() {
+                    let typ = arg.typ.as_ref().unwrap();
+                    let typ = typ.borrow();
                     // 如果是可变参数函数
                     // 匹配到空参数（最后一个）的时候，将剩余的整型寄存器弹栈
                     if func_type.borrow().is_variadic && pi >= params.len() {
                         if gp < GP_MAX {
-                            writeln!("  # a{}传递可变实参", gp);
-                            self.pop(gp);
-                            gp += 1;
+                            if typ.kind == TypeKind::LongDouble {
+                                // 在可变参数函数的调用中
+                                // LD的第一个寄存器必须是偶数下标，即a0,a2,a4,a6
+                                if gp % 2 == 1 {
+                                    gp += 1;
+                                }
+                                writeln!("  # long double通过a{},a{}传递可变实参", gp, gp + 1);
+                                self.pop(gp);
+                                gp += 1;
+                                if gp < GP_MAX {
+                                    self.pop(gp);
+                                    gp += 1;
+                                }
+                            } else {
+                                writeln!("  # a{}传递可变实参", gp);
+                                self.pop(gp);
+                                gp += 1;
+                            }
                         }
                         continue;
                     }
                     pi += 1;
-                    let typ = arg.typ.as_ref().unwrap();
-                    let typ = typ.borrow();
                     match typ.kind {
                         TypeKind::Struct | TypeKind::Union => {
                             // 判断结构体的类型
@@ -1108,7 +1252,7 @@ impl<'a> Generator<'a> {
                             let fs_reg2ty = typ.fs_reg2ty.as_ref().unwrap();
 
                             // 处理一或两个浮点成员变量的结构体
-                            if fs_reg1ty.borrow().is_float() || fs_reg2ty.borrow().is_float() {
+                            if fs_reg1ty.borrow().is_sfloat() || fs_reg2ty.borrow().is_sfloat() {
                                 let regs = vec![fs_reg1ty.clone(), fs_reg2ty.clone()];
                                 for (i, reg) in regs.iter().enumerate() {
                                     let reg = reg.borrow();
@@ -1155,6 +1299,20 @@ impl<'a> Generator<'a> {
                                 gp += 1;
                             }
                         }
+                        TypeKind::LongDouble => {
+                            if gp == GP_MAX - 1 {
+                                writeln!("  # a{}传递LD一半参数", gp);
+                                self.pop(gp);
+                                gp += 1;
+                            }
+                            if gp < GP_MAX - 1 {
+                                writeln!("  # a{}传递long double第{}部分参数", gp, 1);
+                                self.pop(gp);
+                                gp += 1;
+                                self.pop(gp);
+                                gp += 1;
+                            }
+                        }
                         _ => {
                             if gp < GP_MAX {
                                 writeln!("  # a{}传递整型参数", gp);
@@ -1168,6 +1326,11 @@ impl<'a> Generator<'a> {
                 // 偶数深度，sp已经对齐16字节
                 writeln!("  # 调用函数");
                 writeln!("  jalr t5");
+
+                if node.typ.as_ref().unwrap().borrow().kind == TypeKind::LongDouble {
+                    writeln!("  # 保存Long double类型函数的返回值");
+                    self.push_long_double();
+                }
 
                 // 回收为栈传递的变量开辟的栈空间
                 if stack > 0 {
@@ -1267,7 +1430,7 @@ impl<'a> Generator<'a> {
             }
             NodeKind::Mod => {
                 // % a0=a0%a1
-                writeln!("  # a0%%a1，结果写入a0");
+                writeln!("  # a0%a1，结果写入a0");
                 let is_unsigned = node.typ.as_ref().unwrap().borrow().is_unsigned;
                 if is_unsigned {
                     writeln!("  remu{} a0, a0, a1", suffix);
@@ -1290,23 +1453,36 @@ impl<'a> Generator<'a> {
                 writeln!("  # a0^a1，结果写入a0");
                 writeln!("  xor a0, a0, a1");
             }
-            NodeKind::Eq => {
-                // a0=a0^a1，异或指令
-                writeln!("  # 判断是否a0=a1");
-                writeln!("  xor a0, a0, a1");
-                // a0==a1
-                // a0=a0^a1, sltiu a0, a0, 1
-                // 等于0则置1
-                writeln!("  seqz a0, a0");
-            }
-            NodeKind::Ne => {
-                // a0=a0^a1，异或指令
-                writeln!("  # 判断是否a0≠a1");
-                writeln!("  xor a0, a0, a1");
-                // a0!=a1
-                // a0=a0^a1, sltu a0, x0, a0
-                // 不等于0则置1
-                writeln!("  snez a0, a0");
+            NodeKind::Eq | NodeKind::Ne => {
+                if typ.is_unsigned && typ.kind == TypeKind::Int {
+                    writeln!("  # 左部是U32类型，需要截断");
+                    writeln!("slli a0, a0, 32");
+                    writeln!("srli a0, a0, 32");
+                }
+                let rtyp = node.rhs.as_ref().unwrap().typ.as_ref().unwrap().clone();
+                let rtyp = rtyp.borrow();
+                if rtyp.is_unsigned && rtyp.kind == TypeKind::Int {
+                    writeln!("  # 右部是U32类型，需要截断");
+                    writeln!("slli a1, a1, 32");
+                    writeln!("srli a1, a1, 32");
+                }
+                if node.kind == NodeKind::Eq {
+                    // a0=a0^a1，异或指令
+                    writeln!("  # 判断是否a0=a1");
+                    writeln!("  xor a0, a0, a1");
+                    // a0==a1
+                    // a0=a0^a1, sltiu a0, a0, 1
+                    // 等于0则置1
+                    writeln!("  seqz a0, a0");
+                } else {
+                    // a0=a0^a1，异或指令
+                    writeln!("  # 判断是否a0≠a1");
+                    writeln!("  xor a0, a0, a1");
+                    // a0!=a1
+                    // a0=a0^a1, sltu a0, x0, a0
+                    // 不等于0则置1
+                    writeln!("  snez a0, a0");
+                }
             }
             NodeKind::Lt => {
                 writeln!("  # 判断a0<a1");
@@ -1348,60 +1524,113 @@ impl<'a> Generator<'a> {
 
     /// 处理浮点类型
     fn gen_float(&mut self, node: &NodeLink) {
-        // 递归到最右节点
-        self.gen_expr(node.rhs.as_ref().unwrap());
-        // 将结果压入栈
-        self.push_float();
-        // 递归到左节点
-        self.gen_expr(node.lhs.as_ref().unwrap());
-        // 将结果弹栈到a1
-        self.pop_float(1);
-
-        // 生成各个二叉树节点
-        // float对应s(single)后缀，double对应d(double)后缀
         let typ = node.lhs.as_ref().unwrap().typ.as_ref().unwrap().clone();
         let typ = typ.borrow();
-        let suffix = if typ.kind == TypeKind::Float {
-            "s"
-        } else {
-            "d"
-        };
+        if typ.is_sfloat() {
+            // 递归到最右节点
+            self.gen_expr(node.rhs.as_ref().unwrap());
+            // 将结果压入栈
+            self.push_float();
+            // 递归到左节点
+            self.gen_expr(node.lhs.as_ref().unwrap());
+            // 将结果弹栈到a1
+            self.pop_float(1);
 
-        match node.kind {
-            NodeKind::Add => {
-                writeln!("  # fa0+fa1，结果写入fa0");
-                writeln!("  fadd.{} fa0, fa0, fa1", suffix);
+            // 生成各个二叉树节点
+            // float对应s(single)后缀，double对应d(double)后缀
+            let suffix = if typ.kind == TypeKind::Float {
+                "s"
+            } else {
+                "d"
+            };
+
+            match node.kind {
+                NodeKind::Add => {
+                    writeln!("  # fa0+fa1，结果写入fa0");
+                    writeln!("  fadd.{} fa0, fa0, fa1", suffix);
+                }
+                NodeKind::Sub => {
+                    writeln!("  # fa0-fa1，结果写入fa0");
+                    writeln!("  fsub.{} fa0, fa0, fa1", suffix);
+                }
+                NodeKind::Mul => {
+                    writeln!("  # fa0×fa1，结果写入fa0");
+                    writeln!("  fmul.{} fa0, fa0, fa1", suffix);
+                }
+                NodeKind::Div => {
+                    writeln!("  # fa0÷fa1，结果写入fa0");
+                    writeln!("  fdiv.{} fa0, fa0, fa1", suffix);
+                }
+                NodeKind::Eq => {
+                    writeln!("  # 判断是否fa0=fa1");
+                    writeln!("  feq.{} a0, fa0, fa1", suffix);
+                }
+                NodeKind::Ne => {
+                    writeln!("  # 判断是否fa0≠fa1");
+                    writeln!("  feq.{} a0, fa0, fa1", suffix);
+                    writeln!("  seqz a0, a0");
+                }
+                NodeKind::Lt => {
+                    writeln!("  # 判断是否fa0<fa1");
+                    writeln!("  flt.{} a0, fa0, fa1", suffix);
+                }
+                NodeKind::Le => {
+                    writeln!("  # 判断是否fa0≤fa1");
+                    writeln!("  fle.{} a0, fa0, fa1", suffix);
+                }
+                _ => error_token!(&node.get_token(), "invalid expression"),
             }
-            NodeKind::Sub => {
-                writeln!("  # fa0-fa1，结果写入fa0");
-                writeln!("  fsub.{} fa0, fa0, fa1", suffix);
+        } else {
+            // 递归到左节点
+            self.gen_expr(node.lhs.as_ref().unwrap());
+            // 递归到最右节点
+            self.gen_expr(node.rhs.as_ref().unwrap());
+
+            self.pop_long_double(2);
+            self.pop_long_double(0);
+            match node.kind {
+                NodeKind::Add => {
+                    writeln!("  # long double加法，从栈顶读取32个字节");
+                    writeln!("  call __addtf3@plt");
+                    self.push_long_double();
+                }
+                NodeKind::Sub => {
+                    writeln!("  # long double减法，从栈顶读取32个字节");
+                    writeln!("  call __subtf3@plt");
+                    self.push_long_double();
+                }
+                NodeKind::Mul => {
+                    writeln!("  # long double乘法，从栈顶读取32个字节");
+                    writeln!("  call __multf3@plt");
+                    self.push_long_double();
+                }
+                NodeKind::Div => {
+                    writeln!("  # long double除法，从栈顶读取32个字节");
+                    writeln!("  call __divtf3@plt");
+                    self.push_long_double();
+                }
+                NodeKind::Eq => {
+                    writeln!("  # long double相等，从栈顶读取32个字节");
+                    writeln!("  call __eqtf2@plt");
+                    writeln!("  seqz a0, a0");
+                }
+                NodeKind::Ne => {
+                    writeln!("  # long double不等，从栈顶读取32个字节");
+                    writeln!("  call __netf2@plt");
+                    writeln!("  snez a0, a0");
+                }
+                NodeKind::Lt => {
+                    writeln!("  # long double小于，从栈顶读取32个字节");
+                    writeln!("  call __lttf2@plt");
+                    writeln!("  slti a0, a0, 0");
+                }
+                NodeKind::Le => {
+                    writeln!("  # long double小于等于，从栈顶读取32个字节");
+                    writeln!("  call __letf2@plt");
+                    writeln!("  slti a0, a0, 1");
+                }
+                _ => error_token!(&node.get_token(), "invalid expression"),
             }
-            NodeKind::Mul => {
-                writeln!("  # fa0×fa1，结果写入fa0");
-                writeln!("  fmul.{} fa0, fa0, fa1", suffix);
-            }
-            NodeKind::Div => {
-                writeln!("  # fa0÷fa1，结果写入fa0");
-                writeln!("  fdiv.{} fa0, fa0, fa1", suffix);
-            }
-            NodeKind::Eq => {
-                writeln!("  # 判断是否fa0=fa1");
-                writeln!("  feq.{} a0, fa0, fa1", suffix);
-            }
-            NodeKind::Ne => {
-                writeln!("  # 判断是否fa0≠fa1");
-                writeln!("  feq.{} a0, fa0, fa1", suffix);
-                writeln!("  seqz a0, a0");
-            }
-            NodeKind::Lt => {
-                writeln!("  # 判断是否fa0<fa1");
-                writeln!("  flt.{} a0, fa0, fa1", suffix);
-            }
-            NodeKind::Le => {
-                writeln!("  # 判断是否fa0≤fa1");
-                writeln!("  fle.{} a0, fa0, fa1", suffix);
-            }
-            _ => error_token!(&node.get_token(), "invalid expression"),
         }
     }
 
@@ -1539,6 +1768,14 @@ impl<'a> Generator<'a> {
                 TypeKind::Float | TypeKind::Double => {
                     self.push_float();
                 }
+                TypeKind::LongDouble => {
+                    writeln!("  # 对long double参数表达式进行计算后压栈");
+                    self.ldsp -= 2;
+                    writeln!("  addi sp, sp, -16");
+                    writeln!("  fsd fs{}, 8(sp)", self.ldsp + 1);
+                    writeln!("  fsd fs{}, 0(sp)", self.ldsp);
+                    self.depth += 2;
+                }
                 _ => {
                     self.push();
                 }
@@ -1568,7 +1805,7 @@ impl<'a> Generator<'a> {
             // 如果是可变参数的参数，只使用整型寄存器和栈传递
             if binding.is_variadic && params_peek.peek().is_none() {
                 let val = if arg.val == 0 {
-                    arg.fval.to_bits() as i64
+                    arg.fval as i64
                 } else {
                     arg.val
                 };
@@ -1598,9 +1835,9 @@ impl<'a> Generator<'a> {
                     let ts = typ.size;
                     let fs_reg1ty = tys[0].clone();
                     let fs_reg2ty = tys[1].clone();
-                    if fs_reg1ty.borrow().is_float() || fs_reg2ty.borrow().is_float() {
+                    if fs_reg1ty.borrow().is_sfloat() || fs_reg2ty.borrow().is_sfloat() {
                         for reg in tys.iter() {
-                            if reg.borrow().is_float() {
+                            if reg.borrow().is_sfloat() {
                                 fp += 1;
                             }
                             if reg.borrow().is_int() {
@@ -1623,15 +1860,26 @@ impl<'a> Generator<'a> {
                 TypeKind::Float | TypeKind::Double => {
                     // 浮点优先使用FP，而后是GP，最后是栈传递
                     if fp < FP_MAX {
-                        writeln!("  # 浮点{}值通过fa{}传递", arg.fval, fp);
+                        writeln!("  # 浮点{:.6}值通过fa{}传递", arg.fval, fp);
                         fp += 1;
                     } else if gp < GP_MAX {
-                        writeln!("  # 浮点{}值通过a{}传递", arg.fval, gp);
+                        writeln!("  # 浮点{:.6}值通过a{}传递", arg.fval, gp);
                         gp += 1;
                     } else {
-                        writeln!("  # 浮点{}值通过栈传递", arg.fval);
+                        writeln!("  # 浮点{:.6}值通过栈传递", arg.fval);
                         arg.pass_by_stack = true;
                         stack += 1;
+                    }
+                }
+                TypeKind::LongDouble => {
+                    for i in 1..3 {
+                        if gp < GP_MAX {
+                            writeln!("  # LD的第{}部分{1:.6}值通过a{2}传递", i, arg.fval, gp);
+                            gp += 1;
+                        } else {
+                            writeln!("  # LD的第{}部分{1:.6}值通过栈传递", i, arg.fval);
+                            stack += 1;
+                        }
                     }
                 }
                 _ => {
@@ -1695,7 +1943,7 @@ impl<'a> Generator<'a> {
         writeln!("  add t1, fp, t0");
 
         // 处理浮点结构体的情况
-        if fs_reg1ty.borrow().is_float() || fs_reg2ty.borrow().is_float() {
+        if fs_reg1ty.borrow().is_sfloat() || fs_reg2ty.borrow().is_sfloat() {
             let mut offset = 0;
             for reg in tys.iter() {
                 let kind = reg.borrow().kind.clone();
@@ -1765,7 +2013,7 @@ impl<'a> Generator<'a> {
         let fs_reg1ty = tys[0].clone();
         let fs_reg2ty = tys[1].clone();
 
-        if fs_reg1ty.borrow().is_float() || fs_reg2ty.borrow().is_float() {
+        if fs_reg1ty.borrow().is_sfloat() || fs_reg2ty.borrow().is_sfloat() {
             let mut offset = 0;
             for reg in tys.iter() {
                 let kind = reg.borrow().kind.clone();
@@ -1843,11 +2091,14 @@ impl<'a> Generator<'a> {
             let at = arg.typ.as_ref().unwrap();
             let typ = at.borrow();
             if typ.size > 16 && typ.kind == TypeKind::Struct {
-                writeln!("\n  # 大于16字节的结构体，先开辟相应的栈空间\n");
+                writeln!("  # 大于16字节的结构体，先开辟相应的栈空间");
                 let size = align_to(typ.size, 8) as usize;
                 writeln!("  addi sp, sp, -{}", size);
+                // t6指向了最终的 大结构体空间的起始位置
+                writeln!("  mv t6, sp");
                 self.depth += size / 8;
                 bsstack += size / 8;
+                self.bsdepth += size / 8;
             }
         }
         bsstack
@@ -1869,17 +2120,19 @@ impl<'a> Generator<'a> {
 
             // 计算大结构体的偏移量
             let size = align_to(t.size, 8) as usize;
-            let bsoffset = (self.depth + self.bsdepth) * 8;
-            self.bsdepth += size / 8;
+            // BSDepth记录了剩余 大结构体的字节数
+            self.bsdepth -= size / 8;
+            // t6存储了，大结构体空间的起始位置
+            let bsoffset = self.bsdepth * 8;
 
-            writeln!("  # 复制{}字节的，结构体到{}(sp)的位置", size, bsoffset);
+            writeln!("  # 复制{}字节的大结构体到{}(t6)的位置", size, bsoffset);
             for i in 0..size {
                 writeln!("  lb t0, {}(a0)", i);
-                writeln!("  sb t0, {}(sp)", i + bsoffset);
+                writeln!("  sb t0, {}(t6)", i + bsoffset);
             }
 
-            writeln!("  # 大于16字节的结构体，对结构体地址压栈");
-            writeln!("  addi a0, sp, {}", bsoffset);
+            writeln!("  # 大于16字节的结构体，对该结构体地址压栈");
+            writeln!("  addi a0, t6, {}", bsoffset);
             self.push();
             return;
         }
@@ -1888,8 +2141,8 @@ impl<'a> Generator<'a> {
         // 展开到栈内的两个8字节的空间
         let fs_reg1ty = t.fs_reg1ty.as_ref().unwrap();
         let fs_reg2ty = t.fs_reg2ty.as_ref().unwrap();
-        if (fs_reg1ty.borrow().is_float() && fs_reg2ty.borrow().kind != TypeKind::Void)
-            || fs_reg2ty.borrow().is_float()
+        if (fs_reg1ty.borrow().is_sfloat() && fs_reg2ty.borrow().kind != TypeKind::Void)
+            || fs_reg2ty.borrow().is_sfloat()
         {
             writeln!("  # 对含有两个成员（含浮点）结构体进行压栈");
             writeln!("  addi sp, sp, -16");
@@ -1898,8 +2151,9 @@ impl<'a> Generator<'a> {
             writeln!("  ld t0, 0(a0)");
             writeln!("  sd t0, 0(sp)");
 
-            // 计算第二部分在结构体中的偏移量
-            writeln!("  ld t0, {}(a0)", fs_reg2ty.borrow().size);
+            // 计算第二部分在结构体中的偏移量，为两个成员间的最大尺寸
+            let size = cmp::max(fs_reg1ty.borrow().size, fs_reg2ty.borrow().size);
+            writeln!("  ld t0, {}(a0)", size);
             writeln!("  sd t0, 8(sp)");
 
             return;
@@ -1907,7 +2161,7 @@ impl<'a> Generator<'a> {
 
         // 处理只有一个浮点成员的结构体
         // 或者是小于16字节的结构体
-        let s = if fs_reg1ty.borrow().is_float() {
+        let s = if fs_reg1ty.borrow().is_sfloat() {
             "只有一个浮点"
         } else {
             "小于16字节"
@@ -1959,6 +2213,28 @@ impl<'a> Generator<'a> {
         self.depth -= 1;
     }
 
+    /// 对于long double类型进行压栈
+    fn push_long_double(&mut self) {
+        writeln!("  # LD压栈，将a0,a1的值存入LD栈顶");
+        writeln!("  fmv.d.x fs{}, a1", self.ldsp + 1);
+        writeln!("  fmv.d.x fs{}, a0", self.ldsp);
+        self.ldsp += 2;
+        if self.ldsp > 10 {
+            panic!("LDSP can't be larger than 10!");
+        }
+    }
+
+    /// 对于long double类型进行弹栈
+    fn pop_long_double(&mut self, reg: usize) {
+        self.ldsp -= 2;
+        if self.ldsp < 0 {
+            panic!("LDSP can't be less than 0!");
+        }
+        writeln!("  # LD弹栈，将LD栈顶的值存入a{},a{}", reg, reg + 1);
+        writeln!("  fmv.x.d a{}, fs{}", reg + 1, self.ldsp + 1);
+        writeln!("  fmv.x.d a{}, fs{}", reg, self.ldsp);
+    }
+
     /// 加载a0指向的值
     fn load(&mut self, typ: TypeLink) {
         if typ.borrow().kind == TypeKind::Array
@@ -1975,6 +2251,12 @@ impl<'a> Generator<'a> {
         } else if typ.borrow().kind == TypeKind::Double {
             writeln!("  # 访问a0中存放的地址，取得的值存入fa0");
             writeln!("  fld fa0, 0(a0)");
+            return;
+        } else if typ.borrow().kind == TypeKind::LongDouble {
+            writeln!("  # 访问a0中存放的地址，取得的值存入LD栈当中");
+            writeln!("  fld fs{}, 8(a0)", self.ldsp + 1);
+            writeln!("  fld fs{}, 0(a0)", self.ldsp);
+            self.ldsp += 2;
             return;
         }
 
@@ -2018,6 +2300,12 @@ impl<'a> Generator<'a> {
         } else if *kind == TypeKind::Double {
             writeln!("  # 将fa0的值，写入到a1中存放的地址");
             writeln!("  fsd fa0, 0(a1)");
+            return;
+        } else if *kind == TypeKind::LongDouble {
+            writeln!("  # 将LD栈顶值，写入到a1中存放地址");
+            self.ldsp -= 2;
+            writeln!("  fsd fs{}, 8(a1)", self.ldsp + 1);
+            writeln!("  fsd fs{}, 0(a1)", self.ldsp);
             return;
         }
 
@@ -2088,6 +2376,14 @@ impl<'a> Generator<'a> {
                 writeln!("  feq.d a0, fa0, fa1");
                 writeln!("  xori a0, a0, 1");
             }
+            TypeKind::LongDouble => {
+                writeln!("  # 判断fa1是否不为0，为0置0，非0置1");
+                self.pop_long_double(0);
+                writeln!("  mv a2, zero");
+                writeln!("  mv a3, zero");
+                writeln!("  call __netf2@plt");
+                writeln!("  snez a0, a0");
+            }
             _ => {}
         }
     }
@@ -2110,7 +2406,13 @@ impl<'a> Generator<'a> {
         let cast = CAST_TABLE[from_idx][to_idx];
         if cast.is_some() {
             writeln!("  # 转换函数");
+            if from_idx == 10 {
+                self.pop_long_double(0);
+            }
             writeln!("{}", cast.unwrap());
+            if to_idx == 10 {
+                self.push_long_double();
+            }
         }
     }
 
@@ -2211,6 +2513,12 @@ impl<'a> Generator<'a> {
 }
 
 // 类型映射表
+/// i32 -> f32
+const I4F4: Option<&str> = Some("  # i32转换为f32类型\n  fcvt.s.w fa0, a0");
+/// i32 -> f64
+const I4F8: Option<&str> = Some("  # i32转换为f64类型\n  fcvt.d.w fa0, a0");
+/// i32 -> f128
+const I4FF: Option<&str> = Some("  # i32转换为f128类型\n  call __floatsitf@plt");
 // 先逻辑左移N位，再算术右移N位，就实现了将64位有符号数转换为64-N位的有符号数
 /// i64 -> i8
 const I8I1: Option<&str> = Some("  # 转换为i8类型\n  slli a0, a0, 56\n  srai a0, a0, 56");
@@ -2230,18 +2538,30 @@ const I8U4: Option<&str> = Some("  # 转换为u32类型\n  slli a0, a0, 32\n  sr
 const I8F4: Option<&str> = Some("  # i64转换为f32类型\n  fcvt.s.l fa0, a0");
 /// i64 -> f64
 const I8F8: Option<&str> = Some("  # i64转换为f64类型\n  fcvt.d.l fa0, a0");
+/// i64 -> f128
+const I8FF: Option<&str> = Some("  # i64转换为f128类型\n  call __floatditf@plt");
 // 无符号整型转换为浮点数
+/// u32 -> f32
+const U4F4: Option<&str> = Some("  # u32转换为f32类型\n  fcvt.s.wu fa0, a0");
+/// u32 -> f64
+const U4F8: Option<&str> = Some("  # u32转换为f64类型\n  fcvt.d.wu fa0, a0");
+/// u32 -> f128
+const U4FF: Option<&str> = Some("  # u32转换为f128类型\n  call __floatunsitf@plt");
+/// u32 -> i64
+const U4I8: Option<&str> = Some("  # u32转换为i64类型\n  slli a0, a0, 32\n  srli a0, a0, 32");
 /// u64 -> f32
 const U8F4: Option<&str> = Some("  # u64转换为f32类型\n  fcvt.s.lu fa0, a0");
 /// u64 -> f64
 const U8F8: Option<&str> = Some("  # u64转换为f64类型\n  fcvt.d.lu fa0, a0");
+/// u64 -> f128
+const U8FF: Option<&str> = Some("  # u64转换为f128类型\n  call __floatunditf@plt");
 // 单精度浮点数转换为整型
 /// f32 -> i8
 const F4I1: Option<&str> =
-    Some("  # f32转换为i8类型\n  fcvt.w.s a0, fa0, rtz\n  slli a0, a0, 56\n  srai a0, a0, 56\n");
+    Some("  # f32转换为i8类型\n  fcvt.w.s a0, fa0, rtz\n  slli a0, a0, 56\n  srai a0, a0, 56");
 /// f32 -> i16
 const F4I2: Option<&str> =
-    Some("  # f32转换为i16类型\n  fcvt.w.s a0, fa0, rtz\n  slli a0, a0, 48\n  srai a0, a0, 48\n");
+    Some("  # f32转换为i16类型\n  fcvt.w.s a0, fa0, rtz\n  slli a0, a0, 48\n  srai a0, a0, 48");
 /// f32 -> i32
 const F4I4: Option<&str> =
     Some("  # f32转换为i32类型\n  fcvt.w.s a0, fa0, rtz\n  slli a0, a0, 32\n  srai a0, a0, 32");
@@ -2250,10 +2570,10 @@ const F4I8: Option<&str> = Some("  # f32转换为i64类型\n  fcvt.l.s a0, fa0, 
 // 无符号整型转换为无符号浮点数
 /// f32 -> u8
 const F4U1: Option<&str> =
-    Some("  # f32转换为u8类型\n  fcvt.wu.s a0, fa0, rtz\n  slli a0, a0, 56\n  srli a0, a0, 56\n");
+    Some("  # f32转换为u8类型\n  fcvt.wu.s a0, fa0, rtz\n  slli a0, a0, 56\n  srli a0, a0, 56");
 /// f32 -> u16
 const F4U2: Option<&str> =
-    Some("  # f32转换为u16类型\n  fcvt.wu.s a0, fa0, rtz\n  slli a0, a0, 48\n  srli a0, a0, 48\n");
+    Some("  # f32转换为u16类型\n  fcvt.wu.s a0, fa0, rtz\n  slli a0, a0, 48\n  srli a0, a0, 48");
 /// f32 -> u32
 const F4U4: Option<&str> = Some("  # f32转换为u32类型\n  fcvt.wu.s a0, fa0, rtz");
 /// f32 -> u64
@@ -2261,24 +2581,27 @@ const F4U8: Option<&str> = Some("  # f32转换为u64类型\n  fcvt.lu.s a0, fa0,
 // 单精度转换为双精度浮点数
 /// f32 -> f64
 const F4F8: Option<&str> = Some("  # f32转换为f64类型\n  fcvt.d.s fa0, fa0");
+/// f32 -> f128
+const F4FF: Option<&str> = Some("  # f32转换为f128类型\n  call __extendsftf2@plt");
 // 双精度浮点数转换为整型
 /// f64 -> i8
 const F8I1: Option<&str> =
-    Some("  # f64转换为i8类型\n  fcvt.w.d a0, fa0, rtz\n  slli a0, a0, 56\n  srai a0, a0, 56\n");
+    Some("  # f64转换为i8类型\n  fcvt.w.d a0, fa0, rtz\n  slli a0, a0, 56\n  srai a0, a0, 56");
 /// f64 -> i16
 const F8I2: Option<&str> =
-    Some("  # f64转换为i16类型\n  fcvt.w.d a0, fa0, rtz\n  slli a0, a0, 48\n  srai a0, a0, 48\n");
+    Some("  # f64转换为i16类型\n  fcvt.w.d a0, fa0, rtz\n  slli a0, a0, 48\n  srai a0, a0, 48");
 /// f64 -> i32
-const F8I4: Option<&str> = Some("  # f64转换为i32类型\n  fcvt.w.d a0, fa0, rtz");
+const F8I4: Option<&str> =
+    Some("  # f64转换为i32类型\n  fcvt.w.d a0, fa0, rtz\n  slli a0, a0, 32\n  srai a0, a0, 32");
 /// f64 -> i64
 const F8I8: Option<&str> = Some("  # f64转换为i64类型\n  fcvt.l.d a0, fa0, rtz");
 // 双精度浮点数转换为无符号整型
 /// f64 -> u8
 const F8U1: Option<&str> =
-    Some("  # f64转换为u8类型\n  fcvt.wu.d a0, fa0, rtz\n  slli a0, a0, 56\n  srli a0, a0, 56\n");
+    Some("  # f64转换为u8类型\n  fcvt.wu.d a0, fa0, rtz\n  slli a0, a0, 56\n  srli a0, a0, 56");
 /// f64 -> u16
 const F8U2: Option<&str> =
-    Some("  # f64转换为u16类型\n  fcvt.wu.d a0, fa0, rtz\n  slli a0, a0, 48\n  srli a0, a0, 48\n");
+    Some("  # f64转换为u16类型\n  fcvt.wu.d a0, fa0, rtz\n  slli a0, a0, 48\n  srli a0, a0, 48");
 /// f64 -> u32
 const F8U4: Option<&str> = Some("  # f64转换为u32类型\n  fcvt.wu.d a0, fa0, rtz");
 /// f64 -> u64
@@ -2286,6 +2609,35 @@ const F8U8: Option<&str> = Some("  # f64转换为u64类型\n  fcvt.lu.d a0, fa0,
 // 双精度转换为单精度浮点数
 /// f64 -> f32
 const F8F4: Option<&str> = Some("  # f64转换为f32类型\n  fcvt.s.d fa0, fa0");
+/// f64 -> f128
+const F8FF: Option<&str> = Some("  # f64转换为f128类型\n  call __extenddftf2@plt");
+// long double转换
+/// f128 -> i8
+const FFI1: Option<&str> =
+    Some("  # f128转换为i8类型\n  call __fixtfsi@plt\n  slli a0, a0, 56\n  srai a0, a0, 56");
+/// f128 -> i16
+const FFI2: Option<&str> =
+    Some("  # f128转换为i16类型\n  call __fixtfsi@plt\n  slli a0, a0, 48\n  srai a0, a0, 48");
+/// f128 -> i32
+const FFI4: Option<&str> =
+    Some("  # f128转换为i32类型\n  call __fixtfsi@plt\n  slli a0, a0, 32\n  srai a0, a0, 32");
+/// f128 -> i64
+const FFI8: Option<&str> = Some("  # f128转换为i64类型\n  call __fixtfdi@plt");
+/// f128 -> u8
+const FFU1: Option<&str> =
+    Some("  # f128转换为u8类型\n  call __fixunstfsi@plt\n  slli a0, a0, 56\n  srli a0, a0, 56");
+/// f128 -> u16
+const FFU2: Option<&str> =
+    Some("  # f128转换为u16类型\n  call __fixunstfsi@plt\n  slli a0, a0, 48\n  srli a0, a0, 48");
+/// f128 -> u32
+const FFU4: Option<&str> =
+    Some("  # f128转换为u32类型\n  call __fixunstfsi@plt\n  slli a0, a0, 32\n  srai a0, a0, 32");
+/// f128 -> u64
+const FFU8: Option<&str> = Some("  # f128转换为u64类型\n  call __fixunstfdi@plt");
+/// f128 -> f32
+const FFF4: Option<&str> = Some("  # f128转换为f32类型\n  call __trunctfsf2@plt");
+/// f128 -> f64
+const FFF8: Option<&str> = Some("  # f128转换为f64类型\n  call __trunctfdf2@plt");
 
 /// 获取类型对应的index
 fn get_type_id(typ: TypeLink) -> usize {
@@ -2295,6 +2647,7 @@ fn get_type_id(typ: TypeLink) -> usize {
         TypeKind::Int => 2,
         TypeKind::Float => 8,
         TypeKind::Double => 9,
+        TypeKind::LongDouble => 10,
         _ => 3,
     };
     if typ.borrow().is_unsigned {
@@ -2305,18 +2658,41 @@ fn get_type_id(typ: TypeLink) -> usize {
 }
 
 /// 所有类型转换表
-const CAST_TABLE: [[Option<&str>; 10]; 10] = [
-    //{i8, i16,  i32,  i64,  u8,   u16,  u32,  u64   f32   f64}
-    [None, None, None, None, I8U1, None, None, None, I8F4, I8F8], // 从i8转换
-    [I8I1, None, None, None, I8U1, I8U2, None, None, I8F4, I8F8], // 从i16转换
-    [I8I1, I8I2, None, None, I8U1, I8U2, I8U4, None, I8F4, I8F8], // 从i32转换
-    [I8I1, I8I2, I8I4, None, I8U1, I8U2, I8U4, None, I8F4, I8F8], // 从i64转换
-    [I8I1, None, None, None, None, None, None, None, U8F4, U8F8], // 从u8转换
-    [I8I1, I8I2, None, None, I8U1, None, None, None, U8F4, U8F8], // 从u16转换
-    [I8I1, I8I2, I8I4, None, I8U1, I8U2, None, None, U8F4, U8F8], // 从u32转换
-    [I8I1, I8I2, I8I4, None, I8U1, I8U2, I8U4, None, U8F4, U8F8], // 从u64转换
-    [F4I1, F4I2, F4I4, F4I8, F4U1, F4U2, F4U4, F4U8, None, F4F8], // 从f32转换
-    [F8I1, F8I2, F8I4, F8I8, F8U1, F8U2, F8U4, F8U8, F8F4, None], // 从f64转换
+const CAST_TABLE: [[Option<&str>; 11]; 11] = [
+    //{i8, i16,  i32,  i64,  u8,   u16,  u32,  u64   f32   f64   f128}
+    [
+        None, None, None, None, I8U1, I8U2, I8U4, None, I4F4, I4F8, I4FF,
+    ], // 从i8转换
+    [
+        I8I1, None, None, None, I8U1, I8U2, I8U4, None, I4F4, I4F8, I4FF,
+    ], // 从i16转换
+    [
+        I8I1, I8I2, None, None, I8U1, I8U2, I8U4, None, I4F4, I4F8, I4FF,
+    ], // 从i32转换
+    [
+        I8I1, I8I2, I8I4, None, I8U1, I8U2, I8U4, None, I8F4, I8F8, I8FF,
+    ], // 从i64转换
+    [
+        I8I1, None, None, None, None, None, None, None, U4F4, U4F8, U4FF,
+    ], // 从u8转换
+    [
+        I8I1, I8I2, None, None, I8U1, None, None, None, U4F4, U4F8, U4FF,
+    ], // 从u16转换
+    [
+        I8I1, I8I2, I8I4, U4I8, I8U1, I8U2, None, U4I8, U4F4, U4F8, U4FF,
+    ], // 从u32转换
+    [
+        I8I1, I8I2, I8I4, None, I8U1, I8U2, I8U4, None, U8F4, U8F8, U8FF,
+    ], // 从u64转换
+    [
+        F4I1, F4I2, F4I4, F4I8, F4U1, F4U2, F4U4, F4U8, None, F4F8, F4FF,
+    ], // 从f32转换
+    [
+        F8I1, F8I2, F8I4, F8I8, F8U1, F8U2, F8U4, F8U8, F8F4, None, F8FF,
+    ], // 从f64转换
+    [
+        FFI1, FFI2, FFI4, FFI8, FFU1, FFU2, FFU4, FFU8, FFF4, FFF8, None,
+    ], // 从f128转换
 ];
 
 /// 返回2^N的N值

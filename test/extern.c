@@ -24,6 +24,6 @@ int main() {
     extern int ext_fn2(int x);
     ASSERT(8, ext_fn2(8));
 
-    printf("OK\n");
+    printf("\033[32mOK\033[0m\n");
     return 0;
 }

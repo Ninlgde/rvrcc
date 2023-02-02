@@ -24,6 +24,6 @@ int main() {
     ASSERT(0, memcmp(p2, "ghijklmnopqrstuv", 16));
     ASSERT(0, memcmp(p3, "wxy", 3));
 
-    printf("OK\n");
+    printf("\033[32mOK\033[0m\n");
     return 0;
 }

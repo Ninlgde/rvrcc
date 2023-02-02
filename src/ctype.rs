@@ -26,6 +26,8 @@ pub enum TypeKind {
     Float,
     /// double类型
     Double,
+    /// long double类型
+    LongDouble,
     /// enum枚举类型
     Enum,
     /// 指针
@@ -192,6 +194,12 @@ impl Type {
         Rc::new(RefCell::new(typ))
     }
 
+    /// 创建一个long double类型
+    pub fn new_long_double() -> TypeLink {
+        let typ = Self::new(TypeKind::LongDouble, 16, 16);
+        Rc::new(RefCell::new(typ))
+    }
+
     /// 创建一个enum类型
     pub fn new_enum() -> TypeLink {
         let typ = Self::new(TypeKind::Enum, 4, 4);
@@ -260,6 +268,13 @@ impl Type {
 
     /// 是否是浮点数类型
     pub fn is_float(&self) -> bool {
+        self.kind == TypeKind::Float
+            || self.kind == TypeKind::Double
+            || self.kind == TypeKind::LongDouble
+    }
+
+    /// 判断是否为Float或Double类型
+    pub fn is_sfloat(&self) -> bool {
         self.kind == TypeKind::Float || self.kind == TypeKind::Double
     }
 
@@ -334,7 +349,12 @@ impl Type {
         }
 
         // 处理浮点类型
-        // 优先使用double类型
+        // 优先使用long double类型
+        if typ1.borrow().kind == TypeKind::LongDouble || typ2.borrow().kind == TypeKind::LongDouble
+        {
+            return Type::new_long_double();
+        }
+        // 其次使用double类型
         if typ1.borrow().kind == TypeKind::Double || typ2.borrow().kind == TypeKind::Double {
             return Type::new_double();
         }
@@ -432,12 +452,12 @@ pub fn cal_flo_st_mems_ty(typ: TypeLink, gp: usize, fp: usize) -> Vec<TypeLink> 
     let rt0 = rty[0].borrow();
     let rt1 = rty[1].borrow();
     // 只有一个浮点成员的结构体，使用1个FP
-    let bool1 = rt0.is_float() && rt1.kind == TypeKind::Void && fp < FP_MAX;
+    let bool1 = rt0.is_sfloat() && rt1.kind == TypeKind::Void && fp < FP_MAX;
     // 一个浮点成员和一个整型成员的结构体，使用1个FP和1个GP
-    let bool2 = (rt0.is_float() && rt1.is_int() && fp < FP_MAX && gp < GP_MAX)
-        || (rt0.is_int() && rt1.is_float() && fp < FP_MAX && gp < GP_MAX);
+    let bool2 = (rt0.is_sfloat() && rt1.is_int() && fp < FP_MAX && gp < GP_MAX)
+        || (rt0.is_int() && rt1.is_sfloat() && fp < FP_MAX && gp < GP_MAX);
     // 两个浮点成员的结构体，使用2个FP
-    let bool3 = rt0.is_float() && rt1.is_float() && fp + 1 < FP_MAX;
+    let bool3 = rt0.is_sfloat() && rt1.is_sfloat() && fp + 1 < FP_MAX;
     if bool1 || bool2 || bool3 {
         return rty.to_vec();
     }
@@ -463,6 +483,10 @@ pub fn get_flo_st_mems_ty(typ: TypeLink, result: &mut Vec<TypeLink>, idx: &mut u
                 // 否则不是浮点结构体
                 *idx += 2;
             }
+        }
+        TypeKind::LongDouble => {
+            // long double不是浮点结构体
+            *idx += 2;
         }
         TypeKind::Array => {
             // 遍历数组的成员，计算是否为浮点结构体
@@ -688,7 +712,7 @@ pub fn is_compatible(t1: TypeLink, t2: TypeLink) -> i64 {
                 0
             }
         }
-        TypeKind::Float | TypeKind::Double | TypeKind::Void => 1,
+        TypeKind::Float | TypeKind::Double | TypeKind::LongDouble | TypeKind::Void => 1,
         TypeKind::Ptr => is_compatible(
             tb1.base.as_ref().unwrap().clone(),
             tb2.base.as_ref().unwrap().clone(),

@@ -9,7 +9,7 @@ typedef unsigned short char16_t;
 typedef unsigned int char32_t;
 typedef int wchar_t;
 
-// [235] 支持标志符使用多字节UTF-8字符
+// [235] 支持标识符使用多字节UTF-8字符
 int π = 3;
 
 int main() {
@@ -24,8 +24,8 @@ int main() {
     ASSERT(0, strcmp("中文", "\U00004E2D\U00006587"));
     ASSERT(0, strcmp("🌮", "\U0001F32E"));
 
-    printf("[225] 支持多字节字符作为多字符字面量\n");
-    ASSERT(-1, L'\xffffffff'>>31);
+    printf("[225] 支持多字节字符作为宽字符字面量\n");
+    ASSERT(-1, L'\xffffffff' >> 31);
     ASSERT(946, L'β');
     ASSERT(12354, L'あ');
     ASSERT(127843, L'🍣');
@@ -52,6 +52,8 @@ int main() {
 
     printf("[228] 支持UTF-8字符串字面量\n");
     ASSERT(4, sizeof(u8"abc"));
+    ASSERT(5, sizeof(u8"😀"));
+    ASSERT(7, sizeof(u8"汉语"));
     ASSERT(0, strcmp(u8"abc", "abc"));
 
     ASSERT(0, strcmp(STR(u8"a"), "u8\"a\""));
@@ -111,12 +113,13 @@ int main() {
     ASSERT(L'x', ({ wchar_t x[] = L"🤔x"; x[1]; }));
     ASSERT(12, ({ wchar_t x[] = L"🤔x"; sizeof(x); }));
 
-    printf("[235] 支持标志符使用多字节UTF-8字符\n");
+    printf("[235] 支持标识符使用多字节UTF-8字符\n");
     ASSERT(3, π);
     ASSERT(3, ({ int あβ0¾=3; あβ0¾; }));
+
     printf("[236] [GNU] 支持使用$作为标志符字符\n");
     ASSERT(5, ({ int $$$=5; $$$; }));
 
-    printf("OK\n");
+    printf("\033[32mOK\033[0m\n");
     return 0;
 }

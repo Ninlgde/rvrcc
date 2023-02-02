@@ -27,6 +27,6 @@ int main() {
     ASSERT(55, asm_fn2());
     ASSERT(50, asm_fn3());
 
-    printf("OK\n");
+    printf("\033[32mOK\033[0m\n");
     return 0;
 }

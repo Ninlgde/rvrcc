@@ -198,7 +198,7 @@ impl<'a> Parser<'a> {
         self.globals = vec![];
         // "{"
         loop {
-            let (_, token) = self.current();
+            let token = self.current_token();
             if token.at_eof() {
                 break;
             }
@@ -312,7 +312,7 @@ impl<'a> Parser<'a> {
             if var_attr.align != 0 {
                 var.as_mut().unwrap().borrow_mut().set_align(var_attr.align);
             }
-            let (_, token) = self.current();
+            let token = self.current_token();
             if token.equal("=") {
                 self.next().gvar_initializer(var.unwrap());
             } else if !var_attr.is_extern && !var_attr.is_tls {
@@ -570,7 +570,7 @@ impl<'a> Parser<'a> {
 
         // 遍历所有类型名的Tok
         loop {
-            let (_, token) = self.current();
+            let token = self.current_token();
             if !self.is_typename(token) {
                 break;
             }
@@ -625,14 +625,14 @@ impl<'a> Parser<'a> {
             }
 
             // "_Alignas" ("(" typename | const_expr ")")
-            let (_, token) = self.current();
+            let token = self.current_token();
             if token.equal(KW_ALIGNAS) {
                 if attr.is_none() {
                     error_token!(token, "_Alignas is not allowed in this context")
                 }
                 self.next().skip("(");
 
-                let (_, token) = self.current();
+                let token = self.current_token();
                 if self.is_typename(token) {
                     attr.as_mut().unwrap().align = self.typename().borrow().align;
                 } else {
@@ -750,8 +750,10 @@ impl<'a> Parser<'a> {
                 typ = Type::new_unsigned_long()
             } else if eq(counter, vec![FLOAT]) {
                 typ = Type::new_float()
-            } else if eq(counter, vec![DOUBLE, LONG + DOUBLE]) {
+            } else if eq(counter, vec![DOUBLE]) {
                 typ = Type::new_double()
+            } else if eq(counter, vec![LONG + DOUBLE]) {
+                typ = Type::new_long_double()
             } else {
                 error_token!(token, "invalid type")
             }
@@ -771,7 +773,7 @@ impl<'a> Parser<'a> {
 
             // 识别这些关键字并忽略
             loop {
-                let (_, token) = self.current();
+                let token = self.current_token();
                 if token.equal(KW_CONST)
                     || token.equal(KW_VOLATILE)
                     || token.equal(KW_RESTRICT)
@@ -828,7 +830,7 @@ impl<'a> Parser<'a> {
 
     /// type_suffix = "(" funcParams | "[" array_dimensions | ε
     fn type_suffix(&mut self, base_type: TypeLink) -> TypeLink {
-        let (_, token) = self.current();
+        let token = self.current_token();
         // "(" func_params
         if token.equal("(") {
             return self.next().func_params(base_type);
@@ -846,7 +848,7 @@ impl<'a> Parser<'a> {
     fn array_dimensions(&mut self, mut base_type: TypeLink) -> TypeLink {
         // ("static" | "restrict")*
         loop {
-            let (_, token) = self.current();
+            let token = self.current_token();
             if token.equal(KW_STATIC) || token.equal(KW_RESTRICT) {
                 self.next();
             } else {
@@ -854,7 +856,7 @@ impl<'a> Parser<'a> {
             }
         }
 
-        let (_, token) = self.current();
+        let token = self.current_token();
         // "]" 无数组维数的 "[]"
         if token.equal("]") {
             base_type = self.next().type_suffix(base_type);
@@ -886,7 +888,7 @@ impl<'a> Parser<'a> {
         let mut params = vec![];
         let mut is_variadic = false;
         loop {
-            let (_, token) = self.current();
+            let token = self.current_token();
             if token.equal(")") {
                 break;
             }
@@ -897,7 +899,7 @@ impl<'a> Parser<'a> {
             }
 
             // ("," "...")?
-            let (_, token) = self.current();
+            let token = self.current_token();
             if token.equal("...") {
                 is_variadic = true;
                 self.next();
@@ -999,7 +1001,7 @@ impl<'a> Parser<'a> {
 
         // (declarator ("=" expr)? ("," declarator ("=" expr)?)*)?
         loop {
-            let (_, token) = self.current();
+            let token = self.current_token();
             if token.equal(";") {
                 break;
             }
@@ -1013,7 +1015,7 @@ impl<'a> Parser<'a> {
             // 声明获取到变量类型，包括变量名
             let typ = self.declarator(base_type.clone());
             if typ.borrow().kind == TypeKind::Void {
-                let (_, token) = self.current();
+                let token = self.current_token();
                 error_token!(token, "variable declared void");
                 unreachable!()
             }
@@ -1029,7 +1031,7 @@ impl<'a> Parser<'a> {
                     let mut vsm = vs.as_ref().borrow_mut();
                     vsm.set_var(gvar.clone());
                 }
-                let (_, token) = self.current();
+                let token = self.current_token();
                 if token.equal("=") {
                     self.next().gvar_initializer(gvar);
                 }
@@ -1278,7 +1280,7 @@ impl<'a> Parser<'a> {
         let t = init.typ.as_ref().unwrap().clone();
         let t = t.borrow();
 
-        let (_, token) = self.current();
+        let token = self.current_token();
         let (chars, token_type) = token.get_string();
         // 如果是可调整的，就构造一个包含数组的初始化器
         // 字符串字面量在词法解析部分已经增加了'\0'
@@ -1289,7 +1291,7 @@ impl<'a> Parser<'a> {
         }
         let t = init.typ.as_ref().unwrap().clone();
         let t = t.borrow();
-        let (_, token) = self.current();
+        let token = self.current_token();
         let mut len = token_type.borrow().len;
         len = cmp::min(t.len, len);
         let bs = t.base.as_ref().unwrap().borrow().size;
@@ -1319,7 +1321,7 @@ impl<'a> Parser<'a> {
 
     /// 跳过多余的元素
     fn skip_excess_element(&mut self) {
-        let (_, token) = self.current();
+        let token = self.current_token();
         if token.equal("{") {
             self.next().skip_excess_element();
             self.skip("}");
@@ -1560,7 +1562,7 @@ impl<'a> Parser<'a> {
         // string_initializer
         let t = init.typ.as_ref().unwrap().clone();
         let t = t.borrow();
-        let (_, token) = self.current();
+        let token = self.current_token();
         if t.kind == TypeKind::Array && token.is_string() {
             self.string_initializer(init);
             return;
@@ -1788,7 +1790,7 @@ impl<'a> Parser<'a> {
         // "case" const_expr ":" stmt
         if token.equal(KW_CASE) {
             if self.cur_switch.is_none() {
-                let (_, token) = self.current();
+                let token = self.current_token();
                 error_token!(token, "stray case");
                 unreachable!()
             }
@@ -1815,7 +1817,7 @@ impl<'a> Parser<'a> {
 
         if token.equal(KW_DEFAULT) {
             if self.cur_switch.is_none() {
-                let (_, token) = self.current();
+                let token = self.current_token();
                 error_token!(token, "stray default");
                 unreachable!()
             }
@@ -1842,7 +1844,7 @@ impl<'a> Parser<'a> {
             let then = Some(self.stmt().unwrap());
             // ("else" stmt)?，不符合条件后的语句
             let mut els = None;
-            let (_, token) = self.current();
+            let token = self.current_token();
             if token.equal(KW_ELSE) {
                 els = Some(self.next().stmt().unwrap());
             }
@@ -1869,7 +1871,7 @@ impl<'a> Parser<'a> {
             self.ctn_label = self.new_unique_name();
 
             //expr_stmt
-            let (_, token) = self.current();
+            let token = self.current_token();
             let init;
             if self.is_typename(token) {
                 let base_type = self.declspec(&mut None);
@@ -1879,7 +1881,7 @@ impl<'a> Parser<'a> {
             }
             // expr?
             let mut cond = None;
-            let (_, token) = self.current();
+            let token = self.current_token();
             if !token.equal(";") {
                 cond = Some(self.expr().unwrap());
             }
@@ -1887,7 +1889,7 @@ impl<'a> Parser<'a> {
             self.skip(";");
             // expr?
             let mut inc = None;
-            let (_, token) = self.current();
+            let token = self.current_token();
             if !token.equal(")") {
                 inc = Some(self.expr().unwrap());
             }
@@ -2523,7 +2525,7 @@ impl<'a> Parser<'a> {
             let typ = self.next().typename();
             self.skip(")");
 
-            let (_, token) = self.current();
+            let token = self.current_token();
             // 复合字面量
             if token.equal("{") {
                 self.cursor = pos;
@@ -2635,7 +2637,7 @@ impl<'a> Parser<'a> {
             self.next();
         }
 
-        let (_, token) = self.current();
+        let token = self.current_token();
         if tag.is_some() && !token.equal("{") {
             let typ = self.find_tag(&tag.as_ref().unwrap().get_name().to_string());
             if typ.is_none() {
@@ -2659,12 +2661,12 @@ impl<'a> Parser<'a> {
                 self.skip(",");
             }
             i += 1;
-            let (_, token) = self.current(); // 重新取,可能被跳过了,
+            let token = self.current_token(); // 重新取,可能被跳过了,
             let name = token.get_name().to_string();
             self.next(); // 跳过name
 
             // 判断是否存在赋值
-            let (_, token) = self.current(); // 重新取
+            let token = self.current_token(); // 重新取
             if token.equal("=") {
                 val = self.next().const_expr();
             }
@@ -2708,7 +2710,7 @@ impl<'a> Parser<'a> {
 
         let mut idx = 0;
         loop {
-            let (_, token) = self.current();
+            let token = self.current_token();
             if token.equal("}") {
                 break;
             }
@@ -2862,7 +2864,7 @@ impl<'a> Parser<'a> {
         }
 
         // 构造不完整结构体
-        let (_, token) = self.current();
+        let token = self.current_token();
         if tag.is_some() && !token.equal("{") {
             let typ = self.find_tag(name.as_ref().unwrap());
             if typ.is_some() {
@@ -3267,7 +3269,7 @@ impl<'a> Parser<'a> {
                     return Some(node);
                 }
             }
-            let (_, token) = self.current();
+            let token = self.current_token();
             if token.equal(")") {
                 error_token!(token, "implicit declaration of a function")
             }
@@ -3297,7 +3299,7 @@ impl<'a> Parser<'a> {
             return Some(node);
         }
 
-        let (_, token) = self.current();
+        let token = self.current_token();
         error_token!(token, "expected an expression");
 
         None
@@ -3342,8 +3344,7 @@ impl<'a> Parser<'a> {
     fn func_call(&mut self, mut func: NodeLink) -> Option<NodeLink> {
         add_type(&mut func);
 
-        let (pos, token) = self.current();
-        let nt = self.tokens[pos].clone();
+        let token = self.current_token();
         let ft = func.typ.as_ref().unwrap().clone();
         let ftyp = ft.borrow();
         if !ftyp.is_func() {
@@ -3365,7 +3366,7 @@ impl<'a> Parser<'a> {
 
         let mut i = 0;
         loop {
-            let (_, token) = self.current();
+            let token = self.current_token();
             if token.equal(")") {
                 break;
             }
@@ -3390,9 +3391,10 @@ impl<'a> Parser<'a> {
             nodes.push(arg);
         }
 
+        let ft = self.current_token().clone();
         self.skip(")");
 
-        let mut node = Node::new_unary(NodeKind::FuncCall, func, nt);
+        let mut node = Node::new_unary(NodeKind::FuncCall, func, ft);
         node.func_type = Some(t.clone());
         let tb = t.borrow();
         let rt = tb.return_type.as_ref().unwrap();

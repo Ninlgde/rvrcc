@@ -46,7 +46,7 @@ int main() {
     ASSERT(0, !strcmp("abc" "d", "abcd\nefgh"));
     ASSERT(0, strcmp("\x9" "0", "\t0"));
 
-    printf("[237] 支持拼接常规字符串字面量和L/u/U字符串字面量\n");
+    printf("[237] 支持拼接常规字符串字面量和L u U字符串字面量\n");
     ASSERT(16, sizeof(L"abc" ""));
 
     ASSERT(28, sizeof(L"abc" "def"));

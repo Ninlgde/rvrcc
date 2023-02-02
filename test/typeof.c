@@ -9,6 +9,6 @@ int main() {
     ASSERT(4, ({ typeof("foo") x; sizeof(x); }));
     ASSERT(12, sizeof(typeof(struct { int a,b,c; })));
 
-    printf("OK\n");
+    printf("\033[32mOK\033[0m\n");
     return 0;
 }

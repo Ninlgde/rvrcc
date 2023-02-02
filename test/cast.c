@@ -12,7 +12,7 @@ int main() {
 
     (void)1;
 
-    // [131] 支持无符号整型
+    printf("[131] 支持无符号整型");
     ASSERT(255, (char)255);
     ASSERT(-1, (signed char)255);
     ASSERT(255, (unsigned char)255);
@@ -20,6 +20,7 @@ int main() {
     ASSERT(65535, (unsigned short)65535);
     ASSERT(-1, (int)0xffffffff);
     ASSERT(0xffffffff, (unsigned)0xffffffff);
+    ASSERT(1, 0 + (unsigned)-1 == -1);
 
     ASSERT(1, -1<1);
     ASSERT(0, -1<(unsigned)1);
@@ -43,6 +44,8 @@ int main() {
 
     ASSERT(-1, ({ typedef short T; T x = 65535; (int)x; }));
     ASSERT(65535, ({ typedef unsigned short T; T x = 65535; (int)x; }));
+    ASSERT(0, (unsigned)18446744073709551615UL < (signed char)(-2L));
+    ASSERT(1, 115 >= -(unsigned)(4294967286UL));
 
     // [140] 支持float和double用于局部变量或类型转换
     ASSERT(0, (_Bool)0.0);
@@ -57,6 +60,18 @@ int main() {
     ASSERT(3, (double)3);
     ASSERT(3, (float)3L);
     ASSERT(3, (double)3L);
+
+    printf("[140] 支持float和double用于局部变量或类型转换\n");
+    ASSERT(1, (_Bool)0.1L);
+    ASSERT(3, (char)3.0L);
+    ASSERT(3, (int)3.99L);
+    ASSERT(3, (float)3.5L);
+    ASSERT(3, (long double)3);
+    ASSERT(3, (long double)3.0);
+    ASSERT(3, (long double)3L);
+    ASSERT(1000, (short)1000.3L);
+    ASSERT(2000000000000000, (long)2e15L);
+    ASSERT(5, (long double)(float)5.5L);
 
     printf("\033[32mOK\033[0m\n");
     return 0;

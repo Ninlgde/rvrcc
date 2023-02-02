@@ -19,6 +19,6 @@ int main() {
     ASSERT(201, __LINE__);
     ASSERT(0, strcmp(__FILE__, "xyz"));
 
-    printf("OK\n");
+    printf("\033[32mOK\033[0m\n");
     return 0;
 }

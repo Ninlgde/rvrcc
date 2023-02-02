@@ -16,6 +16,6 @@ int main() {
     ASSERT(0, common_ext1);
     ASSERT(3, common_ext2);
 
-    printf("OK\n");
+    printf("\033[32mOK\033[0m\n");
     return 0;
 }

@@ -10,6 +10,6 @@ int main() {
     ASSERT(8, ({ const x = 8; int *const y=&x; *y; }));
     ASSERT(6, ({ const x = 6; *(const * const)&x; }));
 
-    printf("OK\n");
+    printf("\033[32mOK\033[0m\n");
     return 0;
 }

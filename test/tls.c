@@ -40,6 +40,6 @@ int main() {
 //    ASSERT(5, v2);
 //    ASSERT(3, v3);
 
-    printf("OK\n");
+    printf("\033[32mOK\033[0m\n");
     return 0;
 }

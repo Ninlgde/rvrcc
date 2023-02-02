@@ -239,7 +239,7 @@ pub fn tokenize(input: FileLink) -> Vec<Token> {
                 old_pos,
                 line_no,
                 c,
-                Type::new_short(),
+                Type::new_unsigned_short(),
             );
             tokens.push(token);
             at_bol = false;
@@ -734,6 +734,7 @@ fn read_number(chars: &Vec<u8>, pos: &mut usize) -> (i64, f64, TypeLink) {
             typ = Type::new_float();
             *pos += 1;
         } else if c == 'l' || c == 'L' {
+            typ = Type::new_long_double();
             *pos += 1;
         }
     }

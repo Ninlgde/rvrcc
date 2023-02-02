@@ -24,6 +24,6 @@ int main() {
     printf("[274] 支持sizeof(VLA)\n");
     ASSERT(10, ({ int n=5; sizeof(char[2][n]); }));
 
-    printf("OK\n");
+    printf("\033[32mOK\033[0m\n");
     return 0;
 }

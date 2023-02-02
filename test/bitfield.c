@@ -61,6 +61,6 @@ int main() {
     ASSERT(8, sizeof(struct {int a:3; int:0; int c:5;}));
     ASSERT(4, sizeof(struct {int a:3; int:0;}));
 
-    printf("OK\n");
+    printf("\033[32mOK\033[0m\n");
     return 0;
 }

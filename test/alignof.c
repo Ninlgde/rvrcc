@@ -49,6 +49,6 @@ int main() {
     ASSERT(0, ({ char x[100]; (unsigned long)&x % 16; }));
     ASSERT(0, ({ char x[101]; (unsigned long)&x % 16; }));
 
-    printf("OK\n");
+    printf("\033[32mOK\033[0m\n");
     return 0;
 }

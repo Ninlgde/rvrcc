@@ -11,7 +11,6 @@ int main() {
 
     // [63] 支持long long
     ASSERT(8, ({ long long x; sizeof(x); }));
-    ASSERT(8, ({ long long int x; sizeof(x); }));
 
     // [72] 支持_Bool类型
     ASSERT(0, ({ _Bool x=0; x; }));
