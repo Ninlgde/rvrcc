@@ -80,8 +80,12 @@ pub enum NodeKind {
     Block,
     /// goto，直接跳转语句
     Goto,
+    /// "goto" 的对应的地址表达式
+    GotoExpr,
     /// 标签语句
     Label,
+    /// "goto" 标签值
+    LabelVal,
     /// 函数调用
     FuncCall,
     /// 表达式语句

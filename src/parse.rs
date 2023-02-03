@@ -42,7 +42,7 @@
 //!        | "while" "(" expr ")" stmt
 //!        | "do" stmt "while" "(" expr ")" ";"
 //!        | asm_stmt
-//!        | "goto" ident ";"
+//!        | "goto" (ident | "*" expr) ";"
 //!        | "break" ";"
 //!        | ident ":" stmt
 //!        | "{" compound_stmt
@@ -67,6 +67,7 @@
 //! cast = "(" typename ")" cast | unary
 //! unary = ("+" | "-" | "*" | "&" | "!" | "~") cast
 //!         | ("++" | "--") unary
+//!         | "&&" ident
 //!         | postfix
 //! struct_members = (declspec declarator (","  declarator)* ";")*
 //! struct_declare = struct_union_declare
@@ -1762,7 +1763,7 @@ impl<'a> Parser<'a> {
     ///        | "while" "(" expr ")" stmt
     ///        | "do" stmt "while" "(" expr ")" ";"
     ///        | asm_stmt
-    ///        | "goto" ident ";"
+    ///        | "goto" (ident | "*" expr) ";"
     ///        | "break" ";"
     ///        | "continue" ";"
     ///        | ident ":" stmt
@@ -2034,6 +2035,13 @@ impl<'a> Parser<'a> {
 
         // "goto" ident ";"
         if token.equal(KW_GOTO) {
+            if self.tokens[pos + 1].equal("*") {
+                // `goto *Ptr`跳转到Ptr指向的地址
+                let mut node = Node::new(NodeKind::GotoExpr, nt.clone());
+                node.lhs = self.next().next().expr();
+                self.skip(";");
+                return Some(node);
+            }
             let mut node = Node::new(NodeKind::Goto, nt.clone());
             let label = self.get_token(pos + 1).get_name().to_string();
             let label = LabelInfo::new_goto(label, nt.clone());
@@ -2595,6 +2603,7 @@ impl<'a> Parser<'a> {
     /// 解析一元运算
     /// unary = ("+" | "-" | "*" | "&" | "!" | "~") cast
     ///         | ("++" | "--") unary
+    ///         | "&&" ident
     ///         | postfix
     fn unary(&mut self) -> Option<NodeLink> {
         let (pos, token) = self.current();
@@ -2668,6 +2677,17 @@ impl<'a> Parser<'a> {
             let unary = self.next().unary().unwrap();
             let node = sub_with_type(unary, Node::new_num(1, nt.clone()), nt.clone()).unwrap();
             return self.to_assign(node);
+        }
+
+        // GOTO的标签作为值
+        if token.equal("&&") {
+            let mut node = Node::new(NodeKind::LabelVal, nt.clone());
+            let label = self.get_token(pos + 1).get_name().to_string();
+            let label = LabelInfo::new_goto(label, nt.clone());
+            node.label_info = Some(label.clone());
+            self.gotos.insert(0, label);
+            self.next().next();
+            return Some(node);
         }
 
         // primary

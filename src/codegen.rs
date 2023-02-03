@@ -865,6 +865,11 @@ impl<'a> Generator<'a> {
             NodeKind::Goto => {
                 writeln!("  j {}", node.get_unique_label());
             }
+            NodeKind::GotoExpr => {
+                writeln!("  # GOTO跳转到存储标签的地址");
+                self.gen_expr(node.lhs.as_ref().unwrap());
+                writeln!("  jr a0");
+            }
             NodeKind::Label => {
                 writeln!("{}:", node.get_unique_label());
                 self.gen_stmt(node.lhs.as_ref().unwrap());
@@ -1398,6 +1403,11 @@ impl<'a> Generator<'a> {
                     writeln!("  add a0, fp, t0");
                 }
 
+                return;
+            }
+            NodeKind::LabelVal => {
+                writeln!("  # 加载标签{}的值到a0中", node.get_unique_label());
+                writeln!("  la a0, {}", node.get_unique_label());
                 return;
             }
             _ => {}

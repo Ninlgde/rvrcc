@@ -674,6 +674,9 @@ pub fn add_type(node: &mut NodeLink) {
                 "statement expression returning void is not supported"
             );
         }
+        NodeKind::LabelVal => {
+            node.typ = Some(Type::pointer_to(Type::new_void()));
+        }
         _ => {}
     }
 }
