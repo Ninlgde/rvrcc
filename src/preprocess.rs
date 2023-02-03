@@ -9,6 +9,7 @@ use crate::{
     dirname, error_token, file_exists, join_adjacent_string_literals, search_include_paths,
     tokenize_file, warn_token,
 };
+use std::collections::HashMap;
 
 /// 预处理器入口函数
 pub fn preprocess(tokens: &mut Vec<Token>, include_path: &Vec<String>) -> Vec<Token> {
@@ -36,7 +37,7 @@ struct Preprocessor<'a> {
     /// 全局的#if保存栈
     cond_incls: Vec<CondIncl>,
     /// 宏变量栈
-    macros: Vec<Macro>,
+    macros: HashMap<String, Macro>,
     /// 引入路径区
     include_path: &'a Vec<String>,
 }
@@ -61,14 +62,20 @@ impl TokenVecOps for Preprocessor<'_> {
 impl<'a> Preprocessor<'a> {
     /// 构造预处理器
     fn new(tokens: &'a mut Vec<Token>, include_path: &'a Vec<String>) -> Self {
-        Self {
+        let mut processor = Self {
             tokens,
             cursor: 0,
             result: vec![],
             cond_incls: vec![],
-            macros: unsafe { BUILTIN_MACROS.to_vec() },
+            macros: HashMap::new(),
             include_path,
+        };
+        unsafe {
+            for m in BUILTIN_MACROS.as_ref().unwrap().iter() {
+                processor.macros.insert(m.0.to_string(), m.1.clone());
+            }
         }
+        processor
     }
 
     /// 从其他预处理构造新的处理器
@@ -78,7 +85,7 @@ impl<'a> Preprocessor<'a> {
             cursor: 0,
             result: vec![],
             cond_incls: processor.cond_incls.to_vec(),
-            macros: processor.macros.to_vec(),
+            macros: processor.macros.clone(),
             include_path: processor.include_path,
         }
     }
@@ -175,8 +182,7 @@ impl<'a> Preprocessor<'a> {
                 let name = token.get_name();
                 // 跳到行首
                 self.next().skip_line();
-                // 压入一个被标记删除的宏变量
-                self.add_delete_macro(name.as_str());
+                self.macros.remove(name.as_str());
                 continue;
             }
 
@@ -199,13 +205,13 @@ impl<'a> Preprocessor<'a> {
                 // 查找宏变量
                 self.next();
                 let next = self.current_token();
-                let defined = self.find_macro(next);
+                let defined = self.find_macro(next).is_some();
                 // 压入#if栈
-                self.push_cond_incl(t, defined.is_some());
+                self.push_cond_incl(t, defined);
                 // 跳到行首
                 self.next().skip_line();
                 // 如果没被定义，那么应该跳过这个部分
-                if defined.is_none() {
+                if !defined {
                     self.skip_cond_incl();
                 }
                 continue;
@@ -217,13 +223,13 @@ impl<'a> Preprocessor<'a> {
                 // 查找宏变量
                 self.next();
                 let next = self.current_token();
-                let defined = self.find_macro(next);
+                let defined = self.find_macro(next).is_some();
                 // 压入#if栈，此时不存在时则设为真
-                self.push_cond_incl(t, defined.is_none());
+                self.push_cond_incl(t, !defined);
                 // 跳到行首
                 self.next().skip_line();
                 // 如果被定义了，那么应该跳过这个部分
-                if defined.is_some() {
+                if defined {
                     self.skip_cond_incl();
                 }
                 continue;
@@ -512,36 +518,20 @@ impl<'a> Preprocessor<'a> {
     }
 
     /// 通过token查找宏
-    fn find_macro(&self, token: &Token) -> Option<Macro> {
+    fn find_macro(&self, token: &Token) -> Option<&Macro> {
         if !token.is_ident() {
             return None;
         }
 
         let name = token.get_name();
-        // 栈需要倒序查找,越top越优先
-        for macro_ in self.macros.iter().rev() {
-            // 相等且未被标记删除,才返回
-            if macro_.eq(name.as_str()) {
-                if macro_.deleted() {
-                    return None;
-                }
-                return Some(macro_.clone());
-            }
-        }
-        None
+        self.macros.get(&name)
     }
 
     /// 新增宏变量，压入宏变量栈中
     fn add_macro(&mut self, name: &str, is_obj_like: bool, body: Vec<Token>) -> Macro {
-        let macro_ = Macro::new(name, body, false, is_obj_like);
-        self.macros.push(macro_.clone());
+        let macro_ = Macro::new(name, body, is_obj_like);
+        self.macros.insert(name.to_string(), macro_.clone());
         macro_
-    }
-
-    /// 压入一个被标记删除的宏变量
-    fn add_delete_macro(&mut self, name: &str) {
-        let macro_ = Macro::new(name, vec![], true, true);
-        self.macros.push(macro_);
     }
 
     /// 如果是宏变量并展开成功，返回真
@@ -556,7 +546,7 @@ impl<'a> Preprocessor<'a> {
         if macro_.is_none() {
             return false;
         }
-        let macro_ = macro_.unwrap();
+        let macro_ = macro_.unwrap().clone();
         // 如果宏设置了相应的处理函数，例如__LINE__
         if macro_.get_handler().is_some() {
             // 就使用相应的处理函数解析当前的宏

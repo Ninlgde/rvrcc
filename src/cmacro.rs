@@ -4,6 +4,7 @@ use crate::tokenize::tokenize;
 use crate::BASE_FILE;
 use chrono::{DateTime, Datelike, Timelike, Utc};
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
 use std::{fs, ptr};
 
@@ -43,8 +44,6 @@ struct MacroInner {
     body: Vec<Token>,
     /// 宏函数参数
     params: Vec<MacroParam>,
-    /// 是否被删除了
-    deleted: bool,
     /// 宏变量为真，或者宏函数为假
     is_obj_like: bool,
     /// 宏处理函数
@@ -55,12 +54,11 @@ struct MacroInner {
 
 impl MacroInner {
     /// 构造inner
-    pub fn new(name: &str, body: Vec<Token>, deleted: bool, is_obj_like: bool) -> Self {
+    pub fn new(name: &str, body: Vec<Token>, is_obj_like: bool) -> Self {
         MacroInner {
             name: name.to_string(),
             body,
             params: vec![],
-            deleted,
             is_obj_like,
             handler: None,
             va_args_name: "".to_string(),
@@ -84,21 +82,10 @@ impl Clone for Macro {
 
 impl Macro {
     /// 创建宏
-    pub fn new(name: &str, body: Vec<Token>, deleted: bool, is_obj_like: bool) -> Self {
+    pub fn new(name: &str, body: Vec<Token>, is_obj_like: bool) -> Self {
         Self {
-            inner: Rc::new(RefCell::new(MacroInner::new(
-                name,
-                body,
-                deleted,
-                is_obj_like,
-            ))),
+            inner: Rc::new(RefCell::new(MacroInner::new(name, body, is_obj_like))),
         }
-    }
-
-    /// 是否相等
-    pub fn eq(&self, name: &str) -> bool {
-        let inner = self.inner.borrow();
-        inner.name.eq(name)
     }
 
     /// 获取宏名称
@@ -123,12 +110,6 @@ impl Macro {
     pub fn set_params(&mut self, params: Vec<MacroParam>) {
         let mut inner = self.inner.borrow_mut();
         inner.params = params
-    }
-
-    /// 是否被标记删除
-    pub fn deleted(&self) -> bool {
-        let inner = self.inner.borrow();
-        inner.deleted
     }
 
     /// 是否为宏变量
@@ -265,7 +246,8 @@ impl HideSet {
     }
 }
 
-pub static mut BUILTIN_MACROS: Vec<Macro> = vec![];
+/// C语言内置宏
+pub static mut BUILTIN_MACROS: Option<HashMap<String, Macro>> = None;
 
 /// 定义宏
 pub fn define(s: &str) {
@@ -283,23 +265,36 @@ pub fn define(s: &str) {
 /// 定义预定义的宏
 pub fn define_macro(name: &str, buf: &str) {
     let body = tokenize(File::new_link("<built-in>".to_string(), 1, buf.to_string()));
-    unsafe { BUILTIN_MACROS.push(Macro::new(name, body, false, true)) }
+    unsafe {
+        BUILTIN_MACROS
+            .as_mut()
+            .unwrap()
+            .insert(name.to_string(), Macro::new(name, body, true));
+    }
 }
 
 /// 取消定义宏
 pub fn undef_macro(name: &str) {
-    unsafe { BUILTIN_MACROS.push(Macro::new(name, vec![], true, true)) }
+    unsafe {
+        BUILTIN_MACROS.as_mut().unwrap().remove(name);
+    }
 }
 
 /// 增加内建的宏和相应的宏处理函数
 pub fn add_builtin(name: &str, handler: MacroHandlerFn) {
-    let mut macro_ = Macro::new(name, vec![], false, true);
+    let mut macro_ = Macro::new(name, vec![], true);
     macro_.set_handler(handler);
-    unsafe { BUILTIN_MACROS.push(macro_) }
+    unsafe {
+        BUILTIN_MACROS
+            .as_mut()
+            .unwrap()
+            .insert(name.to_string(), macro_);
+    }
 }
 
 /// 初始化预定义的宏
 pub fn init_macros() {
+    unsafe { BUILTIN_MACROS = Some(HashMap::new()) }
     define_macro("_LP64", "1");
     define_macro("__C99_MACRO_WITH_VA_ARGS", "1");
     define_macro("__ELF__", "1");
