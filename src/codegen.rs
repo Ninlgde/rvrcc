@@ -312,7 +312,11 @@ impl<'a> Generator<'a> {
                                 if !rel.is_null() && (*rel).offset == pos {
                                     // 使用其他变量进行初始化
                                     writeln!("  # {}全局变量", var.get_name());
-                                    writeln!("  .quad {}{:+}", &(*rel).label, (*rel).added);
+                                    writeln!(
+                                        "  .quad {}{:+}",
+                                        &(*rel).label.borrow(),
+                                        (*rel).added
+                                    );
                                     rel = (*rel).next;
                                     pos += 8;
                                 } else {
@@ -863,7 +867,7 @@ impl<'a> Generator<'a> {
                 }
             }
             NodeKind::Goto => {
-                writeln!("  j {}", node.get_unique_label());
+                writeln!("  j {}", node.get_unique_label_str());
             }
             NodeKind::GotoExpr => {
                 writeln!("  # GOTO跳转到存储标签的地址");
@@ -871,7 +875,7 @@ impl<'a> Generator<'a> {
                 writeln!("  jr a0");
             }
             NodeKind::Label => {
-                writeln!("{}:", node.get_unique_label());
+                writeln!("{}:", node.get_unique_label_str());
                 self.gen_stmt(node.lhs.as_ref().unwrap());
             }
             // 生成表达式语句
@@ -1406,8 +1410,8 @@ impl<'a> Generator<'a> {
                 return;
             }
             NodeKind::LabelVal => {
-                writeln!("  # 加载标签{}的值到a0中", node.get_unique_label());
-                writeln!("  la a0, {}", node.get_unique_label());
+                writeln!("  # 加载标签{}的值到a0中", node.get_unique_label_str());
+                writeln!("  la a0, {}", node.get_unique_label_str());
                 return;
             }
             _ => {}

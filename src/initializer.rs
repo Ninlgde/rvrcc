@@ -5,7 +5,9 @@ use crate::node::{add_with_type, eval, eval0, eval_double, Node, NodeKind, NodeL
 use crate::obj::{Member, ObjLink};
 use crate::token::Token;
 use crate::vec_i8_into_u8;
+use std::cell::RefCell;
 use std::ptr;
+use std::rc::Rc;
 
 /// 可变的初始化器。此处为树状结构。
 /// 因为初始化器可以是嵌套的，
@@ -156,14 +158,14 @@ pub struct Relocation {
     /// 偏移量
     pub(crate) offset: isize,
     /// 标签名
-    pub(crate) label: String,
+    pub(crate) label: Rc<RefCell<String>>,
     /// 加数
     pub(crate) added: i64,
 }
 
 impl Relocation {
     /// 新建链表节点
-    pub fn new(offset: isize, label: String, added: i64) -> *mut Self {
+    pub fn new(offset: isize, label: Rc<RefCell<String>>, added: i64) -> *mut Self {
         Box::into_raw(Box::new(Relocation {
             next: ptr::null_mut(),
             offset,
@@ -174,7 +176,7 @@ impl Relocation {
 
     /// 创建头指针
     pub fn head() -> *mut Self {
-        Self::new(0, String::new(), 0)
+        Self::new(0, Rc::new(RefCell::new(String::new())), 0)
     }
 }
 
@@ -379,7 +381,7 @@ pub fn write_gvar_data(
     }
 
     // 存在Label，则表示使用了其他全局变量
-    let rel = Relocation::new(offset as isize, label.as_ref().unwrap().clone(), val);
+    let rel = Relocation::new(offset as isize, label.unwrap(), val);
     unsafe {
         (*cur).next = rel;
         return (*cur).next;

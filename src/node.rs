@@ -287,11 +287,15 @@ impl Node {
     }
 
     /// 获取唯一的label值
-    pub fn get_unique_label(&self) -> String {
+    pub fn get_unique_label(&self) -> Rc<RefCell<String>> {
         let label = self.label_info.as_ref().unwrap();
         let x = label.clone();
         let x = &*x.borrow();
-        x.unique_label.to_string()
+        x.unique_label.clone()
+    }
+
+    pub fn get_unique_label_str(&self) -> String {
+        self.get_unique_label().borrow().to_string()
     }
 }
 
@@ -302,7 +306,7 @@ pub fn eval(node: &mut Box<Node>) -> i64 {
 
 /// 计算给定节点的常量表达式计算
 /// 常量表达式可以是数字或者是 ptr±n，ptr是指向全局变量的指针，n是偏移量。
-pub fn eval0(node: &mut Box<Node>, label: &mut Option<String>) -> i64 {
+pub fn eval0(node: &mut Box<Node>, label: &mut Option<Rc<RefCell<String>>>) -> i64 {
     add_type(node);
 
     if node.typ.as_ref().unwrap().borrow().is_float() {
@@ -431,6 +435,11 @@ pub fn eval0(node: &mut Box<Node>, label: &mut Option<String>) -> i64 {
             r
         }
         NodeKind::Addr => eval_rval(node.lhs.as_mut().unwrap(), label),
+        NodeKind::LabelVal => {
+            // 将标签值也作为常量
+            *label = Some(node.get_unique_label());
+            0
+        }
         NodeKind::Member => {
             // 未开辟Label的地址，则表明不是表达式常量
             if label.is_some() {
@@ -452,7 +461,7 @@ pub fn eval0(node: &mut Box<Node>, label: &mut Option<String>) -> i64 {
                 error_token!(&node.token, "invalid initializer");
             }
             let var = node.var.as_ref().unwrap().borrow();
-            *label = Some(var.get_name().clone());
+            *label = Some(Rc::new(RefCell::new(var.get_name().clone())));
             0
         }
         NodeKind::Num => node.val,
@@ -464,7 +473,7 @@ pub fn eval0(node: &mut Box<Node>, label: &mut Option<String>) -> i64 {
 }
 
 /// 计算重定位变量
-fn eval_rval(node: &mut Box<Node>, label: &mut Option<String>) -> i64 {
+fn eval_rval(node: &mut Box<Node>, label: &mut Option<Rc<RefCell<String>>>) -> i64 {
     return match node.kind {
         NodeKind::Var => {
             // 局部变量不能参与全局变量的初始化
@@ -472,7 +481,7 @@ fn eval_rval(node: &mut Box<Node>, label: &mut Option<String>) -> i64 {
             if var.is_local() {
                 error_token!(&node.token, "not a compile-time constant");
             }
-            *label = Some(var.get_name().clone());
+            *label = Some(Rc::new(RefCell::new(var.get_name().clone())));
             0
         }
         NodeKind::DeRef => {
@@ -565,7 +574,7 @@ pub struct LabelInfo {
     // goto和标签语句
     pub label: String,
     /// 唯一标签,用于汇编内的跳转
-    pub unique_label: String,
+    pub unique_label: Rc<RefCell<String>>,
     /// 用于报错的token
     pub token: Token,
 }
@@ -574,7 +583,7 @@ impl LabelInfo {
     pub fn new(label: String, unique_label: String, token: Token) -> Rc<RefCell<Self>> {
         Rc::new(RefCell::new(LabelInfo {
             label,
-            unique_label,
+            unique_label: Rc::new(RefCell::new(unique_label)),
             token,
         }))
     }
@@ -591,7 +600,7 @@ impl LabelInfo {
 
     /// 设置唯一标签
     pub fn set_unique_label(&mut self, unique_label: String) {
-        self.unique_label = unique_label;
+        self.unique_label.replace(unique_label);
     }
 
     /// 判断标签是否相等

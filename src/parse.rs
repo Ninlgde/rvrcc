@@ -462,11 +462,11 @@ impl<'a> Parser<'a> {
             for label in self.labels.iter() {
                 let y = label.borrow();
                 if x.equals(&y) {
-                    x.set_unique_label(y.unique_label.to_string())
+                    x.set_unique_label(y.unique_label.borrow().to_string())
                 }
             }
 
-            if x.unique_label.len() == 0 {
+            if x.unique_label.borrow().len() == 0 {
                 let t = &x.token;
                 error_token!(t, "use of undeclared label");
             }
