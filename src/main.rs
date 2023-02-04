@@ -12,8 +12,9 @@
 
 use rvrcc::{
     append_tokens, codegen, dirname, file_exists, find_file, init_macros, open_file_for_write,
-    parse, parse_args, preprocess, print_tokens, replace_extn, search_include_paths, tokenize_file,
-    Args, FileType, TempFile, TempFileCleaner, Token, BASE_FILE,
+    parse, parse_args, preprocess, print_dependencies, print_tokens, replace_extn,
+    search_include_paths, tokenize_file, Args, FileType, TempFile, TempFileCleaner, Token,
+    BASE_FILE,
 };
 use std::env;
 use std::io::Write;
@@ -97,7 +98,7 @@ fn main() {
         assert!(ft == FileType::C);
 
         // 只进行解析
-        if args.opt_e_cap {
+        if args.opt_e_cap || args.opt_m_cap {
             run_cc1(
                 arg_strs.to_vec(),
                 Some(input.to_string()),
@@ -186,7 +187,7 @@ fn cc1(args: Args) {
     }
 
     let mut all_tokens = vec![];
-    for incl in args.opt_inlcude.iter() {
+    for incl in args.opt_include.iter() {
         let path;
         if file_exists(incl) {
             // 如果文件存在，则直接使用路径
@@ -209,6 +210,15 @@ fn cc1(args: Args) {
     // 预处理
     let tokens = preprocess(&mut all_tokens, &args.include_path);
 
+    // 如果指定了-M，打印出文件的依赖关系
+    if args.opt_m_cap {
+        // 打开输出文件
+        let file = open_file_for_write(&args.opt_o);
+        print_dependencies(file, &args.base);
+        return;
+    }
+
+    // 如果指定了-E那么打印出预处理过的C代码
     if args.opt_e_cap {
         // 打开输出文件
         let file = open_file_for_write(&args.opt_o);

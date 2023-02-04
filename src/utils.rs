@@ -1,8 +1,8 @@
 use crate::ctype::Type;
-use crate::error_token;
 use crate::token::Token;
 use crate::tokenize::tokenize_string_literal;
 use crate::unicode::{get_string_kind, StringKind};
+use crate::{error_token, INPUTS};
 use std::fs::File;
 use std::io::{stdout, Read, Write};
 use std::path::Path;
@@ -69,7 +69,7 @@ pub fn write_file(file: &mut impl Write, string: &str) {
 }
 
 /// 替换文件的后缀名
-pub fn replace_extn(path: &String, extn: &str) -> String {
+pub fn replace_extn(path: &str, extn: &str) -> String {
     if path.eq("-") || path.eq("") {
         return "-".to_string();
     }
@@ -210,6 +210,21 @@ pub fn print_tokens(mut write_file: Box<dyn Write>, tokens: Vec<Token>) {
     }
     // 文件以换行符结尾
     write!(write_file, "\n").unwrap();
+}
+
+/// 输出可用于Make的规则，自动化文件依赖管理
+pub fn print_dependencies(mut out: Box<dyn Write>, base: &str) {
+    // 输出文件
+    write!(out.as_mut(), "{}:", replace_extn(base, ".o"),).unwrap();
+
+    // 获取输入文件
+    let inputs = unsafe { INPUTS.to_vec() };
+    // 遍历输入文件，并将格式化的结果写入输出文件
+    for input in inputs.iter() {
+        let input = input.borrow();
+        write!(out.as_mut(), "\\\n {}", input.name).unwrap();
+    }
+    write!(out.as_mut(), "\\\n").unwrap();
 }
 
 /// 返回一位十六进制转十进制

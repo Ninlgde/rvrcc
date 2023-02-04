@@ -322,7 +322,7 @@ impl<'a> Preprocessor<'a> {
     fn include_file(&mut self, path: &String, file_token: &Token) {
         // 词法分析文件
         let include_tokens = tokenize_file(path);
-        if include_tokens.len() <= 1 {
+        if include_tokens.len() < 1 {
             error_token!(file_token, "{}: cannot open file", path);
         }
         self.append_tokens(include_tokens);

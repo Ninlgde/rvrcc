@@ -13,7 +13,7 @@ static mut FILE_NO: usize = 0;
 pub fn tokenize_file(path: &String) -> Vec<Token> {
     let content = read_file(path);
     if content.eq("") {
-        return Vec::new();
+        return vec![Token::new_eof(0, 0)];
     }
     let content = skip_utf8_bom(content);
     let content = canonicalize_newline(content);

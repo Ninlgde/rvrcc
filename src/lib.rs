@@ -41,6 +41,7 @@ pub use utils::dirname;
 pub use utils::file_exists;
 pub use utils::find_file;
 pub use utils::open_file_for_write;
+pub use utils::print_dependencies;
 pub use utils::print_tokens;
 pub use utils::replace_extn;
 pub use utils::search_include_paths;

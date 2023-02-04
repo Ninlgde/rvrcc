@@ -267,4 +267,13 @@ echo 'void foo(); void bar(); int main() { foo(); bar(); }' > $tmp/main.c
 $rvrcc -o $tmp/foo $tmp/main.c $tmp/foo.so
 check '.so'
 
+# [289] 支持-M选项
+# -M
+echo foo > $tmp/out2.h
+echo bar > $tmp/out3.h
+echo '#include "out2.h"' > $tmp/out.c
+echo '#include "out3.h"' >> $tmp/out.c
+$rvrcc -M -I$tmp/ $tmp/out.c | grep -q -z 'out.o:\\\s* .*/out\.c\\\s* .*/out2\.h\\\s* .*/out3\.h'
+check -M
+
 echo OK

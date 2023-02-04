@@ -25,12 +25,14 @@ pub struct Args {
     pub opt_c: bool,
     /// -E选项
     pub opt_e_cap: bool,
+    /// -M选项
+    pub opt_m_cap: bool,
     /// 引入路径区
     pub include_path: Vec<String>,
     /// 标记是否生成common块
     pub opt_f_common: bool,
     /// -include所引入的文件
-    pub opt_inlcude: Vec<String>,
+    pub opt_include: Vec<String>,
     /// -x选项
     pub opt_x: FileType,
     /// 链接器额外参数
@@ -50,9 +52,10 @@ impl Args {
             opt_s_cap: false,
             opt_c: false,
             opt_e_cap: false,
+            opt_m_cap: false,
             include_path: vec![],
             opt_f_common: true,
-            opt_inlcude: vec![],
+            opt_include: vec![],
             opt_x: FileType::None,
             ld_extra_args: vec![],
         }
@@ -217,7 +220,7 @@ impl Args {
 
             // 解析-include
             if arg.eq("-include") {
-                result.opt_inlcude.push(args[i + 1].to_string());
+                result.opt_include.push(args[i + 1].to_string());
                 i += 2;
                 continue;
             }
@@ -244,8 +247,16 @@ impl Args {
                 continue;
             }
 
+            // 解析-s
             if arg.eq("-s") {
                 result.ld_extra_args.push("-s".to_string());
+                i += 1;
+                continue;
+            }
+
+            // 解析-M
+            if arg.eq("-M") {
+                result.opt_m_cap = true;
                 i += 1;
                 continue;
             }
