@@ -1,91 +1,94 @@
 //! C语言关键字
 
+use lazy_static::lazy_static;
+use std::collections::HashSet;
+lazy_static! {
 /// 关键字列表
-pub const KEYWORDS: [&str; KW_COUNT] = [
-    KW_RETURN,
-    KW_IF,
-    KW_ELSE,
-    KW_FOR,
-    KW_WHILE,
-    KW_INT,
-    KW_SIZEOF,
-    KW_CHAR,
-    KW_STRUCT,
-    KW_UNION,
-    KW_LONG,
-    KW_SHORT,
-    KW_VOID,
-    KW_TYPEDEF,
-    KW_BOOL,
-    KW_ENUM,
-    KW_STATIC,
-    KW_GOTO,
-    KW_BREAK,
-    KW_CONTINUE,
-    KW_SWITCH,
-    KW_CASE,
-    KW_DEFAULT,
-    KW_EXTERN,
-    KW_ALIGNOF,
-    KW_ALIGNAS,
-    KW_DO,
-    KW_SIGNED,
-    KW_UNSIGNED,
-    KW_CONST,
-    KW_VOLATILE,
-    KW_AUTO,
-    KW_REGISTER,
-    KW_RESTRICT,
-    KW___RESTRICT,
-    KW___RESTRICT__,
-    KW_NORETURN,
-    KW_FLOAT,
-    KW_DOUBLE,
-    KW_TYPEOF,
-    KW_ASM,
-    KW_INLINE,
-    KW_THREAD_LOCAL,
-    KW_THREAD,
-];
+    pub static ref KEYWORDS: HashSet<&'static str> = {
+        let mut set = HashSet::new();
+        set.insert(KW_RETURN);
+        set.insert(KW_IF);
+        set.insert(KW_ELSE);
+        set.insert(KW_FOR);
+        set.insert(KW_WHILE);
+        set.insert(KW_INT);
+        set.insert(KW_SIZEOF);
+        set.insert(KW_CHAR);
+        set.insert(KW_STRUCT);
+        set.insert(KW_UNION);
+        set.insert(KW_LONG);
+        set.insert(KW_SHORT);
+        set.insert(KW_VOID);
+        set.insert(KW_TYPEDEF);
+        set.insert(KW_BOOL);
+        set.insert(KW_ENUM);
+        set.insert(KW_STATIC);
+        set.insert(KW_GOTO);
+        set.insert(KW_BREAK);
+        set.insert(KW_CONTINUE);
+        set.insert(KW_SWITCH);
+        set.insert(KW_CASE);
+        set.insert(KW_DEFAULT);
+        set.insert(KW_EXTERN);
+        set.insert(KW_ALIGNOF);
+        set.insert(KW_ALIGNAS);
+        set.insert(KW_DO);
+        set.insert(KW_SIGNED);
+        set.insert(KW_UNSIGNED);
+        set.insert(KW_CONST);
+        set.insert(KW_VOLATILE);
+        set.insert(KW_AUTO);
+        set.insert(KW_REGISTER);
+        set.insert(KW_RESTRICT);
+        set.insert(KW___RESTRICT);
+        set.insert(KW___RESTRICT__);
+        set.insert(KW_NORETURN);
+        set.insert(KW_FLOAT);
+        set.insert(KW_DOUBLE);
+        set.insert(KW_TYPEOF);
+        set.insert(KW_ASM);
+        set.insert(KW_INLINE);
+        set.insert(KW_THREAD_LOCAL);
+        set.insert(KW_THREAD);
+        set
+    };
+}
 
-/// 关键字数量
-const KW_COUNT: usize = 44;
-
-/// 类型名称列表
-pub const KW_TYPENAME: [&str; KW_TYPENAME_COUNT] = [
-    KW_CHAR,
-    KW_SHORT,
-    KW_INT,
-    KW_LONG,
-    KW_STRUCT,
-    KW_UNION,
-    KW_VOID,
-    KW_TYPEDEF,
-    KW_BOOL,
-    KW_ENUM,
-    KW_STATIC,
-    KW_EXTERN,
-    KW_ALIGNAS,
-    KW_SIGNED,
-    KW_UNSIGNED,
-    KW_CONST,
-    KW_VOLATILE,
-    KW_AUTO,
-    KW_REGISTER,
-    KW_RESTRICT,
-    KW___RESTRICT,
-    KW___RESTRICT__,
-    KW_NORETURN,
-    KW_FLOAT,
-    KW_DOUBLE,
-    KW_TYPEOF,
-    KW_INLINE,
-    KW_THREAD_LOCAL,
-    KW_THREAD,
-];
-
-/// 类型名称数量
-const KW_TYPENAME_COUNT: usize = 29;
+lazy_static! {
+    pub static ref KW_TYPENAME: HashSet<&'static str> = {
+        let mut set = HashSet::new();
+        set.insert(KW_CHAR);
+        set.insert(KW_SHORT);
+        set.insert(KW_INT);
+        set.insert(KW_LONG);
+        set.insert(KW_STRUCT);
+        set.insert(KW_UNION);
+        set.insert(KW_VOID);
+        set.insert(KW_TYPEDEF);
+        set.insert(KW_BOOL);
+        set.insert(KW_ENUM);
+        set.insert(KW_STATIC);
+        set.insert(KW_EXTERN);
+        set.insert(KW_ALIGNAS);
+        set.insert(KW_SIGNED);
+        set.insert(KW_UNSIGNED);
+        set.insert(KW_CONST);
+        set.insert(KW_VOLATILE);
+        set.insert(KW_AUTO);
+        set.insert(KW_REGISTER);
+        set.insert(KW_RESTRICT);
+        set.insert(KW___RESTRICT);
+        set.insert(KW___RESTRICT__);
+        set.insert(KW_NORETURN);
+        set.insert(KW_FLOAT);
+        set.insert(KW_DOUBLE);
+        set.insert(KW_TYPEOF);
+        set.insert(KW_INLINE);
+        set.insert(KW_THREAD_LOCAL);
+        set.insert(KW_THREAD);
+        set
+    };
+}
 
 /// 关键字: 返回
 pub const KW_RETURN: &str = "return";

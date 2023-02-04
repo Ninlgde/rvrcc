@@ -519,12 +519,8 @@ impl Token {
 
     /// 是否是KW_TYPENAME中定义的typename
     pub fn is_typename(&self) -> bool {
-        for name in KW_TYPENAME {
-            if self.equal(name) {
-                return true;
-            }
-        }
-        false
+        let name = self.get_name();
+        KW_TYPENAME.contains(name.as_str())
     }
 
     /// 获取隐藏集
