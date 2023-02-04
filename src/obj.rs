@@ -3,6 +3,7 @@ use crate::initializer::Relocation;
 use crate::node::NodeLink;
 use crate::token::Token;
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::ptr;
 use std::rc::Rc;
 
@@ -458,8 +459,6 @@ impl Obj {
 /// 局部和全局变量或是typedef的域
 #[derive(Clone)]
 pub struct VarScope {
-    /// 变量域名称
-    pub(crate) name: String,
     /// 对应的变量
     pub(crate) var: Option<ObjLink>,
     /// 别名
@@ -471,9 +470,8 @@ pub struct VarScope {
 }
 
 impl VarScope {
-    pub fn new(name: String) -> Self {
+    pub fn new() -> Self {
         Self {
-            name,
             var: None,
             typedef: None,
             enum_type: None,
@@ -501,8 +499,6 @@ impl VarScope {
 /// 结构体标签，联合体标签，枚举标签的域
 #[derive(Clone)]
 pub struct TagScope {
-    // 域名称
-    name: String,
     // 域类型
     typ: TypeLink,
 }
@@ -540,61 +536,56 @@ impl VarAttr {
 // C有两个域：变量（或类型别名）域，结构体（或联合体，枚举）标签域
 pub struct Scope {
     /// 指向当前域内的变量
-    vars: Vec<Rc<RefCell<VarScope>>>,
+    vars: HashMap<String, Rc<RefCell<VarScope>>>,
     /// 指向当前域内的结构体标签
-    tags: Vec<TagScope>,
+    tags: HashMap<String, TagScope>,
 }
 
 impl Scope {
     pub fn new() -> Self {
         Self {
-            vars: vec![],
-            tags: vec![],
+            vars: HashMap::new(),
+            tags: HashMap::new(),
         }
     }
 
     /// 添加一个var
     pub fn add_var(&mut self, name: String) -> Rc<RefCell<VarScope>> {
         // 设置变量默认的对齐量为类型的对齐量
-        let vs = Rc::new(RefCell::new(VarScope::new(name)));
-        self.vars.insert(0, vs.clone());
+        let vs = Rc::new(RefCell::new(VarScope::new()));
+        self.vars.insert(name, vs.clone());
         vs
     }
 
     /// 找到对应的var
     pub fn get_var(&self, name: &str) -> Option<Rc<RefCell<VarScope>>> {
-        // 设置变量默认的对齐量为类型的对齐量
-        for scope in self.vars.iter() {
-            if name.eq(scope.borrow().name.as_str()) {
-                return Some(scope.clone());
-            }
+        let var = self.vars.get(name);
+        if let Some(var) = var {
+            return Some(var.clone());
         }
-        return None;
+        None
     }
 
     /// 添加一个tag
     pub fn add_tag(&mut self, name: String, typ: TypeLink) {
-        self.tags.push(TagScope { name, typ })
+        self.tags.insert(name, TagScope { typ });
     }
 
     /// 找到对应的tag
     pub fn get_tag(&self, name: &str) -> Option<TypeLink> {
-        for scope in self.tags.iter() {
-            if name.eq(scope.name.as_str()) {
-                return Some(scope.typ.clone());
-            }
+        let tag = self.tags.get(name);
+        if let Some(tag) = tag {
+            return Some(tag.typ.clone());
         }
-        return None;
+        None
     }
 
     /// 替换某个`name`的`tag`的`type`
     pub fn replace_tag(&mut self, name: &str, typ: Type) -> Option<TypeLink> {
-        for i in 0..self.tags.len() {
-            let ts = &mut self.tags[i];
-            if name.eq(ts.name.as_str()) {
-                ts.typ.replace(typ);
-                return Some(ts.typ.clone());
-            }
+        let tag = self.tags.get(name);
+        if let Some(tag) = tag {
+            tag.typ.replace(typ);
+            return Some(tag.typ.clone());
         }
         None
     }
