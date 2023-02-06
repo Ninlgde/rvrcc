@@ -40,6 +40,8 @@ struct Preprocessor<'a> {
     macros: HashMap<String, Macro>,
     /// 引入路径区
     include_path: &'a Vec<String>,
+    /// 引用防护的文件
+    include_guards: HashMap<String, String>,
 }
 
 impl TokenVecOps for Preprocessor<'_> {
@@ -69,6 +71,7 @@ impl<'a> Preprocessor<'a> {
             cond_incls: vec![],
             macros: HashMap::new(),
             include_path,
+            include_guards: HashMap::new(),
         };
         unsafe {
             for m in BUILTIN_MACROS.as_ref().unwrap().iter() {
@@ -87,6 +90,7 @@ impl<'a> Preprocessor<'a> {
             cond_incls: processor.cond_incls.to_vec(),
             macros: processor.macros.clone(),
             include_path: processor.include_path,
+            include_guards: processor.include_guards.clone(),
         }
     }
 
@@ -318,13 +322,84 @@ impl<'a> Preprocessor<'a> {
         }
     }
 
+    /// 检测类似于下述的 引用防护（Include Guard） 优化
+    ///
+    ///   #ifndef FOO_H
+    ///   #define FOO_H
+    ///   ...
+    ///   #endif
+    fn detect_include_guard(&mut self, tokens: &Vec<Token>) -> Option<String> {
+        let mut pos = 0;
+        // 匹配 #ifndef
+        if !tokens[pos].is_hash() || !tokens[pos + 1].equal("ifndef") {
+            return None;
+        }
+        pos += 2;
+
+        // 判断 FOO_H 是否为标识符
+        if !tokens[pos].is_ident() {
+            return None;
+        }
+
+        // 复制 FOO_H 作为宏名称
+        let macro_ = tokens[pos].get_name();
+        pos += 1;
+
+        // 匹配 #define FOO_H
+        if !tokens[pos].is_hash()
+            || !tokens[pos + 1].equal("define")
+            || !tokens[pos + 2].equal(macro_.as_str())
+        {
+            return None;
+        }
+
+        // 读取到 文件结束
+        while !tokens[pos].at_eof() {
+            // 如果不是 宏 相关的，则前进Tok
+            if !tokens[pos].is_hash() {
+                pos += 1;
+                continue;
+            }
+
+            // 匹配 #endif 以及 TK_EOF ，之后返回宏名称
+            if tokens[pos + 1].equal("endif") && tokens[pos + 2].at_eof() {
+                return Some(macro_);
+            }
+
+            // 匹配 #if 或 #ifdef 或 #ifndef，跳过其中不满足 宏条件 的语句
+            if tokens[pos].equal("if") || tokens[pos].equal("ifdef") || tokens[pos].equal("ifndef")
+            {
+                let mut lefts = tokens[pos..tokens.len()].to_vec();
+                let mut p = Preprocessor::from(self, &mut lefts);
+                p.skip_cond_incl();
+                pos += p.cursor;
+            } else {
+                pos += 1;
+            }
+        }
+        None
+    }
+
     /// 引入文件
     fn include_file(&mut self, path: &String, file_token: &Token) {
+        // 如果引用防护的文件，已经被读取过，那么就跳过文件
+        let guard_name = self.include_guards.get(path);
+        if guard_name.is_some() && self.macros.contains_key(guard_name.unwrap()) {
+            return;
+        }
         // 词法分析文件
         let include_tokens = tokenize_file(path);
         if include_tokens.len() < 1 {
             error_token!(file_token, "{}: cannot open file", path);
         }
+
+        // 判断文件是否使用了 引用防护
+        let guard_name = self.detect_include_guard(&include_tokens);
+        if guard_name.is_some() {
+            self.include_guards
+                .insert(path.to_string(), guard_name.unwrap());
+        }
+
         self.append_tokens(include_tokens);
     }
 
