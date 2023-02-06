@@ -1704,6 +1704,35 @@ impl<'a> Generator<'a> {
                 return;
             }
 
+            // 生成位置无关代码
+            if self.args.opt_fpic {
+                let c = self.count();
+                writeln!(".Lpcrel_hi{}:", c);
+                // 线程局部变量
+                if var.is_tls() {
+                    writeln!("  # 获取PIC中TLS{}的地址", var.get_name());
+                    // 计算TLS高20位地址
+                    writeln!("  auipc a0, %tls_gd_pcrel_hi({})", var.get_name());
+                    // 计算TLS低12位地址
+                    writeln!("  addi a0, a0, %pcrel_lo(.Lpcrel_hi{})", c);
+                    // 获取地址
+                    writeln!("  call __tls_get_addr@plt");
+                    return;
+                }
+
+                // 函数或者全局变量
+                if var.get_type().borrow().kind == TypeKind::Func {
+                    writeln!("  # 获取PIC中函数{}的地址", var.get_name());
+                } else {
+                    writeln!("  # 获取PIC中全局变量{}的地址", var.get_name());
+                }
+                // 高20位地址，存到a0中
+                writeln!("  auipc a0, %got_pcrel_hi({})", var.get_name());
+                // 低12位地址，加到a0中
+                writeln!("  ld a0, %pcrel_lo(.Lpcrel_hi{})(a0)", c);
+                return;
+            }
+
             if var.is_tls() {
                 // 计算TLS高20位地址
                 writeln!("  lui a0, %tprel_hi({})", var.get_name());

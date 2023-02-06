@@ -50,6 +50,8 @@ pub struct Args {
     pub ld_extra_args: Vec<String>,
     /// 标准库所引入的路径，用于-MMD选项
     pub std_include_paths: Vec<String>,
+    /// 位置无关代码的标记
+    pub opt_fpic: bool,
 }
 
 impl Args {
@@ -77,6 +79,7 @@ impl Args {
             opt_x: FileType::None,
             ld_extra_args: vec![],
             std_include_paths: vec![],
+            opt_fpic: false,
         }
     }
 
@@ -335,6 +338,13 @@ impl Args {
                 result.opt_mmd_cap = true;
                 // 同时启用-MD选项
                 result.opt_md_cap = true;
+                i += 1;
+                continue;
+            }
+
+            // 解析-fpic或-fPIC
+            if arg.eq("-fpic") || arg.eq("-fPIC") {
+                result.opt_fpic = true;
                 i += 1;
                 continue;
             }
