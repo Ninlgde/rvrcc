@@ -27,6 +27,8 @@ pub struct Args {
     pub opt_e_cap: bool,
     /// -M选项
     pub opt_m_cap: bool,
+    /// -MF选项
+    pub opt_mf_cap: String,
     /// 引入路径区
     pub include_path: Vec<String>,
     /// 标记是否生成common块
@@ -53,6 +55,7 @@ impl Args {
             opt_c: false,
             opt_e_cap: false,
             opt_m_cap: false,
+            opt_mf_cap: "".to_string(),
             include_path: vec![],
             opt_f_common: true,
             opt_include: vec![],
@@ -63,7 +66,7 @@ impl Args {
 
     /// 判断需要一个参数的选项，是否具有一个参数
     fn take_arg(arg: &str) -> bool {
-        let args = vec!["-o", "-I", "-idirafter", "-include", "-x"];
+        let args = vec!["-o", "-I", "-idirafter", "-include", "-x", "-MF"];
         for a in args {
             if arg.eq(a) {
                 return true;
@@ -258,6 +261,13 @@ impl Args {
             if arg.eq("-M") {
                 result.opt_m_cap = true;
                 i += 1;
+                continue;
+            }
+
+            // 解析-MF
+            if arg.eq("-MF") {
+                result.opt_mf_cap = args[i + 1].to_string();
+                i += 2;
                 continue;
             }
 

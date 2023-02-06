@@ -213,7 +213,13 @@ fn cc1(args: Args) {
     // 如果指定了-M，打印出文件的依赖关系
     if args.opt_m_cap {
         // 打开输出文件
-        let file = open_file_for_write(&args.opt_o);
+        let out;
+        if !&args.opt_mf_cap.is_empty() {
+            out = &args.opt_mf_cap;
+        } else {
+            out = &args.opt_o;
+        }
+        let file = open_file_for_write(out);
         print_dependencies(file, &args.base);
         return;
     }

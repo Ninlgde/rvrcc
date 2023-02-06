@@ -276,4 +276,10 @@ echo '#include "out3.h"' >> $tmp/out.c
 $rvrcc -M -I$tmp/ $tmp/out.c | grep -q -z 'out.o:\\\s* .*/out\.c\\\s* .*/out2\.h\\\s* .*/out3\.h'
 check -M
 
+# [290] 支持-MF选项
+# -MF
+$rvrcc -MF $tmp/mf -M -I$tmp $tmp/out.c
+grep -q -z 'out.o:\\\s* .*/out\.c\\\s* .*/out2\.h\\\s* .*/out3\.h' $tmp/mf
+check -MF
+
 echo OK
