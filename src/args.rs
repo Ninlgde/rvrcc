@@ -20,6 +20,8 @@ pub struct Args {
     pub opt_cc1: bool,
     /// ###选项
     pub opt_hash_hash_hash: bool,
+    /// -static选项
+    pub opt_static: bool,
     /// -S选项
     pub opt_s_cap: bool,
     /// -c选项
@@ -64,6 +66,7 @@ impl Args {
             inputs: vec![],
             opt_cc1: false,
             opt_hash_hash_hash: false,
+            opt_static: false,
             opt_s_cap: false,
             opt_c: false,
             opt_e_cap: false,
@@ -367,6 +370,13 @@ impl Args {
             if arg.eq("-idirafter") {
                 idirafter.push(args[i + 1].to_string());
                 i += 2;
+                continue;
+            }
+
+            if arg.eq("-static") {
+                result.opt_static = true;
+                result.ld_extra_args.push("-static".to_string());
+                i += 1;
                 continue;
             }
 

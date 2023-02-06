@@ -156,15 +156,16 @@ fn main() {
     // 需要链接的情况
     // 未指定文件名时，默认为a.out
     if ld_args.len() > 0 {
-        let out = if args.output_file.eq("") {
+        let out = if args.opt_o.eq("") {
             "a.out"
         } else {
-            args.output_file.as_str()
+            args.opt_o.as_str()
         };
         run_linker(
             ld_args,
             out.to_string(),
             args.ld_extra_args,
+            args.opt_static,
             args.opt_hash_hash_hash,
         );
     }
@@ -312,7 +313,13 @@ fn assemble(input: String, output: String, print_debug: bool) {
 }
 
 /// 使用ld来link目标文件到可执行文件
-fn run_linker(inputs: Vec<String>, output: String, extra: Vec<String>, print_debug: bool) {
+fn run_linker(
+    inputs: Vec<String>,
+    output: String,
+    extra: Vec<String>,
+    is_static: bool,
+    print_debug: bool,
+) {
     // 需要传递ld子进程的参数
     let mut arr = vec![];
 
@@ -324,12 +331,14 @@ fn run_linker(inputs: Vec<String>, output: String, extra: Vec<String>, print_deb
     arr.push(output);
     arr.push("-m".to_string());
     arr.push("elf64lriscv".to_string());
-    arr.push("-dynamic-linker".to_string());
+    if is_static {
+        arr.push("-dynamic-linker".to_string());
 
-    arr.push(format!(
-        "{}/sysroot/lib/ld-linux-riscv64-lp64d.so.1",
-        RISCV_HOME
-    ));
+        arr.push(format!(
+            "{}/sysroot/lib/ld-linux-riscv64-lp64d.so.1",
+            RISCV_HOME
+        ));
+    }
 
     let lib_path = find_lib_path();
     let gcc_lib_path = find_gcc_lib_path();
@@ -338,8 +347,6 @@ fn run_linker(inputs: Vec<String>, output: String, extra: Vec<String>, print_deb
     arr.push(format!("{}/crti.o", lib_path.to_string()));
     arr.push(format!("{}/crtbegin.o", gcc_lib_path.to_string()));
     arr.push(format!("-L{}", gcc_lib_path.to_string()));
-    arr.push(format!("-L{}", lib_path.to_string()));
-    arr.push(format!("-L{}/..", lib_path.to_string()));
 
     arr.push(format!("-L{}/sysroot/usr/lib64", RISCV_HOME));
     arr.push(format!("-L{}/sysroot/lib64", RISCV_HOME));
@@ -368,11 +375,19 @@ fn run_linker(inputs: Vec<String>, output: String, extra: Vec<String>, print_deb
         arr.push(input.to_string());
     }
 
-    arr.push("-lc".to_string());
-    arr.push("-lgcc".to_string());
-    arr.push("--as-needed".to_string());
-    arr.push("-lgcc_s".to_string());
-    arr.push("--no-as-needed".to_string());
+    if is_static {
+        arr.push("--start-group".to_string());
+        arr.push("-lgcc".to_string());
+        arr.push("-lgcc_eh".to_string());
+        arr.push("-lc".to_string());
+        arr.push("--end-group".to_string());
+    } else {
+        arr.push("-lc".to_string());
+        arr.push("-lgcc".to_string());
+        arr.push("--as-needed".to_string());
+        arr.push("-lgcc_s".to_string());
+        arr.push("--no-as-needed".to_string());
+    }
     arr.push(format!("{}/crtend.o", gcc_lib_path.to_string()));
     arr.push(format!("{}/crtn.o", lib_path.to_string()));
 
