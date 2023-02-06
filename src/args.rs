@@ -33,6 +33,8 @@ pub struct Args {
     pub opt_mp_cap: bool,
     /// -MT选项
     pub opt_mt_cap: String,
+    /// -MD选项
+    pub opt_md_cap: bool,
     /// 引入路径区
     pub include_path: Vec<String>,
     /// 标记是否生成common块
@@ -62,6 +64,7 @@ impl Args {
             opt_mf_cap: "".to_string(),
             opt_mp_cap: false,
             opt_mt_cap: "".to_string(),
+            opt_md_cap: false,
             include_path: vec![],
             opt_f_common: true,
             opt_include: vec![],
@@ -293,6 +296,13 @@ impl Args {
                     result.opt_mt_cap = format!("{} {}", result.opt_mt_cap, args[i + 1]);
                 }
                 i += 2;
+                continue;
+            }
+
+            // 解析-MD
+            if arg.eq("-MD") {
+                result.opt_md_cap = true;
+                i += 1;
                 continue;
             }
 

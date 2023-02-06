@@ -12,9 +12,9 @@ static mut FILE_NO: usize = 0;
 /// 对文件的终结符解析
 pub fn tokenize_file(path: &String) -> Vec<Token> {
     let content = read_file(path);
-    if content.eq("") {
-        return vec![Token::new_eof(0, 0)];
-    }
+    // if content.eq("") {
+    //     return vec![Token::new_eof(0, 0)];
+    // }
     let content = skip_utf8_bom(content);
     let content = canonicalize_newline(content);
     let content = remove_backslash_newline(content);

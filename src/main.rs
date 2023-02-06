@@ -211,17 +211,11 @@ fn cc1(args: Args) {
     let tokens = preprocess(&mut all_tokens, &args.include_path);
 
     // 如果指定了-M，打印出文件的依赖关系
-    if args.opt_m_cap {
-        // 打开输出文件
-        let out;
-        if !&args.opt_mf_cap.is_empty() {
-            out = &args.opt_mf_cap;
-        } else {
-            out = &args.opt_o;
+    if args.opt_m_cap || args.opt_md_cap {
+        print_dependencies(&args);
+        if args.opt_m_cap {
+            return;
         }
-        let file = open_file_for_write(out);
-        print_dependencies(file, &args);
-        return;
     }
 
     // 如果指定了-E那么打印出预处理过的C代码

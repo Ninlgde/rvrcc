@@ -52,7 +52,7 @@ pub fn read_file(path: &String) -> String {
 }
 
 /// 打开一个可写入的文件
-pub fn open_file_for_write(path: &String) -> Box<dyn Write> {
+pub fn open_file_for_write(path: &str) -> Box<dyn Write> {
     return if path.eq("-") || path.eq("") {
         let f = stdout();
         Box::new(f.lock())
@@ -213,8 +213,22 @@ pub fn print_tokens(mut write_file: Box<dyn Write>, tokens: Vec<Token>) {
 }
 
 /// 输出可用于Make的规则，自动化文件依赖管理
-pub fn print_dependencies(mut out: Box<dyn Write>, args: &Args) {
+pub fn print_dependencies(args: &Args) {
     // 输出文件
+    let bd = replace_extn(&args.base, ".d");
+    let out = if !&args.opt_mf_cap.is_empty() {
+        args.opt_mf_cap.as_str()
+    } else if args.opt_md_cap {
+        if args.opt_o.is_empty() {
+            bd.as_str()
+        } else {
+            &args.opt_o
+        }
+    } else {
+        &args.opt_o
+    };
+    // 打开输出文件
+    let mut out = open_file_for_write(out);
     // -MF指定依赖规则中的目标，否则替换后缀为.o
     let os = if args.opt_mt_cap.is_empty() {
         replace_extn(&args.base, ".o")
@@ -230,13 +244,15 @@ pub fn print_dependencies(mut out: Box<dyn Write>, args: &Args) {
         let input = input.borrow();
         write!(out.as_mut(), "\\\n {}", input.name).unwrap();
     }
-
-    // 如果指定了-MP，则为头文件生成伪目标
-    for input in inputs.iter() {
-        let input = input.borrow();
-        write!(out.as_mut(), "{}:\n\n ", input.name).unwrap();
-    }
     write!(out.as_mut(), "\n\n").unwrap();
+
+    if args.opt_mp_cap {
+        // 如果指定了-MP，则为头文件生成伪目标
+        for input in inputs.iter() {
+            let input = input.borrow();
+            write!(out.as_mut(), "{}:\n\n ", input.name).unwrap();
+        }
+    }
 }
 
 /// 返回一位十六进制转十进制

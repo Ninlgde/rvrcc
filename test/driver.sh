@@ -269,10 +269,11 @@ check '.so'
 
 # [289] 支持-M选项
 # -M
-echo foo > $tmp/out2.h
-echo bar > $tmp/out3.h
+#echo foo > $tmp/out2.h
+#echo bar > $tmp/out3.h
 echo '#include "out2.h"' > $tmp/out.c
 echo '#include "out3.h"' >> $tmp/out.c
+touch $tmp/out2.h $tmp/out3.h
 $rvrcc -M -I$tmp/ $tmp/out.c | grep -q -z 'out.o:\\\s* .*/out\.c\\\s* .*/out2\.h\\\s* .*/out3\.h'
 check -M
 
@@ -296,5 +297,19 @@ $rvrcc -MT foo -M -I$tmp $tmp/out.c | grep -q '^foo:'
 check -MT
 $rvrcc -MT foo -MT bar -M -I$tmp $tmp/out.c | grep -q '^foo bar:'
 check -MT
+
+# [293] 支持-MD选项
+# -MD
+echo '#include "out2.h"' > $tmp/md2.c
+echo '#include "out3.h"' > $tmp/md3.c
+(cd $tmp; $OLDPWD/$rvrcc -c -MD -I. md2.c md3.c )
+grep -q -z '^md2.o:\\\s* md2.c\\\s* ./out2\.h' $tmp/md2.d
+check -MD
+grep -q -z '^md3.o:\\\s* md3.c\\\s* ./out3\.h' $tmp/md3.d
+check -MD
+
+$rvrcc -c -MD -MF $tmp/md-mf.d -I. $tmp/md2.c
+grep -q -z 'md2.o:\\\s* .*md2\.c\\\s* .*/out2\.h' $tmp/md-mf.d
+check -MD
 
 echo OK
