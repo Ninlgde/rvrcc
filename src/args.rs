@@ -29,6 +29,8 @@ pub struct Args {
     pub opt_m_cap: bool,
     /// -MF选项
     pub opt_mf_cap: String,
+    /// -MP选项
+    pub opt_mp_cap: bool,
     /// 引入路径区
     pub include_path: Vec<String>,
     /// 标记是否生成common块
@@ -56,6 +58,7 @@ impl Args {
             opt_e_cap: false,
             opt_m_cap: false,
             opt_mf_cap: "".to_string(),
+            opt_mp_cap: false,
             include_path: vec![],
             opt_f_common: true,
             opt_include: vec![],
@@ -268,6 +271,13 @@ impl Args {
             if arg.eq("-MF") {
                 result.opt_mf_cap = args[i + 1].to_string();
                 i += 2;
+                continue;
+            }
+
+            // 解析-MP
+            if arg.eq("-MP") {
+                result.opt_mp_cap = true;
+                i += 1;
                 continue;
             }
 

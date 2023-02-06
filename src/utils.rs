@@ -2,7 +2,7 @@ use crate::ctype::Type;
 use crate::token::Token;
 use crate::tokenize::tokenize_string_literal;
 use crate::unicode::{get_string_kind, StringKind};
-use crate::{error_token, INPUTS};
+use crate::{error_token, Args, INPUTS};
 use std::fs::File;
 use std::io::{stdout, Read, Write};
 use std::path::Path;
@@ -213,9 +213,9 @@ pub fn print_tokens(mut write_file: Box<dyn Write>, tokens: Vec<Token>) {
 }
 
 /// 输出可用于Make的规则，自动化文件依赖管理
-pub fn print_dependencies(mut out: Box<dyn Write>, base: &str) {
+pub fn print_dependencies(mut out: Box<dyn Write>, args: &Args) {
     // 输出文件
-    write!(out.as_mut(), "{}:", replace_extn(base, ".o"),).unwrap();
+    write!(out.as_mut(), "{}:", replace_extn(&args.base, ".o"),).unwrap();
 
     // 获取输入文件
     let inputs = unsafe { INPUTS.to_vec() };
@@ -224,7 +224,13 @@ pub fn print_dependencies(mut out: Box<dyn Write>, base: &str) {
         let input = input.borrow();
         write!(out.as_mut(), "\\\n {}", input.name).unwrap();
     }
-    write!(out.as_mut(), "\\\n").unwrap();
+
+    // 如果指定了-MP，则为头文件生成伪目标
+    for input in inputs.iter() {
+        let input = input.borrow();
+        write!(out.as_mut(), "{}:\n\n ", input.name).unwrap();
+    }
+    write!(out.as_mut(), "\n\n").unwrap();
 }
 
 /// 返回一位十六进制转十进制

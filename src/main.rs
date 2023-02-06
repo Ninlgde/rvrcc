@@ -220,7 +220,7 @@ fn cc1(args: Args) {
             out = &args.opt_o;
         }
         let file = open_file_for_write(out);
-        print_dependencies(file, &args.base);
+        print_dependencies(file, &args);
         return;
     }
 
