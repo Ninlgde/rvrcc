@@ -215,7 +215,13 @@ pub fn print_tokens(mut write_file: Box<dyn Write>, tokens: Vec<Token>) {
 /// 输出可用于Make的规则，自动化文件依赖管理
 pub fn print_dependencies(mut out: Box<dyn Write>, args: &Args) {
     // 输出文件
-    write!(out.as_mut(), "{}:", replace_extn(&args.base, ".o"),).unwrap();
+    // -MF指定依赖规则中的目标，否则替换后缀为.o
+    let os = if args.opt_mt_cap.is_empty() {
+        replace_extn(&args.base, ".o")
+    } else {
+        args.opt_mt_cap.to_string()
+    };
+    write!(out.as_mut(), "{}:", os,).unwrap();
 
     // 获取输入文件
     let inputs = unsafe { INPUTS.to_vec() };

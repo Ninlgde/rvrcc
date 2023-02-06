@@ -31,6 +31,8 @@ pub struct Args {
     pub opt_mf_cap: String,
     /// -MP选项
     pub opt_mp_cap: bool,
+    /// -MT选项
+    pub opt_mt_cap: String,
     /// 引入路径区
     pub include_path: Vec<String>,
     /// 标记是否生成common块
@@ -59,6 +61,7 @@ impl Args {
             opt_m_cap: false,
             opt_mf_cap: "".to_string(),
             opt_mp_cap: false,
+            opt_mt_cap: "".to_string(),
             include_path: vec![],
             opt_f_common: true,
             opt_include: vec![],
@@ -69,7 +72,7 @@ impl Args {
 
     /// 判断需要一个参数的选项，是否具有一个参数
     fn take_arg(arg: &str) -> bool {
-        let args = vec!["-o", "-I", "-idirafter", "-include", "-x", "-MF"];
+        let args = vec!["-o", "-I", "-idirafter", "-include", "-x", "-MF", "-MT"];
         for a in args {
             if arg.eq(a) {
                 return true;
@@ -278,6 +281,18 @@ impl Args {
             if arg.eq("-MP") {
                 result.opt_mp_cap = true;
                 i += 1;
+                continue;
+            }
+
+            // 解析-MT
+            // `-MT File`，指定File为依赖规则中的目标
+            if arg.eq("-MT") {
+                if result.opt_mt_cap.is_empty() {
+                    result.opt_mt_cap = args[i + 1].to_string();
+                } else {
+                    result.opt_mt_cap = format!("{} {}", result.opt_mt_cap, args[i + 1]);
+                }
+                i += 2;
                 continue;
             }
 
