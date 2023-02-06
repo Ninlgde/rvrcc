@@ -6,8 +6,8 @@ use crate::parse::Parser;
 use crate::token::{File, Token, TokenVecOps};
 use crate::tokenize::{convert_pp_tokens, tokenize};
 use crate::{
-    dirname, error_token, file_exists, join_adjacent_string_literals, search_include_paths,
-    tokenize_file, warn_token,
+    dirname, error_token, file_exists, join_adjacent_string_literals, search_include_next,
+    search_include_paths, tokenize_file, warn_token,
 };
 use std::collections::{HashMap, HashSet};
 
@@ -165,6 +165,21 @@ impl<'a> Preprocessor<'a> {
 
                 // 直接引入文件
                 let mut path = self.search_include_paths(&filename);
+                if path.is_empty() {
+                    path = filename;
+                }
+                self.include_file(&path, &start);
+                continue;
+            }
+
+            // 匹配#include_include
+            if token.equal("include_next") {
+                // 讲这行整体copy出来
+                let tokens = self.next().copy_line();
+                // 读取引入的文件名
+                let filename = read_include_filename(self, tokens, &mut false);
+                // 查找文件名的路径
+                let mut path = self.search_include_next(&filename);
                 if path.is_empty() {
                     path = filename;
                 }
@@ -423,6 +438,10 @@ impl<'a> Preprocessor<'a> {
     // 搜索引入路径区
     fn search_include_paths(&self, filename: &String) -> String {
         search_include_paths(self.include_path, filename)
+    }
+
+    fn search_include_next(&self, filename: &String) -> String {
+        search_include_next(self.include_path, filename)
     }
 
     /// 检查结束

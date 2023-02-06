@@ -136,6 +136,8 @@ pub fn file_exists(file: &str) -> bool {
 
 pub static mut CACHE_INCLUDE: Option<HashMap<String, String>> = None;
 
+pub static mut INCLUDE_NEXT_IDX: usize = 0;
+
 /// 搜索引入路径区
 pub fn search_include_paths(include_path: &Vec<String>, filename: &String) -> String {
     if filename.starts_with("/") {
@@ -155,16 +157,36 @@ pub fn search_include_paths(include_path: &Vec<String>, filename: &String) -> St
     }
 
     // 从引入路径区查找文件
-    for incl in include_path.iter() {
+    for (i, incl) in include_path.iter().enumerate() {
         let path = format!("{}/{}", incl, filename);
         if !file_exists(&path) {
             continue;
         }
         // 将搜索到的结果顺带存入文件搜索的缓存
         cache.insert(filename.to_string(), path.to_string());
+        // #include_next应从#include未遍历的路径开始
+        unsafe {
+            INCLUDE_NEXT_IDX = i + 1;
+        }
         return path.to_string();
     }
     // 啥也没找到,直接返回吧
+    "".to_string()
+}
+
+/// 搜索 #include_next 的文件路径
+pub fn search_include_next(include_path: &Vec<String>, filename: &String) -> String {
+    unsafe {
+        // #include_next 从 IncludeNextIdx 开始遍历
+        while INCLUDE_NEXT_IDX < include_path.len() {
+            // 拼接路径和文件名
+            let path = format!("{}/{}", include_path[INCLUDE_NEXT_IDX], filename);
+            if file_exists(&path) {
+                return path;
+            }
+            INCLUDE_NEXT_IDX += 1;
+        }
+    }
     "".to_string()
 }
 
