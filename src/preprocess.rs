@@ -9,7 +9,7 @@ use crate::{
     dirname, error_token, file_exists, join_adjacent_string_literals, search_include_paths,
     tokenize_file, warn_token,
 };
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// 预处理器入口函数
 pub fn preprocess(tokens: &mut Vec<Token>, include_path: &Vec<String>) -> Vec<Token> {
@@ -42,6 +42,8 @@ struct Preprocessor<'a> {
     include_path: &'a Vec<String>,
     /// 引用防护的文件
     include_guards: HashMap<String, String>,
+    /// 记录含有 #pragma once 的文件
+    pragma_once: HashSet<String>,
 }
 
 impl TokenVecOps for Preprocessor<'_> {
@@ -72,6 +74,7 @@ impl<'a> Preprocessor<'a> {
             macros: HashMap::new(),
             include_path,
             include_guards: HashMap::new(),
+            pragma_once: HashSet::new(),
         };
         unsafe {
             for m in BUILTIN_MACROS.as_ref().unwrap().iter() {
@@ -91,6 +94,7 @@ impl<'a> Preprocessor<'a> {
             macros: processor.macros.clone(),
             include_path: processor.include_path,
             include_guards: processor.include_guards.clone(),
+            pragma_once: processor.pragma_once.clone(),
         }
     }
 
@@ -139,7 +143,7 @@ impl<'a> Preprocessor<'a> {
                 continue;
             }
             let start = self.current_token().clone();
-            let token = self.next().current_token();
+            let token = self.next().current_token().clone();
 
             if token.equal("include") {
                 // 讲这行整体copy出来
@@ -295,14 +299,23 @@ impl<'a> Preprocessor<'a> {
                 continue;
             }
 
+            // 匹配#
             if token.is_ppnum() {
                 self.read_line_marker();
                 continue;
             }
 
+            // 匹配#pragma once
+            if token.equal("pragma") && self.tokens[self.cursor + 1].equal("once") {
+                // 存储含有#pragma once 的文件名
+                self.pragma_once.insert(token.get_file_name());
+                self.next().next().skip_line();
+                continue;
+            }
+
             // 匹配#pragma
             if token.equal("pragma") {
-                let mut t = token;
+                let mut t = &token;
                 while !t.at_bol() {
                     t = self.next().current_token();
                 }
@@ -311,14 +324,14 @@ impl<'a> Preprocessor<'a> {
 
             // 匹配#error
             if token.equal("error") {
-                error_token!(token, "error");
+                error_token!(&token, "error");
             }
 
             if token.at_bol() {
                 continue;
             }
 
-            error_token!(token, "invalid preprocessor directive");
+            error_token!(&token, "invalid preprocessor directive");
         }
     }
 
@@ -382,6 +395,10 @@ impl<'a> Preprocessor<'a> {
 
     /// 引入文件
     fn include_file(&mut self, path: &String, file_token: &Token) {
+        // 如果含有 "#pragma once"，已经被读取过，那么就跳过文件
+        if self.pragma_once.contains(path) {
+            return;
+        }
         // 如果引用防护的文件，已经被读取过，那么就跳过文件
         let guard_name = self.include_guards.get(path);
         if guard_name.is_some() && self.macros.contains_key(guard_name.unwrap()) {
