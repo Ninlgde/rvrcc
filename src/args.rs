@@ -1,7 +1,7 @@
 //! 命令行参数解析
 
 use crate::cmacro::{define, undef_macro};
-use crate::quote_makefile;
+use crate::{in_include_paths, quote_makefile};
 use std::ffi::CString;
 use std::fs::remove_file;
 use std::process::exit;
@@ -36,8 +36,10 @@ pub struct Args {
     pub opt_mt_cap: String,
     /// -MD选项
     pub opt_md_cap: bool,
+    /// -MMD选项
+    pub opt_mmd_cap: bool,
     /// 引入路径区
-    pub include_path: Vec<String>,
+    pub include_paths: Vec<String>,
     /// 标记是否生成common块
     pub opt_f_common: bool,
     /// -include所引入的文件
@@ -46,6 +48,8 @@ pub struct Args {
     pub opt_x: FileType,
     /// 链接器额外参数
     pub ld_extra_args: Vec<String>,
+    /// 标准库所引入的路径，用于-MMD选项
+    pub std_include_paths: Vec<String>,
 }
 
 impl Args {
@@ -66,11 +70,13 @@ impl Args {
             opt_mp_cap: false,
             opt_mt_cap: "".to_string(),
             opt_md_cap: false,
-            include_path: vec![],
+            opt_mmd_cap: false,
+            include_paths: vec![],
             opt_f_common: true,
             opt_include: vec![],
             opt_x: FileType::None,
             ld_extra_args: vec![],
+            std_include_paths: vec![],
         }
     }
 
@@ -196,7 +202,7 @@ impl Args {
             // 解析-Ixxxx
             if arg.starts_with("-I") {
                 let incl = &arg[2..];
-                result.include_path.push(incl.to_string());
+                result.include_paths.push(incl.to_string());
                 i += 1;
                 continue;
             }
@@ -324,6 +330,15 @@ impl Args {
                 continue;
             }
 
+            // 解析-MMD
+            if arg.eq("-MMD") {
+                result.opt_mmd_cap = true;
+                // 同时启用-MD选项
+                result.opt_md_cap = true;
+                i += 1;
+                continue;
+            }
+
             // 解析-cc1-input
             if arg.eq("-cc1-input") {
                 result.base = args[i + 1].to_string();
@@ -382,10 +397,15 @@ impl Args {
             result.opt_x = FileType::C;
         }
 
-        result.include_path.append(&mut idirafter);
+        result.include_paths.append(&mut idirafter);
 
         result.opt_o = output.to_string();
         result
+    }
+
+    /// 判断是否为标准库路径
+    pub fn in_std_include_path(&self, path: &String) -> bool {
+        in_include_paths(&self.std_include_paths, path)
     }
 }
 

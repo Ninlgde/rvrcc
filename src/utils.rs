@@ -243,16 +243,23 @@ pub fn print_dependencies(args: &Args) {
     // 遍历输入文件，并将格式化的结果写入输出文件
     for input in inputs.iter() {
         let input = input.borrow();
-        let name = quote_makefile(input.name.to_string());
+        let name = input.name.to_string();
+        if args.opt_mmd_cap && args.in_std_include_path(&name) {
+            continue;
+        }
         write!(out.as_mut(), "\\\n {}", name).unwrap();
     }
     write!(out.as_mut(), "\n\n").unwrap();
 
     if args.opt_mp_cap {
         // 如果指定了-MP，则为头文件生成伪目标
-        for input in inputs.iter() {
-            let input = input.borrow();
-            write!(out.as_mut(), "{}:\n\n ", input.name).unwrap();
+        for i in 1..inputs.len() {
+            let input = inputs[i].borrow();
+            let name = input.name.to_string();
+            if args.opt_mmd_cap && args.in_std_include_path(&name) {
+                continue;
+            }
+            write!(out.as_mut(), "{}:\n\n ", quote_makefile(name)).unwrap();
         }
     }
 }
@@ -293,6 +300,16 @@ pub fn quote_makefile(input: String) -> String {
     String::from_utf8(out).unwrap()
 }
 
+/// 判断是否在include paths路径中
+pub fn in_include_paths(include_paths: &Vec<String>, path: &String) -> bool {
+    for ip in include_paths.iter() {
+        // 与库路径相同，且以斜杠结尾
+        if ip.eq(path) && path.ends_with("/") {
+            return true;
+        }
+    }
+    false
+}
 /// 返回一位十六进制转十进制
 /// hexDigit = [0-9a-fA-F]
 /// 16: 0 1 2 3 4 5 6 7 8 9  A  B  C  D  E  F

@@ -36,7 +36,7 @@ fn main() {
     // 如果指定了-cc1选项
     // 直接编译C文件到汇编文件
     if args.opt_cc1 {
-        add_default_include_paths(&mut args.include_path, arg_strs[0].to_string());
+        add_default_include_paths(&mut args, arg_strs[0].to_string());
         cc1(args);
         exit(0);
     }
@@ -194,7 +194,7 @@ fn cc1(args: Args) {
             path = incl.to_string();
         } else {
             // 否则搜索引入路径区
-            path = search_include_paths(&args.include_path, incl);
+            path = search_include_paths(&args.include_paths, incl);
             if path.is_empty() {
                 panic!("-include: cannot find include file {}", incl);
             }
@@ -208,7 +208,7 @@ fn cc1(args: Args) {
     all_tokens = append_tokens(all_tokens, tokens);
 
     // 预处理
-    let tokens = preprocess(&mut all_tokens, &args.include_path);
+    let tokens = preprocess(&mut all_tokens, &args.include_paths);
 
     // 如果指定了-M，打印出文件的依赖关系
     if args.opt_m_cap || args.opt_md_cap {
@@ -416,12 +416,19 @@ fn find_gcc_lib_path() -> String {
 }
 
 /// 增加默认引入路径
-fn add_default_include_paths(include_path: &mut Vec<String>, arg: String) {
+fn add_default_include_paths(args: &mut Args, arg: String) {
+    let include_paths = &mut args.include_paths;
     // rvcc特定的引入文件被安装到了argv[0]的./include位置
-    include_path.push(format!("{}/include", dirname(arg)));
+    include_paths.push(format!("{}/include", dirname(arg)));
 
     // 支持标准的引入路径
-    include_path.push("/usr/local/include".to_string());
-    include_path.push("/usr/include/riscv64-linux-gnu".to_string());
-    include_path.push("/usr/include".to_string());
+    include_paths.push("/usr/local/include".to_string());
+    include_paths.push("/usr/include/riscv64-linux-gnu".to_string());
+    include_paths.push("/usr/include".to_string());
+
+    // 为-MMD选项，复制一份标准库引入路径
+    let std_include_paths = &mut args.std_include_paths;
+    for include in include_paths.iter() {
+        std_include_paths.push(include.to_string());
+    }
 }
