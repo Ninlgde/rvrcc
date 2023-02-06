@@ -229,20 +229,22 @@ pub fn print_dependencies(args: &Args) {
     };
     // 打开输出文件
     let mut out = open_file_for_write(out);
-    // -MF指定依赖规则中的目标，否则替换后缀为.o
-    let os = if args.opt_mt_cap.is_empty() {
-        replace_extn(&args.base, ".o")
+    // 如果未指定-MT，默认需要目标名中的特殊字符处理
+    if !args.opt_mt_cap.is_empty() {
+        write!(out.as_mut(), "{}:", args.opt_mt_cap).unwrap();
     } else {
-        args.opt_mt_cap.to_string()
-    };
-    write!(out.as_mut(), "{}:", os,).unwrap();
+        // -MF指定依赖规则中的目标，否则替换后缀为.o
+        let bn = quote_makefile(replace_extn(&args.base, ".o"));
+        write!(out.as_mut(), "{}:", bn).unwrap();
+    }
 
     // 获取输入文件
     let inputs = unsafe { INPUTS.to_vec() };
     // 遍历输入文件，并将格式化的结果写入输出文件
     for input in inputs.iter() {
         let input = input.borrow();
-        write!(out.as_mut(), "\\\n {}", input.name).unwrap();
+        let name = quote_makefile(input.name.to_string());
+        write!(out.as_mut(), "\\\n {}", name).unwrap();
     }
     write!(out.as_mut(), "\n\n").unwrap();
 
@@ -253,6 +255,42 @@ pub fn print_dependencies(args: &Args) {
             write!(out.as_mut(), "{}:\n\n ", input.name).unwrap();
         }
     }
+}
+
+/// 对Make的目标中的特殊字符进行处理
+pub fn quote_makefile(input: String) -> String {
+    let mut out = vec![];
+    let input = input.into_bytes();
+
+    // 遍历字符串，对特殊字符进行处理
+    for (i, c) in input.iter().enumerate() {
+        let char = *c as char;
+        match char {
+            '$' => {
+                out.push('$' as u8);
+                out.push('$' as u8);
+            }
+            '#' => {
+                out.push('\\' as u8);
+                out.push('#' as u8);
+            }
+            ' ' | '\t' => {
+                // 反向遍历反斜杠字符
+                let mut k: isize = i as isize - 1;
+                while k >= 0 && input[k as usize] as char == '\\' {
+                    out.push('\\' as u8);
+                    k -= 1;
+                }
+                out.push('\\' as u8);
+                out.push(*c);
+            }
+            _ => {
+                out.push(*c);
+            }
+        }
+    }
+    // 返回新字符串
+    String::from_utf8(out).unwrap()
 }
 
 /// 返回一位十六进制转十进制

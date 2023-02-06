@@ -1,6 +1,7 @@
 //! 命令行参数解析
 
 use crate::cmacro::{define, undef_macro};
+use crate::quote_makefile;
 use std::ffi::CString;
 use std::fs::remove_file;
 use std::process::exit;
@@ -303,6 +304,23 @@ impl Args {
             if arg.eq("-MD") {
                 result.opt_md_cap = true;
                 i += 1;
+                continue;
+            }
+
+            // 解析-MQ
+            if arg.eq("-MQ") {
+                if result.opt_mt_cap.is_empty() {
+                    // 无依赖规则中的目标
+                    result.opt_mt_cap = quote_makefile(args[i + 1].to_string());
+                } else {
+                    // 合并依赖规则中的目标
+                    result.opt_mt_cap = format!(
+                        "{} {}",
+                        result.opt_mt_cap,
+                        quote_makefile(args[i + 1].to_string())
+                    );
+                }
+                i += 2;
                 continue;
             }
 

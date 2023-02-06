@@ -312,4 +312,11 @@ $rvrcc -c -MD -MF $tmp/md-mf.d -I. $tmp/md2.c
 grep -q -z 'md2.o:\\\s* .*md2\.c\\\s* .*/out2\.h' $tmp/md-mf.d
 check -MD
 
+# [294] 支持-MQ选项
+# -MQ
+$rvrcc -MQ '$foo' -M -I$tmp $tmp/out.c | grep -q '^$$foo:'
+check -MQ
+$rvrcc -MQ '$foo' -MQ bar -M -I$tmp $tmp/out.c | grep -q '^$$foo bar:'
+check -MQ
+
 echo OK
