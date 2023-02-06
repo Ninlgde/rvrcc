@@ -328,7 +328,7 @@ else
 fi
 
 echo 'int foo(); int bar=3; int main() { foo(); }' > $tmp/main.c
-$rvrcc -o $tmp/foo $tmp/main.c $tmp/foo.so -###
+$rvrcc -o $tmp/foo $tmp/main.c $tmp/foo.so
 check -fPIC
 
 echo OK

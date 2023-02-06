@@ -3,6 +3,7 @@ use crate::token::Token;
 use crate::tokenize::tokenize_string_literal;
 use crate::unicode::{get_string_kind, StringKind};
 use crate::{error_token, Args, INPUTS};
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::{stdout, Read, Write};
 use std::path::Path;
@@ -133,18 +134,35 @@ pub fn file_exists(file: &str) -> bool {
     Path::new(file).exists()
 }
 
+pub static mut CACHE_INCLUDE: Option<HashMap<String, String>> = None;
+
 /// 搜索引入路径区
 pub fn search_include_paths(include_path: &Vec<String>, filename: &String) -> String {
     if filename.starts_with("/") {
         return filename.to_string();
     }
 
+    // 文件搜索的缓存，被搜索的文件都会存入这里，方便快速查找
+    let cache = unsafe {
+        if CACHE_INCLUDE.is_none() {
+            CACHE_INCLUDE = Some(HashMap::new());
+        }
+        CACHE_INCLUDE.as_mut().unwrap()
+    };
+    let result = cache.get(filename);
+    if result.is_some() {
+        return result.unwrap().to_string();
+    }
+
     // 从引入路径区查找文件
     for incl in include_path.iter() {
         let path = format!("{}/{}", incl, filename);
-        if file_exists(&path) {
-            return path;
+        if !file_exists(&path) {
+            continue;
         }
+        // 将搜索到的结果顺带存入文件搜索的缓存
+        cache.insert(filename.to_string(), path.to_string());
+        return path.to_string();
     }
     // 啥也没找到,直接返回吧
     "".to_string()
