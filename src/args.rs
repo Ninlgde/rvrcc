@@ -91,7 +91,16 @@ impl Args {
 
     /// 判断需要一个参数的选项，是否具有一个参数
     fn take_arg(arg: &str) -> bool {
-        let args = vec!["-o", "-I", "-idirafter", "-include", "-x", "-MF", "-MT"];
+        let args = vec![
+            "-o",
+            "-I",
+            "-idirafter",
+            "-include",
+            "-x",
+            "-MF",
+            "-MT",
+            "-Xlinker",
+        ];
         for a in args {
             if arg.eq(a) {
                 return true;
@@ -272,6 +281,13 @@ impl Args {
             if arg.starts_with("-l") || arg.starts_with("-Wl,") {
                 result.inputs.push(arg.to_string());
                 i += 1;
+                continue;
+            }
+
+            // 解析-Xlinker
+            if arg.eq("-Xlinker") {
+                result.ld_extra_args.push(args[i + 1].to_string());
+                i += 2;
                 continue;
             }
 
