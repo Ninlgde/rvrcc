@@ -269,7 +269,7 @@ impl Args {
             }
 
             // 解析-l
-            if arg.starts_with("-l") {
+            if arg.starts_with("-l") || arg.starts_with("-Wl,") {
                 result.inputs.push(arg.to_string());
                 i += 1;
                 continue;
