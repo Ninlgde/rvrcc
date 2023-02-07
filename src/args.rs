@@ -392,6 +392,23 @@ impl Args {
                 continue;
             }
 
+            // 解析-L
+            if arg.eq("-L") {
+                result.ld_extra_args.push("-L".to_string());
+                result.ld_extra_args.push(args[i + 1].to_string());
+                i += 2;
+                continue;
+            }
+
+            // 解析-Lxxx
+            if arg.starts_with("-L") {
+                let optl = &arg[2..];
+                result.ld_extra_args.push("-L".to_string());
+                result.ld_extra_args.push(optl.to_string());
+                i += 1;
+                continue;
+            }
+
             // 忽略多个选项
             if arg.starts_with("-O")
                 || arg.starts_with("-W")
