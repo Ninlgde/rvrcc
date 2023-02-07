@@ -22,6 +22,8 @@ pub struct Args {
     pub opt_hash_hash_hash: bool,
     /// -static选项
     pub opt_static: bool,
+    /// -shared选项
+    pub opt_shared: bool,
     /// -S选项
     pub opt_s_cap: bool,
     /// -c选项
@@ -67,6 +69,7 @@ impl Args {
             opt_cc1: false,
             opt_hash_hash_hash: false,
             opt_static: false,
+            opt_shared: false,
             opt_s_cap: false,
             opt_c: false,
             opt_e_cap: false,
@@ -373,9 +376,18 @@ impl Args {
                 continue;
             }
 
+            // 解析-static
             if arg.eq("-static") {
                 result.opt_static = true;
                 result.ld_extra_args.push("-static".to_string());
+                i += 1;
+                continue;
+            }
+
+            // 解析-shared
+            if arg.eq("-shared") {
+                result.opt_shared = true;
+                result.ld_extra_args.push("-shared".to_string());
                 i += 1;
                 continue;
             }

@@ -74,26 +74,26 @@ check 'multiple input files'
 
 # [157] 无-c时调用ld
 # 调用链接器
-#rm -f $tmp/foo
-#echo 'int main() { return 0; }' | $rvrcc -o $tmp/foo -xc -
-#if [ "$RISCV" = "" ];then
-#  $tmp/foo
-#else
-#  $RUN $tmp/foo
-#fi
-#check linker
+rm -f $tmp/foo
+echo 'int main() { return 0; }' | $rvrcc -static -o $tmp/foo -xc -
+if [ "$RISCV" = "" ];then
+  $tmp/foo
+else
+  $RUN $tmp/foo
+fi
+check linker
 
 rm -f $tmp/foo
 echo 'int bar(); int main() { return bar(); }' > $tmp/foo.c
 echo 'int bar() { return 42; }' > $tmp/bar.c
-#$rvrcc -o $tmp/foo $tmp/foo.c $tmp/bar.c
-#if [ "$RISCV" = "" ];then
-#  $tmp/foo
-#else
-#  $RUN $tmp/foo
-#fi
-#[ "$?" = 42 ]
-#check linker
+$rvrcc -static -o $tmp/foo $tmp/foo.c $tmp/bar.c
+if [ "$RISCV" = "" ];then
+  $tmp/foo
+else
+  $RUN $tmp/foo
+fi
+[ "$?" = 42 ]
+check linker
 #
 # 生成a.out
 rm -f $tmp/a.out
@@ -269,8 +269,6 @@ check '.so'
 
 # [289] 支持-M选项
 # -M
-#echo foo > $tmp/out2.h
-#echo bar > $tmp/out3.h
 echo '#include "out2.h"' > $tmp/out.c
 echo '#include "out3.h"' >> $tmp/out.c
 touch $tmp/out2.h $tmp/out3.h
@@ -349,5 +347,12 @@ $rvrcc -static -o $tmp/foo $tmp/foo.c $tmp/bar.c
 check -static
 file $tmp/foo | grep -q 'statically linked'
 check -static
+
+# [302] 支持-shared选项
+# -shared
+echo 'extern int bar; int foo() { return bar; }' > $tmp/foo.c
+echo 'int foo(); int bar=3; int main() { foo(); }' > $tmp/bar.c
+$rvrcc -fPIC -shared -o $tmp/foo.so $tmp/foo.c $tmp/bar.c
+check -shared
 
 echo OK

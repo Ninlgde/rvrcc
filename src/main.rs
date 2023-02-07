@@ -86,15 +86,11 @@ fn main() {
                     output.to_string(),
                     args.opt_hash_hash_hash,
                 );
-                ld_args.push(output);
             }
             continue;
         }
 
         // 处理.c文件
-        // if ft != FileType::C && !input.eq("-") {
-        //     panic!("unknown file extension: {}", input);
-        // }
         assert!(ft == FileType::C);
 
         // 只进行解析
@@ -161,13 +157,7 @@ fn main() {
         } else {
             args.opt_o.as_str()
         };
-        run_linker(
-            ld_args,
-            out.to_string(),
-            args.ld_extra_args,
-            args.opt_static,
-            args.opt_hash_hash_hash,
-        );
+        run_linker(ld_args, out.to_string(), &args);
     }
 }
 
@@ -313,13 +303,7 @@ fn assemble(input: String, output: String, print_debug: bool) {
 }
 
 /// 使用ld来link目标文件到可执行文件
-fn run_linker(
-    inputs: Vec<String>,
-    output: String,
-    extra: Vec<String>,
-    is_static: bool,
-    print_debug: bool,
-) {
+fn run_linker(inputs: Vec<String>, output: String, args: &Args) {
     // 需要传递ld子进程的参数
     let mut arr = vec![];
 
@@ -331,7 +315,7 @@ fn run_linker(
     arr.push(output);
     arr.push("-m".to_string());
     arr.push("elf64lriscv".to_string());
-    if is_static {
+    if args.opt_static {
         arr.push("-dynamic-linker".to_string());
 
         arr.push(format!(
@@ -343,9 +327,14 @@ fn run_linker(
     let lib_path = find_lib_path();
     let gcc_lib_path = find_gcc_lib_path();
 
-    arr.push(format!("{}/crt1.o", lib_path.to_string()));
-    arr.push(format!("{}/crti.o", lib_path.to_string()));
-    arr.push(format!("{}/crtbegin.o", gcc_lib_path.to_string()));
+    if args.opt_shared {
+        arr.push(format!("{}/crti.o", lib_path.to_string()));
+        arr.push(format!("{}/crtbeginS.o", gcc_lib_path.to_string()));
+    } else {
+        arr.push(format!("{}/crt1.o", lib_path.to_string()));
+        arr.push(format!("{}/crti.o", lib_path.to_string()));
+        arr.push(format!("{}/crtbegin.o", gcc_lib_path.to_string()));
+    }
     arr.push(format!("-L{}", gcc_lib_path.to_string()));
 
     arr.push(format!("-L{}/sysroot/usr/lib64", RISCV_HOME));
@@ -366,7 +355,7 @@ fn run_linker(
     arr.push(format!("-L{}/sysroot/lib", RISCV_HOME));
 
     // 链接器额外参数存入到链接器参数中
-    for ea in extra.iter() {
+    for ea in args.ld_extra_args.iter() {
         arr.push(ea.to_string());
     }
 
@@ -375,7 +364,7 @@ fn run_linker(
         arr.push(input.to_string());
     }
 
-    if is_static {
+    if args.opt_static {
         arr.push("--start-group".to_string());
         arr.push("-lgcc".to_string());
         arr.push("-lgcc_eh".to_string());
@@ -388,10 +377,14 @@ fn run_linker(
         arr.push("-lgcc_s".to_string());
         arr.push("--no-as-needed".to_string());
     }
-    arr.push(format!("{}/crtend.o", gcc_lib_path.to_string()));
+    if args.opt_shared {
+        arr.push(format!("{}/crtendS.o", gcc_lib_path.to_string()));
+    } else {
+        arr.push(format!("{}/crtend.o", gcc_lib_path.to_string()));
+    }
     arr.push(format!("{}/crtn.o", lib_path.to_string()));
 
-    run_subprocess(arr, print_debug);
+    run_subprocess(arr, args.opt_hash_hash_hash);
 }
 
 /// 查找库路径
