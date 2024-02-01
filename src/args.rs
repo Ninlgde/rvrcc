@@ -277,7 +277,7 @@ impl Args {
                 continue;
             }
 
-            // 解析-l
+            // 解析-l -Wl,
             if arg.starts_with("-l") || arg.starts_with("-Wl,") {
                 result.inputs.push(arg.to_string());
                 i += 1;
@@ -438,6 +438,7 @@ impl Args {
                 || arg.eq("-m64")
                 || arg.eq("-mno-red-zone")
                 || arg.eq("-w")
+                || arg.eq("-march=native")
             {
                 i += 1;
                 continue;

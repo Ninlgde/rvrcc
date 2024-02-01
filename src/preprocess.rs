@@ -328,8 +328,8 @@ impl<'a> Preprocessor<'a> {
                 continue;
             }
 
-            // 匹配#pragma
-            if token.equal("pragma") {
+            // 匹配#pragma #warning
+            if token.equal("pragma") || token.equal("warning") || token.equal("error") {
                 let mut t = &token;
                 while !t.at_bol() {
                     t = self.next().current_token();
@@ -672,10 +672,9 @@ impl<'a> Preprocessor<'a> {
         if macro_.is_obj_like() {
             // 展开过一次的宏变量，就加入到隐藏集当中
             let token = self.current_token_mut();
-            token.add_hide_set(HideSet::new(macro_name));
+            let hs = HideSet::union(token.get_hide_set(), HideSet::new(macro_name));
 
             // 处理此宏变量之后，传递隐藏集给之后的终结符
-            let hs = token.get_hide_set();
             let body = macro_.get_body();
             let mut rb = add_hide_set(body, hs);
             for b in rb.iter_mut() {

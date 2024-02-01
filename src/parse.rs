@@ -1297,7 +1297,7 @@ impl<'a> Parser<'a> {
         len = cmp::min(t.len, len);
         let bs = t.base.as_ref().unwrap().borrow().size;
         for i in 0..len as usize {
-            let mut child = &mut init.children[i];
+            let child = &mut init.children[i];
             let mut val = 0i64;
             match bs {
                 1 => {
@@ -1658,8 +1658,7 @@ impl<'a> Parser<'a> {
 
     /// 初始化器
     fn initializer(&mut self, var: ObjLink) -> (Option<Box<Initializer>>, TypeLink) {
-        let binding = var.borrow();
-        let typ = binding.get_type();
+        let typ = var.borrow().get_type().clone();
         // 新建一个解析了类型的初始化器
         let mut init = Initializer::new(typ.clone(), true);
         // 解析需要赋值到Init中
@@ -1668,7 +1667,7 @@ impl<'a> Parser<'a> {
         let t = typ.borrow();
         if t.is_struct_union() && t.is_flexible {
             // 复制结构体类型
-            let new_type = Type::copy_struct_type(typ);
+            let new_type = Type::copy_struct_type(&typ);
             let mut t = new_type.borrow_mut();
             // 取最后一个成员
             let last = t.members.last_mut().unwrap();
@@ -1784,14 +1783,16 @@ impl<'a> Parser<'a> {
             let mut expr = self.next().expr().unwrap();
             self.skip(";");
             add_type(&mut expr);
-            let cur_func = self.cur_func.as_ref().unwrap().clone();
-            let cur_func = cur_func.borrow();
-            // 对于返回值为结构体时不进行类型转换
-            if !cur_func.get_type().borrow().is_struct_union() {
-                expr = Node::new_cast(
-                    expr,
-                    cur_func.get_func_return_type().as_ref().unwrap().clone(),
-                );
+            {
+                let cur_func = self.cur_func.as_ref().unwrap().clone();
+                let cur_func = cur_func.borrow();
+                // 对于返回值为结构体时不进行类型转换
+                if !cur_func.get_type().borrow().is_struct_union() {
+                    expr = Node::new_cast(
+                        expr,
+                        cur_func.get_func_return_type().as_ref().unwrap().clone(),
+                    );
+                }
             }
             let node = Node::new_unary(NodeKind::Return, expr, nt);
             return Some(node);
@@ -3216,7 +3217,7 @@ impl<'a> Parser<'a> {
         // "(" "{" stmt+ "}" ")"
         let (pos, token) = self.current();
         let nt = self.tokens[pos].clone();
-        let next = self.get_token(pos + 1);
+        let next = self.get_token(pos + 1).clone();
         if token.equal("(") && next.equal("{") {
             // This is a GNU statement expresssion.
             self.next().next();
@@ -3340,11 +3341,10 @@ impl<'a> Parser<'a> {
                     return Some(node);
                 }
             }
-            let token = self.current_token();
-            if token.equal(")") {
-                error_token!(token, "implicit declaration of a function")
+            if next.equal(")") {
+                error_token!(&nt, "implicit declaration of a function")
             }
-            error_token!(token, "undefined variable");
+            error_token!(&nt, "undefined variable {}", name);
             return None;
         } else if token.is_string() {
             let (val, typ) = token.get_string();

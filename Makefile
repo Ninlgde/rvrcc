@@ -24,23 +24,26 @@ OBJS=$(STAGE2_SRCS:.c=.o)
 $(OBJS): ../rvcc/rvcc.h
 
 # rvrcc标签，使用cargo build 创建可执行文件
-rvrcc:
-	@cargo build --release
+rvrcc-build:
+	@cargo build
+
+rvrcc: rvrcc-build
+	 mv ./target/debug/rvrcc ./rvrcc
 
 # 测试标签，运行测试
 test/%.exe: rvrcc test/%.c
-	./target/release/rvrcc -Iinclude -Itest -I$(RISCV)/sysroot/usr/include -c -o test/$*.o test/$*.c
+	./rvrcc -Iinclude -Itest -I$(RISCV)/sysroot/usr/include -c -o test/$*.o test/$*.c
 	$(CC) -pthread -static -o $@ test/$*.o -xc test/common
 
 test/%: test/%.exe
 	echo "\033[34m"test/$*.exe"\033[0m"; $(RUN) test/$*.exe
 
 test/driver: rvrcc
-	test/driver.sh ./target/release/rvrcc
+	test/driver.sh ./rvrcc
 
 test: $(TESTS)
 	for i in $^; do echo "\033[34m"$$i"\033[0m"; $(RUN) ./$$i || exit 1; echo; done
-	test/driver.sh ./target/release/rvrcc
+	test/driver.sh ./rvrcc
 
 test-all: test test-stage2
 
@@ -60,7 +63,7 @@ stage2/rvcc: $(OBJS:%=stage2/%)
 # 利用stage1的rvcc去将rvcc的源代码编译为stage2的可重定位文件
 stage2/%.o: rvrcc stage2/%.c
 	mkdir -p stage2/test
-	./target/release/rvrcc -Iinclude -Itest -c -o stage2/$*.o stage2/$*.c -###
+	./rvrcc -Iinclude -Itest -c -o stage2/$*.o stage2/$*.c -###
 
 # 利用stage2的rvcc去进行测试
 stage2/test/%.exe: stage2 test/%.c
@@ -71,9 +74,25 @@ test-stage2: $(TESTS:test/%=stage2/test/%)
 	for i in $^; do echo $$i;  $(RUN) ./$$i || exit 1; echo; done
 	test/driver.sh "$(RUN) ./stage2/rvcc -cc1"
 
+# 测试第三方程序
+test-libpng: rvrcc
+	./test/thirdparty/libpng.sh
+
+test-sqlite: rvrcc
+	./test/thirdparty/sqlite.sh
+
+test-tinycc: rvrcc
+	./test/thirdparty/tinycc.sh
+
+test-lua: rvrcc
+	./test/thirdparty/lua.sh
+
+test-git: rvrcc
+	./test/thirdparty/git.sh
+
 # 清理标签，清理所有非源代码文件
 clean:
-	rm -rf rvcc tmp* $(TESTS) test/*.s test/*.exe stage2/
+	rm -rf rvrcc tmp* $(TESTS) test/*.s test/*.exe stage2/ thirdparty/
 	find * -type f '(' -name '*~' -o -name '*.o' -o -name '*.s' ')' -exec rm {} ';'
 
 # 伪目标，没有实际的依赖文件

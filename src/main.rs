@@ -58,6 +58,18 @@ fn main() {
             continue;
         }
 
+        // 匹配到 -Wl, 将后续参数存入链接器选项
+        if input.starts_with("-Wl,") {
+            // 以 , 分割开的参数字符串
+            let s = input.split(",");
+            let args = s.collect::<Vec<_>>()[1..].to_vec();
+            for arg in args {
+                // 加入到链接器参数
+                ld_args.push(arg.to_string());
+            }
+            continue;
+        }
+
         let output = if !args.opt_o.eq("") {
             args.opt_o.to_string()
         } else if args.opt_s_cap {
@@ -433,6 +445,8 @@ fn add_default_include_paths(args: &mut Args, arg: String) {
     include_paths.push("/usr/local/include".to_string());
     include_paths.push("/usr/include/riscv64-linux-gnu".to_string());
     include_paths.push("/usr/include".to_string());
+    include_paths.push(format!("{}/sysroot/usr/include", RISCV_HOME));
+    // include_paths.push("/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX13.1.sdk/usr/include".to_string());
 
     // 为-MMD选项，复制一份标准库引入路径
     let std_include_paths = &mut args.std_include_paths;
